@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Relio.Application.People;
+using Relio.Data.People;
 
 namespace Relio.Data.DependencyInjection;
 
@@ -48,6 +51,13 @@ public static class ServiceCollectionExtensions
         services.AddDbContext<RelioDbContext>(options => options.UseSqlServer(
             connectionString,
             sqlServerOptions => sqlServerOptions.MigrationsAssembly(typeof(RelioDbContext).Assembly.FullName)));
+
+        // TryAdd: Relio.Web (and tests) may register a different TimeProvider (e.g. a fake for
+        // deterministic tests); this just guarantees one is always available for audit
+        // timestamps.
+        services.TryAddSingleton(TimeProvider.System);
+
+        services.AddScoped<IPeopleService, PeopleService>();
 
         return services;
     }

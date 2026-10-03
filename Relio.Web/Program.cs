@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
+using Relio.Application.Security;
 using Relio.Data;
 using Relio.Data.DependencyInjection;
 using Relio.Web.Components;
+using Relio.Web.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +15,12 @@ builder.Services.AddRazorComponents()
 builder.Services.AddMudServices();
 
 builder.Services.AddRelioData(builder.Configuration);
+
+// ICurrentUser is the only way Application services read the signed-in user; it never depends
+// on HttpContext directly (see the "User-scoped data pattern" section of AGENTS.md). ASP.NET
+// Core Identity (epic #14) will populate the NameIdentifier claim this reads.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
 
 // "live" answers whether the process is up; "ready" also covers the database so load
 // balancers and the shared release workflow (which smoke-tests /health/ready) know when
