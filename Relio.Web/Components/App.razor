@@ -6,6 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <ResourcePreloader />
+    <!--
+        Applies the stored (or system) light/dark preference before first paint, to avoid a
+        flash of the wrong theme. See wwwroot/js/theme.js and Relio.Web/Theme/ThemeModeState.cs.
+    -->
+    <script src="@Assets["js/theme.js"]"></script>
     <link rel="stylesheet" href="@Assets["_content/MudBlazor/MudBlazor.min.css"]" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["Relio.Web.styles.css"]" />
