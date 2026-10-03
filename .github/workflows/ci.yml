@@ -17,6 +17,23 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Rel10-CI-only-password!"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd="/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Rel10-CI-only-password! -Q 'SELECT 1'"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      ConnectionStrings__Relio: "Server=localhost,1433;Database=Relio;User Id=sa;Password=Rel10-CI-only-password!;TrustServerCertificate=True;"
+
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -45,3 +62,15 @@ jobs:
           name: coverage
           path: '**/TestResults/**/coverage.cobertura.xml'
           if-no-files-found: error
+
+      - name: Check for pending model changes
+        run: >-
+          dotnet ef migrations has-pending-model-changes
+          --project Relio.Data --startup-project Relio.Web
+          --no-build --configuration Release
+
+      - name: Apply migrations to the CI database
+        run: >-
+          dotnet ef database update
+          --project Relio.Data --startup-project Relio.Web
+          --no-build --configuration Release
