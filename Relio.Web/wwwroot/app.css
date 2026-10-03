@@ -188,6 +188,28 @@ a {
     margin: 0;
 }
 
+/* Login's "Remember me" (issue #16) - deliberately its own class, not .rl-field: that class's
+   input styling (border, padding, full-width background) is written for text inputs and would
+   make a checkbox look like a misshapen text field. */
+.rl-checkbox-field {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+}
+
+.rl-checkbox-field input[type="checkbox"] {
+    width: 1.125rem;
+    height: 1.125rem;
+    accent-color: var(--pen);
+}
+
+.rl-checkbox-field label {
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    color: var(--text);
+}
+
 .rl-reading {
     max-width: var(--measure);
 }

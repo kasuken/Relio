@@ -2,7 +2,6 @@
 @implements IDisposable
 @inject ThemeModeState ThemeState
 @inject IJSRuntime JS
-@inject NavigationManager NavigationManager
 
 <MudThemeProvider @ref="_themeProvider" Theme="RelioTheme.Theme" IsDarkMode="ThemeState.IsDark" />
 
@@ -24,7 +23,6 @@
                 <Authorized>
                     <form action="Account/Logout" method="post" class="rl-signout-form">
                         <AntiforgeryToken />
-                        <input type="hidden" name="returnUrl" value="@NavigationManager.ToBaseRelativePath(NavigationManager.Uri)" />
                         <MudText Typo="Typo.body2" Class="mud-text-secondary mr-2" data-testid="signed-in-as">
                             @context.User.Identity?.Name
                         </MudText>
