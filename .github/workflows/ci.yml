@@ -38,7 +38,7 @@ jobs:
       # "Cannot generate SSPI context" (its generic name for the TDS login handshake,
       # not actual Kerberos). Encrypt=False additionally skips encrypting the rest of
       # the session, which the ephemeral, disposable CI container doesn't need.
-      ConnectionStrings__Relio: "Server=localhost,1433;Database=Relio;User Id=sa;Password=Rel10-CI-only-password!;Encrypt=False;TrustServerCertificate=True;"
+      ConnectionStrings__Relio: "Server=localhost,1433;Database=Relio;User Id=sa;Password=Rel10-CI-only-password!;TrustServerCertificate=True;TrustServerCertificate=True;"
 
     steps:
       - name: Checkout
