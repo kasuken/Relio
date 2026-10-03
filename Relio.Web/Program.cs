@@ -9,6 +9,7 @@ using Relio.Web.Components;
 using Relio.Web.Security;
 using Relio.Web.Time;
 using Relio.Web.Theme;
+using DataServiceCollectionExtensions = Relio.Data.DependencyInjection.ServiceCollectionExtensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -59,7 +60,24 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
     app.UseHsts();
 }
-else
+
+if (DataServiceCollectionExtensions.IsInMemoryProvider(builder.Configuration))
+{
+    // Database:Provider=InMemory is test/dev only (see AGENTS.md "End-to-end tests" and
+    // ServiceCollectionExtensions.AddRelioData): no migrations exist for it, so the schema is
+    // just created from the current model. Logged loudly so nobody mistakes this for a real
+    // deployment.
+    app.Logger.LogWarning(
+        "Relio is running with the EF Core InMemory database provider ({ProviderKey}={ProviderValue}). " +
+        "This is a test/dev-only configuration: it is not durable, does not run migrations and does " +
+        "not enforce SQL Server constraints. Never use it in a hosted or self-hosted deployment.",
+        DataServiceCollectionExtensions.ProviderConfigurationKey,
+        DataServiceCollectionExtensions.InMemoryProvider);
+
+    using var scope = app.Services.CreateScope();
+    await scope.ServiceProvider.GetRequiredService<RelioDbContext>().Database.EnsureCreatedAsync();
+}
+else if (app.Environment.IsDevelopment())
 {
     // Production schema changes are an explicit, reviewed step (`dotnet ef database update`);
     // Development auto-applies pending migrations so the app always runs against the latest
