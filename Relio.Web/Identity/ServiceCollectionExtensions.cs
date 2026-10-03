@@ -16,6 +16,11 @@ namespace Relio.Web.Identity;
 /// <item>#16 (login/logout/lockout/remember-me) tunes <c>IdentityOptions.Lockout</c> and the
 /// application cookie's <c>ExpireTimeSpan</c>/persistence/security attributes - see
 /// <see cref="AccountOptions"/> for the configurable values.</item>
+/// <item>#17 (password reset) gives password reset its own named token provider
+/// (<see cref="PasswordResetTokenProvider{TUser}"/>, <see cref="PasswordResetTokenProviderName"/>)
+/// instead of sharing email confirmation's "Default" one, so
+/// <see cref="AccountOptions.PasswordReset"/>'s <c>TokenLifespan</c> can be configured
+/// independently.</item>
 /// <item>#19 (first-user admin + <c>Registration:Mode</c>) adds a role and gates registration
 /// without touching password/email policy.</item>
 /// <item>#20 (2FA) turns on <c>IdentityOptions.Tokens</c>/<c>SignIn.RequireConfirmedPhoneNumber</c>-style
@@ -25,6 +30,15 @@ namespace Relio.Web.Identity;
 /// </summary>
 public static class ServiceCollectionExtensions
 {
+    /// <summary>
+    /// The name <see cref="IdentityOptions.Tokens"/>'s <c>PasswordResetTokenProvider</c> is
+    /// registered under (issue #17) - deliberately not <c>TokenOptions.DefaultProvider</c> (the
+    /// "Default" provider email confirmation also uses), so
+    /// <see cref="PasswordResetTokenProviderOptions.TokenLifespan"/> can be configured
+    /// independently of email confirmation's. See <see cref="PasswordResetTokenProvider{TUser}"/>.
+    /// </summary>
+    private const string PasswordResetTokenProviderName = "PasswordReset";
+
     /// <summary>
     /// Adds ASP.NET Core Identity, cookie authentication, a fallback "authenticated user required"
     /// authorization policy (account pages and health checks opt out explicitly with
@@ -83,10 +97,24 @@ public static class ServiceCollectionExtensions
                 options.Lockout.MaxFailedAccessAttempts = accountOptions.Lockout.MaxFailedAccessAttempts;
                 options.Lockout.DefaultLockoutTimeSpan = accountOptions.Lockout.DefaultLockoutTimeSpan;
                 options.Lockout.AllowedForNewUsers = accountOptions.Lockout.AllowedForNewUsers;
+
+                // Issue #17: password reset gets its own token provider/name (registered as a
+                // transient service below), instead of staying on "Default" alongside email
+                // confirmation - see PasswordResetTokenProviderName and
+                // PasswordResetTokenProvider<TUser>'s remarks for why.
+                options.Tokens.ProviderMap[PasswordResetTokenProviderName] =
+                    new TokenProviderDescriptor(typeof(PasswordResetTokenProvider<RelioUser>));
+                options.Tokens.PasswordResetTokenProvider = PasswordResetTokenProviderName;
             })
             .AddEntityFrameworkStores<RelioDbContext>()
             .AddSignInManager()
             .AddDefaultTokenProviders();
+
+        services.AddTransient<PasswordResetTokenProvider<RelioUser>>();
+        services.Configure<PasswordResetTokenProviderOptions>(options =>
+        {
+            options.TokenLifespan = accountOptions.PasswordReset.TokenLifespan;
+        });
 
         services.ConfigureApplicationCookie(options =>
         {

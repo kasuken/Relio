@@ -15,6 +15,9 @@ public sealed class AccountOptions
 
     /// <summary>Sign-in cookie settings. See <see cref="AccountCookieOptions"/>.</summary>
     public AccountCookieOptions Cookie { get; set; } = new();
+
+    /// <summary>Password reset token settings (issue #17). See <see cref="AccountPasswordResetOptions"/>.</summary>
+    public AccountPasswordResetOptions PasswordReset { get; set; } = new();
 }
 
 /// <summary>
@@ -58,4 +61,24 @@ public sealed class AccountCookieOptions
     /// to 14 days, a common "remember me" lifetime that still forces a fresh sign-in periodically.
     /// </summary>
     public TimeSpan ExpireTimeSpan { get; set; } = TimeSpan.FromDays(14);
+}
+
+/// <summary>
+/// Password reset token settings (issue #17), applied to
+/// <see cref="Relio.Web.Identity.PasswordResetTokenProviderOptions"/> - a dedicated token
+/// provider/options type, not the same one email confirmation uses, so this lifespan can change
+/// without affecting email confirmation's. See
+/// <see cref="ServiceCollectionExtensions.AddRelioIdentity"/> and
+/// <see cref="Relio.Web.Identity.PasswordResetTokenProvider{TUser}"/>'s remarks.
+/// </summary>
+public sealed class AccountPasswordResetOptions
+{
+    /// <summary>
+    /// How long an emailed password reset link stays valid after it is generated. Defaults to 1
+    /// hour - long enough to find the email, short enough that a stale, forwarded or leaked link
+    /// does not stay usable indefinitely. The link is single-use regardless (see
+    /// <c>Relio.Web.Components.Account.Pages.ResetPassword</c>'s remarks): resetting the password
+    /// rotates the account's security stamp, which Identity's token verification is bound to.
+    /// </summary>
+    public TimeSpan TokenLifespan { get; set; } = TimeSpan.FromHours(1);
 }
