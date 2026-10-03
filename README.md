@@ -69,11 +69,16 @@ browser, otherwise the session cookie ends when the browser does. Five failed si
 lock the account out for 15 minutes (`Account:Lockout`, configurable - see AGENTS.md's "Accounts
 and authentication" section).
 
-Email is optional. By default (`Email:Provider=None`) Relio sends no email at all and new accounts
-do not need to confirm their address - this is what a self-hosted instance with no mail server
-gets out of the box. Set `Email:Provider=Smtp` and `Email:Smtp:Host`/`Port`/`Username`/`FromAddress`
-(and `Email:Smtp:Password` via user secrets or an environment variable, never in
-`appsettings*.json`) to require email confirmation and send real account emails.
+Forgot your password? `/Account/ForgotPassword` emails a reset link (`Account:PasswordReset:TokenLifespan`,
+1 hour by default) that works once; the page always shows the same message regardless of whether
+the email matches an account, so it never reveals who has registered.
+
+Email is optional. By default (`Email:Provider=None`) Relio sends no email at all, new accounts
+do not need to confirm their address, and the forgot-password page says so - this is what a
+self-hosted instance with no mail server gets out of the box. Set `Email:Provider=Smtp` and
+`Email:Smtp:Host`/`Port`/`Username`/`FromAddress` (and `Email:Smtp:Password` via user secrets or an
+environment variable, never in `appsettings*.json`) to require email confirmation and send real
+account emails, including password resets.
 
 ### Run locally without SQL Server
 

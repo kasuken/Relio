@@ -50,6 +50,7 @@ public class ServiceCollectionExtensionsTests
         options.Lockout.DefaultLockoutTimeSpan.Should().Be(TimeSpan.FromMinutes(15));
         options.Lockout.AllowedForNewUsers.Should().BeTrue();
         options.Cookie.ExpireTimeSpan.Should().Be(TimeSpan.FromDays(14));
+        options.PasswordReset.TokenLifespan.Should().Be(TimeSpan.FromHours(1));
     }
 
     [Fact]
@@ -61,6 +62,7 @@ public class ServiceCollectionExtensionsTests
             ["Account:Lockout:DefaultLockoutTimeSpan"] = "00:05:00",
             ["Account:Lockout:AllowedForNewUsers"] = "false",
             ["Account:Cookie:ExpireTimeSpan"] = "1.00:00:00",
+            ["Account:PasswordReset:TokenLifespan"] = "00:30:00",
         });
 
         var options = ServiceCollectionExtensions.BuildAccountOptions(configuration);
@@ -69,6 +71,7 @@ public class ServiceCollectionExtensionsTests
         options.Lockout.DefaultLockoutTimeSpan.Should().Be(TimeSpan.FromMinutes(5));
         options.Lockout.AllowedForNewUsers.Should().BeFalse();
         options.Cookie.ExpireTimeSpan.Should().Be(TimeSpan.FromDays(1));
+        options.PasswordReset.TokenLifespan.Should().Be(TimeSpan.FromMinutes(30));
     }
 
     [Fact]
@@ -85,6 +88,7 @@ public class ServiceCollectionExtensionsTests
         options.Lockout.DefaultLockoutTimeSpan.Should().Be(TimeSpan.FromMinutes(15));
         options.Lockout.AllowedForNewUsers.Should().BeTrue();
         options.Cookie.ExpireTimeSpan.Should().Be(TimeSpan.FromDays(14));
+        options.PasswordReset.TokenLifespan.Should().Be(TimeSpan.FromHours(1));
     }
 
     private static IConfiguration BuildConfiguration(Dictionary<string, string?> values) =>

@@ -156,9 +156,9 @@ time zone. Never call `DateTime.Now`/`DateTime.UtcNow`/`DateTime.Today` anywhere
 Established by issue #15, under epic #14. ASP.NET Core Identity, local accounts only - no social
 login, ever (epic #14's guardrail). Issue #16 hardened the minimal login/logout #15 shipped into
 the real thing (lockout, remember-me, open-redirect protection, circuit revalidation - see its own
-bullet below). Later issues extend this further without restructuring it: #17 (password reset),
-#18 (account settings), #19 (first-user admin + `Registration:Mode`), #20 (2FA - `RelioUser`
-already has the columns it needs, from `IdentityUser`).
+bullet below). Issue #17 added password reset by email (see its own bullet below). Later issues
+extend this further without restructuring it: #18 (account settings), #19 (first-user admin +
+`Registration:Mode`), #20 (2FA - `RelioUser` already has the columns it needs, from `IdentityUser`).
 
 - **The user entity** is `Relio.Data.Identity.RelioUser : IdentityUser`, in `Relio.Data` (not
   `Relio.Domain`, which stays free of any framework dependency - see the "User-scoped data
@@ -260,6 +260,53 @@ already has the columns it needs, from `IdentityUser`).
   `appsettings*.json` - user secrets locally, environment variables/host secret store in
   production. Never log an email body or a confirmation/reset token/link - it is a bearer
   credential (see the gdpr-compliant skill).
+- **Password reset (issue #17)**: `/Account/ForgotPassword` → `/Account/ResetPassword` →
+  `/Account/ResetPasswordConfirmation`, under `Components/Account/Pages` alongside every other
+  account page (same static-SSR/`[AllowAnonymous]` reasoning as above). "Forgot your password?" on
+  `Login.razor` links to it.
+  - **No account enumeration**: `ForgotPassword.razor` redirects to the exact same
+    `ForgotPasswordConfirmation` page with the exact same message ("If an account exists for that
+    email address, we've sent a link to reset your password.") whether the submitted email matches
+    no account, an unconfirmed account, or a confirmed one - an unconfirmed account can still reset
+    its password (it still can't sign in afterwards until it confirms; there is no security reason
+    to also refuse the reset). The found/not-found branches also do near-identical work: both
+    generate a password reset token (`UserManager.GeneratePasswordResetTokenAsync`), the not-found
+    one against a throwaway, never-persisted `RelioUser` instead of skipping it outright - so the
+    page's response time is not an easy account-enumeration oracle on top of the identical message.
+    Only the actual email send (and its own `NullEmailSender`/`SmtpEmailSender` branch) differs.
+    Rate-limiting repeated requests is explicitly out of scope (issue #60).
+  - **`Email:Provider=None`**: `ForgotPassword.razor` still shows an info note ("Password reset by
+    email isn't available on this Relio instance. Ask your administrator.") - this is safe because
+    it is a static, instance-wide fact, not tied to the submitted email, so it reveals nothing
+    about any particular account. The found/not-found behaviour above is unchanged: a found user
+    still goes through `NullEmailSender`, which logs its own per-call warning (never the email
+    address) that a reset was requested with no provider configured.
+  - **Expiry and a dedicated token provider**: password reset tokens expire after
+    `Account:PasswordReset:TokenLifespan` (default 1 hour, `AccountOptions.PasswordReset`).
+    Identity's "Default" token provider backs *both* `IdentityOptions.Tokens.EmailConfirmationTokenProvider`
+    and `PasswordResetTokenProvider` out of the box, so simply configuring
+    `DataProtectionTokenProviderOptions.TokenLifespan` would have also changed email
+    confirmation's. Instead, `Relio.Web.Identity.PasswordResetTokenProvider<TUser>` (a
+    `DataProtectorTokenProvider<TUser>` subclass with its own `PasswordResetTokenProviderOptions`
+    options type) is registered under its own provider name and wired up as
+    `IdentityOptions.Tokens.PasswordResetTokenProvider` in
+    `ServiceCollectionExtensions.AddRelioIdentity` - email confirmation keeps using "Default"
+    untouched. See that type's remarks for the official ASP.NET Core guidance this follows.
+  - **Single use**: `UserManager.ResetPasswordAsync` rotates the account's security stamp on
+    success (Identity's own password-change behaviour), and the reset token is bound to the
+    security stamp that was current when it was issued - so reusing an already-used link fails
+    Identity's own token verification with error code `InvalidToken`, the same code an
+    expired/tampered link produces. `ResetPassword.razor` shows the identical calm
+    `InvalidLinkMessage` ("This password reset link is invalid or has expired.") with a link back
+    to `/Account/ForgotPassword` for all three (invalid, expired, reused) plus a missing/unknown
+    user id - never distinguishing them, same no-enumeration reasoning as above. A password-policy
+    failure (e.g. too short) is shown separately and keeps the link valid for another attempt.
+  - **Lockout cleared on success**: a successful reset also calls
+    `UserManager.ResetAccessFailedCountAsync`/`SetLockoutEndDateAsync(user, null)` - the whole
+    point of regaining access by email is to not still be locked out afterwards. The security
+    stamp rotation above also signs out every other active session, at its next
+    `RelioRevalidatingAuthenticationStateProvider` check (within 30 minutes - see "Circuit
+    revalidation" above).
 - **Demo data**: `Relio.Data.Seeding.DemoDataSeeder` creates a `demo@relio.local` account (test/demo
   password only, see its XML docs) with realistic sample people (one archived, one with a Feb 29
   birthday) and a non-UTC time zone, writing directly through `RelioDbContext` rather than through
@@ -273,8 +320,9 @@ already has the columns it needs, from `IdentityUser`).
   `RelioAppFixture.SignInAsDemoAsync(page)` - before visiting any protected route; every existing
   shell test (`NavigationTests`, `DashboardTests`, etc.) does this first. `RelioWebAppFactory`
   enables `DemoData:Enabled` for the shared fixture. To exercise a differently-configured app (e.g.
-  `Email:Provider=Smtp` with a test email sink, see `EmailConfirmationTests`), construct a *new*
-  `RelioWebAppFactory(configureTestServices: ...)` rather than the base class's
+  `Email:Provider=Smtp` with a test email sink, see `EmailConfirmationTests` and `PasswordResetTests`,
+  the latter also setting a one-second `Account:PasswordReset:TokenLifespan` to prove expiry),
+  construct a *new* `RelioWebAppFactory(configureTestServices: ...)` rather than the base class's
   `WithWebHostBuilder` - see `RelioWebAppFactory`'s remarks for why that matters.
   `AuthenticationTests` (issue #16) registers a fresh account per test (its own
   `RegisterNewUserAsync` helper) rather than reusing the shared demo user for anything that fails a

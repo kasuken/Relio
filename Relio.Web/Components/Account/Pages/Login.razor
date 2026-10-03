@@ -42,6 +42,10 @@
         <ValidationMessage For="@(() => Input.Password)" />
     </div>
 
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+        <MudLink Href="/Account/ForgotPassword" data-testid="login-forgot-password">Forgot your password?</MudLink>
+    </MudText>
+
     @* A plain HTML checkbox, for the same static-SSR reason the fields above are plain HTML
        (see the matching comment on Register.razor): an unchecked checkbox simply submits
        nothing, which SupplyParameterFromForm leaves at InputModel.RememberMe's default (false) -

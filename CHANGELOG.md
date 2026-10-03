@@ -6,6 +6,23 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Password reset by email (issue #17): `/Account/ForgotPassword` → `/Account/ResetPassword` →
+  `/Account/ResetPasswordConfirmation`, linked from "Forgot your password?" on the login page. The
+  forgot-password page always shows the same confirmation message regardless of whether the
+  submitted email matches an account or is confirmed (no account enumeration); the two code paths
+  also do near-identical work (both generate a password reset token, one against a throwaway
+  never-persisted user) so the response time does not become an enumeration oracle either. With
+  `Email:Provider=None` it shows an instance-wide note that password reset by email isn't available,
+  without revealing anything about any particular account. Reset links expire after
+  `Account:PasswordReset:TokenLifespan` (1 hour by default) via a dedicated
+  `Relio.Web.Identity.PasswordResetTokenProvider`, so this lifespan can be configured independently
+  of email confirmation's token lifespan (both previously shared Identity's "Default" provider).
+  Links are single-use: a successful reset rotates the account's security stamp (Identity's own
+  password-change behaviour), which the token is bound to, and also clears any lockout
+  (`ResetAccessFailedCountAsync`/`SetLockoutEndDateAsync`) and signs out every other active session
+  at its next circuit revalidation (within 30 minutes). An invalid, expired or already-used link
+  shows the same calm generic message with a link to request a new one. See the "Accounts and
+  authentication" section of AGENTS.md.
 - Login, logout and session persistence (issue #16): hardens #15's minimal login/logout into the
   real thing. Account lockout (`IdentityOptions.Lockout`, configurable via the new
   `Account:Lockout` section - 5 failed attempts, 15 minutes, enabled for new accounts) with a calm,

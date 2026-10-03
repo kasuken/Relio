@@ -14,6 +14,7 @@ namespace Relio.Web.E2ETests.Infrastructure;
 public sealed class TestEmailSink : IEmailSender<RelioUser>
 {
     private readonly ConcurrentQueue<string> _confirmationLinks = new();
+    private readonly ConcurrentQueue<string> _passwordResetLinks = new();
 
     /// <inheritdoc />
     public Task SendConfirmationLinkAsync(RelioUser user, string email, string confirmationLink)
@@ -23,11 +24,21 @@ public sealed class TestEmailSink : IEmailSender<RelioUser>
     }
 
     /// <inheritdoc />
-    public Task SendPasswordResetLinkAsync(RelioUser user, string email, string resetLink) => Task.CompletedTask;
+    public Task SendPasswordResetLinkAsync(RelioUser user, string email, string resetLink)
+    {
+        _passwordResetLinks.Enqueue(resetLink);
+        return Task.CompletedTask;
+    }
 
     /// <inheritdoc />
     public Task SendPasswordResetCodeAsync(RelioUser user, string email, string resetCode) => Task.CompletedTask;
 
     /// <summary>The most recently captured confirmation link, or null if none was sent yet.</summary>
     public string? LastConfirmationLink => _confirmationLinks.IsEmpty ? null : _confirmationLinks.Last();
+
+    /// <summary>
+    /// The most recently captured password reset link, or null if none was sent yet (issue #17) -
+    /// e.g. because the submitted email did not match any account.
+    /// </summary>
+    public string? LastPasswordResetLink => _passwordResetLinks.IsEmpty ? null : _passwordResetLinks.Last();
 }
