@@ -26,6 +26,6 @@ public sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Rel
             connectionString,
             sqlServerOptions => sqlServerOptions.MigrationsAssembly(typeof(RelioDbContext).Assembly.FullName));
 
-        return new RelioDbContext(optionsBuilder.Options);
+        return new RelioDbContext(optionsBuilder.Options, TimeProvider.System);
     }
 }
