@@ -32,10 +32,13 @@ jobs:
           --health-retries=10
 
     env:
-      # Encrypt=False avoids an SSPI/Kerberos negotiation failure ("Cannot generate SSPI
-      # context") that the SqlClient driver otherwise hits against the ephemeral, unnamed
-      # GitHub Actions service container.
-      ConnectionStrings__Relio: "Server=localhost,1433;Database=Relio;User Id=sa;Password=Rel10-CI-only-password!;Encrypt=False;"
+      # SQL Server always encrypts the TDS login packet with its own self-signed
+      # certificate, regardless of Encrypt. Without TrustServerCertificate=True the
+      # SqlClient driver rejects that certificate's "localhost" name and fails with
+      # "Cannot generate SSPI context" (its generic name for the TDS login handshake,
+      # not actual Kerberos). Encrypt=False additionally skips encrypting the rest of
+      # the session, which the ephemeral, disposable CI container doesn't need.
+      ConnectionStrings__Relio: "Server=localhost,1433;Database=Relio;User Id=sa;Password=Rel10-CI-only-password!;Encrypt=False;TrustServerCertificate=True;"
 
     steps:
       - name: Checkout
