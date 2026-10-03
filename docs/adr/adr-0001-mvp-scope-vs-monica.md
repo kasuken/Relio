@@ -55,9 +55,8 @@ called out as a follow-up.
   (birthdays), #39 (scheduler), #40 (email delivery/preferences). Epic #36.
 - **MVP-008**: Stay-in-touch frequency ("stay in touch" in Monica) — #41.
   Epic #36.
-- **MVP-009**: Important dates — birthdays are explicitly covered (#38); other
-  custom important dates are folded into reminders scope (#37) rather than a
-  separate Monica-style "special dates" feature.
+- **MVP-009**: Important dates — birthdays are covered (#38). Custom recurring
+  dates (anniversaries and similar) are an MVP gap; see IMP-002.
 - **MVP-010**: Journal / difficult moments (Relio's reframing of Monica's
   broader journal, narrowed to emotionally significant moments) — #43, #44,
   #45. Epic #42.
@@ -134,9 +133,6 @@ called out as a follow-up.
   user disappointment if a post-MVP epic is not scheduled promptly.
 - **NEG-002**: This ADR is a snapshot of Monica's feature set as of this
   review; Monica continues to evolve, so future re-reviews may find new gaps.
-- **NEG-003**: No new GitHub issues were created as part of this ADR itself;
-  the single proposed follow-up below must be turned into a tracked issue
-  separately before work can start on it.
 
 ## Alternatives Considered
 
@@ -165,10 +161,9 @@ called out as a follow-up.
   no new MVP issues are required except the gap noted below.
 - **IMP-002**: One MVP gap was identified: Monica treats "important dates"
   other than birthdays (anniversaries, custom recurring dates) as first-class
-  reminders, while Relio's current issues (#37, #38) only name reconnect
-  reminders and birthdays explicitly. This is noted as a proposed follow-up
-  issue rather than created directly, per the task constraints; see the pull
-  request description for the suggested title, body and target epic (#36).
+  reminders, while #37 and #38 only cover reconnect reminders and birthdays.
+  A follow-up issue under epic #36 ("Custom important dates as recurring
+  reminders") feeds these dates into the birthday reminder pipeline.
 - **IMP-003**: Success is this ADR being linked from future PRs that touch
   epics #21, #30, #36, #42, #46 or #51 whenever a Monica-inspired feature
   request comes up, instead of re-deriving the scope decision each time.
