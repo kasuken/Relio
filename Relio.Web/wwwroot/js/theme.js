@@ -44,4 +44,13 @@
 
     var stored = getPreference();
     applyResolvedTheme(stored === "dark" || (stored === "system" && systemPrefersDark()));
+
+    // Flips once MainLayout's circuit has connected and finished its first interactive render
+    // (see Components/Layout/MainLayout.razor, OnAfterRenderAsync). A cheap, stable signal for
+    // E2E tests (Relio.Web.E2ETests) to wait on instead of guessing with timeouts.
+    window.Relio.app = {
+        markInteractive: function () {
+            document.documentElement.setAttribute("data-app-ready", "true");
+        },
+    };
 })();

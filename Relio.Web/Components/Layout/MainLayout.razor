@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject ThemeModeState ThemeState
+@inject IJSRuntime JS
 
 <MudThemeProvider @ref="_themeProvider" Theme="RelioTheme.Theme" IsDarkMode="ThemeState.IsDark" />
 
@@ -67,6 +68,12 @@
         var systemIsDark = await _themeProvider.GetSystemDarkModeAsync();
         await ThemeState.InitializeAsync(systemIsDark);
         await _themeProvider.WatchSystemDarkModeAsync(ThemeState.SetSystemPreferenceAsync);
+
+        // Marks <html data-app-ready="true"> once the circuit is connected and this first
+        // interactive render has completed - see wwwroot/js/theme.js. Relio.Web.E2ETests waits
+        // on this instead of a fixed delay, to avoid flaky "clicked before Blazor was listening"
+        // failures.
+        await JS.InvokeVoidAsync("Relio.app.markInteractive");
 
         StateHasChanged();
     }
