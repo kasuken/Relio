@@ -107,6 +107,46 @@ for every new owned entity and service; do not invent new plumbing per feature.
 - Never log note or person content (see `.github/skills/gdpr-compliant/SKILL.md`); ownership
   exceptions and log messages here only ever reference ids and entity kinds.
 
+## Dates and time zones
+
+Established by issue #12. Calendar dates (birthdays, reminder due dates, interaction dates) are
+never UTC instants - they are a specific day in the owning user's time zone. Audit timestamps
+(`CreatedAtUtc`, `UpdatedAtUtc`, `ArchivedAtUtc`) are always UTC instants and never touch a user's
+time zone. Never call `DateTime.Now`/`DateTime.UtcNow`/`DateTime.Today` anywhere in the product
+(Domain, Application, Data or Web) - always go through an injected `TimeProvider`, as
+`RelioDbContext` already does for audit timestamps.
+
+- `Relio.Domain.UserProfile` is the per-user settings row (`OwnerId`, `TimeZoneId`), following the
+  user-scoped data pattern above. One row per user, enforced by a unique index on `OwnerId`
+  (`UserProfileConfiguration`). `TimeZoneId` defaults to `"UTC"` and is always a valid IANA id -
+  nothing writes to it without going through `TimeZoneIds.Parse` first.
+- `Relio.Application.Time.TimeZoneIds` validates IANA time zone ids
+  (`TimeZoneInfo.TryFindSystemTimeZoneById` - .NET resolves IANA ids via ICU on both Linux and
+  Windows, so no Windows-id mapping is needed). Use `TryParse` on read paths that should fall back;
+  use `Parse` (throws `InvalidTimeZoneIdException`) on write paths - an unknown id must be
+  rejected, never silently coerced to UTC.
+- `Relio.Application.Time.UserCalendar` holds pure, synchronous helpers - `ToUserDate` (UTC instant
+  → calendar date in a given zone), `Today` (reads a `TimeProvider`), `IsDueToday`, `IsOverdue`, and
+  `NextOccurrence` (next birthday/anniversary on or after a date). They take a `TimeZoneInfo`
+  directly, so tests exercise them without a database or current user.
+- `Relio.Application.Time.IUserTimeZoneService` is the per-request/per-user entry point - get the
+  current user's time zone and "today", set their time zone, and ask whether a date is due
+  today/overdue for them. Implemented in `Relio.Data.Time.UserTimeZoneService` (depends on
+  `RelioDbContext`, like `PeopleService`) and registered in `AddRelioData`. Sign-up (#15) and
+  account settings (#18) are the only features that should call `SetTimeZoneAsync` directly; every
+  other feature only reads.
+- A `Person`'s `Birthday` (and any future reminder/interaction date) is a `DateOnly` - never
+  convert it to/from UTC. Feb 29 birthdays observe **Feb 28** in non-leap years (not Mar 1) - see
+  `UserCalendar.NextOccurrence`.
+- `Relio.Web.Time.IBrowserTimeZoneReader`/`BrowserTimeZoneReader` read the browser's IANA time zone
+  id via a self-hosted JS module (`wwwroot/js/timezone.js`, `Intl.DateTimeFormat().resolvedOptions().timeZone` -
+  no third-party script), for sign-up (#15) to default a new user's time zone instead of leaving it
+  at UTC. Web-only; Application/Data services never depend on it.
+- Tests must cover users far from UTC (e.g. `Pacific/Kiritimati`, UTC+14; `Pacific/Pago_Pago`,
+  UTC-11) around the UTC midnight boundary, and a DST transition (e.g. `America/New_York`,
+  `Europe/Rome`), using `Microsoft.Extensions.TimeProvider.Testing`'s `FakeTimeProvider` for
+  deterministic "now". See `Relio.Application.Tests/Time/UserCalendarTests.cs`.
+
 ## Required validation
 
 Run before handing off changes:
