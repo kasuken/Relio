@@ -89,12 +89,21 @@ for every new owned entity and service; do not invent new plumbing per feature.
   service instance cannot read, list, update, archive, restore it, or attach user B's own
   foreign-id rows (tags, etc.) to user A's entity. See
   `Relio.Data.Tests/People/PeopleServiceOwnershipTests.cs` for the shape these tests should take.
-- These tests use the EF Core InMemory provider with a fake `ICurrentUser` and `TimeProvider`,
-  because local Docker is not available in this environment and InMemory is enough to exercise
-  service-level ownership logic. The ef-core skill prefers SQL Server for EF Core tests
-  (InMemory/SQLite don't prove constraints, indexes or SQL translation); issue #13 adds a
-  SQL Server-backed integration test project that should re-prove this same scenario against a
-  real database.
+- These tests use the EF Core InMemory provider with a fake `ICurrentUser` and `TimeProvider` for
+  fast feedback on service-level ownership logic. They intentionally stay even though
+  `Relio.Data.IntegrationTests` now re-proves the same scenarios against SQL Server: InMemory runs
+  in milliseconds with no external dependency, so keep it as the first signal and use the SQL
+  Server project to prove anything InMemory cannot (constraints, indexes, migrations, real query
+  translation).
+- `Relio.Data.IntegrationTests` re-proves these same cross-user scenarios against a real SQL
+  Server database (CI's service container, or Docker locally), applies the real EF Core migrations
+  with `Database.MigrateAsync()`, and additionally proves the unique `(OwnerId, Name)` index on
+  `Tag`. Local Docker is not available in this environment, so its tests use a custom
+  `[SqlServerFact]` attribute that skips them (not fails, not silently passes) when
+  `ConnectionStrings__Relio` is unset; CI always sets it, so they always run there. To run them
+  locally: start a server (e.g.
+  `docker run -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD="Your_password123!" -p 1433:1433 mcr.microsoft.com/mssql/server:2022-latest`)
+  then `ConnectionStrings__Relio="Server=localhost,1433;Database=Relio;User Id=sa;Password=Your_password123!;Encrypt=False;TrustServerCertificate=True;" dotnet test`.
 - Never log note or person content (see `.github/skills/gdpr-compliant/SKILL.md`); ownership
   exceptions and log messages here only ever reference ids and entity kinds.
 

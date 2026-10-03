@@ -12,11 +12,12 @@ namespace Relio.Data.Tests.People;
 /// <see cref="Relio.Data.People.PeopleService"/>.
 /// </summary>
 /// <remarks>
-/// Uses the EF Core InMemory provider rather than SQL Server. Local Docker is not available in
-/// this environment, so these tests exercise service-level ownership logic only; they do not
-/// prove SQL Server-specific behaviour (constraints, indexes, query translation). The ef-core
-/// skill prefers SQL Server integration tests for that - issue #13 adds a SQL Server-backed
-/// integration test project that will cover this same scenario end to end.
+/// Uses the EF Core InMemory provider rather than SQL Server, for fast feedback on
+/// service-level ownership logic without an external dependency; it does not prove SQL
+/// Server-specific behaviour (constraints, indexes, query translation). See
+/// <c>Relio.Data.IntegrationTests.People.PeopleServiceSqlServerOwnershipTests</c> for the same
+/// scenario re-proven against a real SQL Server database - run it locally with
+/// <c>ConnectionStrings__Relio=... dotnet test</c> (see the "Tests" section of AGENTS.md).
 /// </remarks>
 public class PeopleServiceOwnershipTests
 {
