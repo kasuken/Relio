@@ -127,6 +127,67 @@ a {
     max-width: var(--content-max);
 }
 
+.rl-signout-form {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+}
+
+/* Plain HTML form fields for the account pages (Register, Login - see
+   Components/Account/Pages/). These render as static SSR (Identity needs a real HTTP
+   request/response to write the sign-in cookie - see AGENTS.md "Protect app pages"), and
+   MudBlazor's input components only post data back to the server when a live circuit is driving
+   their two-way binding - they render no "name" attribute at all without one, so a static form
+   post never carries the value. Microsoft.AspNetCore.Components.Forms.InputText/InputText with
+   type="password" do emit the right "name", so account pages use those, styled from the same
+   tokens as every other input instead of MudBlazor's own classes. */
+.rl-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin-bottom: var(--space-4);
+}
+
+.rl-field label {
+    font-family: var(--font-sans);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.rl-field input {
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
+}
+
+.rl-field input:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+
+.rl-field .rl-field-helper {
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.rl-field-invalid input {
+    border-color: var(--error);
+}
+
+.rl-field .validation-message {
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    color: var(--error);
+    margin: 0;
+}
+
 .rl-reading {
     max-width: var(--measure);
 }

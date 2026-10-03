@@ -1,0 +1,15 @@
+@* Minimal shell for anonymous account pages (register, login, confirmation, etc.) - no nav
+   drawer, no app bar: someone who is not signed in has nothing in Relio to navigate to yet.
+   Follows docs/design-system/README.md: paper ground, a single reading column, no shadows. *@
+@inherits LayoutComponentBase
+
+<MudThemeProvider Theme="RelioTheme.Theme" />
+<MudPopoverProvider />
+<MudSnackbarProvider />
+
+<div class="rl-app">
+    <MudContainer MaxWidth="MaxWidth.Small" Class="py-12">
+        <MudText Typo="Typo.h4" HtmlTag="span" Class="rl-wordmark d-block mb-8">Relio</MudText>
+        @Body
+    </MudContainer>
+</div>

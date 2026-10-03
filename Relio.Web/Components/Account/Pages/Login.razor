@@ -1,0 +1,106 @@
+@page "/Account/Login"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Identity
+@using Relio.Data.Identity
+
+@inject SignInManager<RelioUser> SignInManager
+@inject NavigationManager NavigationManager
+@inject ILogger<Login> Logger
+
+<PageTitle>Sign in - Relio</PageTitle>
+
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-6">Sign in</MudText>
+
+<EditForm Model="Input" FormName="login" OnValidSubmit="LoginAsync" method="post">
+    <DataAnnotationsValidator />
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="login-error">@_errorMessage</MudAlert>
+    }
+
+    @* Plain HTML inputs, not MudTextField - see Register.razor's matching comment: MudBlazor's
+       inputs need a live circuit to post their value, which this static SSR page does not have. *@
+    <div class="rl-field">
+        <label for="login-email">Email</label>
+        <input id="login-email" name="Input.Email" type="email" required
+               value="@Input.Email" data-testid="login-email" />
+        <ValidationMessage For="@(() => Input.Email)" />
+    </div>
+
+    <div class="rl-field">
+        <label for="login-password">Password</label>
+        <input id="login-password" name="Input.Password" type="password" required
+               data-testid="login-password" />
+        <ValidationMessage For="@(() => Input.Password)" />
+    </div>
+
+    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+               FullWidth="true" data-testid="login-submit" Class="mt-2">
+        Sign in
+    </MudButton>
+</EditForm>
+
+<MudText Typo="Typo.body2" Class="mud-text-secondary mt-6">
+    New to Relio? <MudLink Href="/Account/Register">Create an account</MudLink>
+</MudText>
+
+@code {
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private string? _errorMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Static SSR page reached directly (not via client-side Blazor navigation) - clear any
+        // lingering external cookie, matching the standard Identity account pages template.
+        await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+    }
+
+    private async Task LoginAsync()
+    {
+        // Lockout is #16's concern (remember-me, lockout polish) - not enforced yet, so
+        // lockoutOnFailure stays false here deliberately.
+        var result = await SignInManager.PasswordSignInAsync(
+            Input.Email, Input.Password, isPersistent: false, lockoutOnFailure: false);
+
+        if (result.Succeeded)
+        {
+            Logger.LogInformation("A user signed in.");
+            NavigationManager.NavigateTo(string.IsNullOrEmpty(ReturnUrl) ? "/" : ReturnUrl, forceLoad: true);
+            return;
+        }
+
+        if (result.IsNotAllowed)
+        {
+            _errorMessage = "Confirm your email address before signing in. Check your inbox for the confirmation link.";
+            return;
+        }
+
+        // Deliberately the same message whether the email does not exist or the password is
+        // wrong - never let a login form distinguish the two.
+        _errorMessage = "Enter a valid email and password.";
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "Enter your email address.")]
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter your password.")]
+        public string Password { get; set; } = string.Empty;
+    }
+}

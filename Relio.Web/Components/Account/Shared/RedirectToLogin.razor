@@ -1,0 +1,13 @@
+@* Used by Routes.razor's AuthorizeRouteView.NotAuthorized: a circuit that was already open when
+   the user's session stopped being valid has nowhere else to render, so force a full reload to
+   the login page (a plain NavigateTo would stay inside the now-unauthenticated circuit). *@
+@inject NavigationManager NavigationManager
+
+@code {
+    protected override void OnInitialized()
+    {
+        NavigationManager.NavigateTo(
+            $"/Account/Login?returnUrl={Uri.EscapeDataString(NavigationManager.Uri)}",
+            forceLoad: true);
+    }
+}
