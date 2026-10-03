@@ -11,6 +11,7 @@ public class ResponsiveDrawerTests(RelioAppFixture fixture)
     {
         var page = await fixture.NewPageAsync(Viewports.Phone);
 
+        await RelioAppFixture.SignInAsDemoAsync(page);
         await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
 
         var nav = page.Locator("nav[aria-label='Primary']");
@@ -28,6 +29,7 @@ public class ResponsiveDrawerTests(RelioAppFixture fixture)
     {
         var page = await fixture.NewPageAsync(Viewports.Desktop);
 
+        await RelioAppFixture.SignInAsDemoAsync(page);
         await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
 
         await Expect(page.Locator("nav[aria-label='Primary']")).ToBeVisibleAsync();

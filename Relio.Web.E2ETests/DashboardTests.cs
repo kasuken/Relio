@@ -11,6 +11,7 @@ public class DashboardTests(RelioAppFixture fixture)
     {
         var page = await fixture.NewPageAsync();
 
+        await RelioAppFixture.SignInAsDemoAsync(page);
         await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
 
         await Expect(page.GetByText("No one here yet")).ToBeVisibleAsync();

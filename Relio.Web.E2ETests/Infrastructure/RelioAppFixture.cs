@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Microsoft.Playwright;
+using Relio.Data.Seeding;
 
 namespace Relio.Web.E2ETests.Infrastructure;
 
@@ -15,11 +16,10 @@ namespace Relio.Web.E2ETests.Infrastructure;
 /// every test class in the collection shares this one app instance and browser - starting Kestrel
 /// and Chromium per test class would be needlessly slow.
 ///
-/// To exercise a variant of the app (e.g. a later test swapping in an email sink instead of a
-/// real sender), build a second factory with
-/// <c>Fixture.App.WithWebHostBuilder(builder => builder.ConfigureTestServices(services => ...))</c>
-/// - <see cref="RelioWebAppFactory.CreateHost"/> starts a fresh Kestrel listener on a new port for
-/// it, so it does not disturb the shared instance other tests are using.
+/// To exercise a variant of the app (e.g. <see cref="EmailConfirmationTests"/>'s test email sink),
+/// construct a separate <c>new RelioWebAppFactory(configureTestServices: ...)</c> - see that
+/// class's remarks for why, and <see cref="EmailConfirmationTests"/> for a worked example. It
+/// starts its own independent real Kestrel host, so it never disturbs <see cref="App"/>.
 /// </remarks>
 public sealed class RelioAppFixture : IAsyncLifetime
 {
@@ -92,12 +92,19 @@ public sealed class RelioAppFixture : IAsyncLifetime
     /// The viewport to open the page at (see <see cref="Viewports"/>). Defaults to
     /// <see cref="Viewports.Desktop"/>.
     /// </param>
-    public async Task<IPage> NewPageAsync(ViewportSize? viewport = null)
+    /// <param name="timezoneId">
+    /// The browser context's IANA time zone (e.g. <c>"Pacific/Kiritimati"</c>), as
+    /// <c>Intl.DateTimeFormat().resolvedOptions().timeZone</c> (and so <c>wwwroot/js/timezone.js</c>)
+    /// reports it. Defaults to Playwright's own default (the host machine's time zone) when
+    /// <see langword="null"/>.
+    /// </param>
+    public async Task<IPage> NewPageAsync(ViewportSize? viewport = null, string? timezoneId = null)
     {
         var context = await Browser.NewContextAsync(new BrowserNewContextOptions
         {
             BaseURL = BaseUrl,
             ViewportSize = viewport ?? Viewports.Desktop,
+            TimezoneId = timezoneId,
         });
 
         // Always on (cheap for this suite's size): exported by ClosePageAsync below, so a failure
@@ -121,6 +128,22 @@ public sealed class RelioAppFixture : IAsyncLifetime
     public static async Task GotoAndWaitForInteractiveAsync(IPage page, string path = "/")
     {
         await page.GotoAsync(path);
+        await page.Locator("html[data-app-ready='true']").WaitForAsync();
+    }
+
+    /// <summary>
+    /// Signs <paramref name="page"/> in as the seeded demo account (see
+    /// <see cref="DemoDataSeeder"/>; enabled for every test by <see cref="RelioWebAppFactory"/>)
+    /// through the real login page, and waits for the resulting redirect's interactive render to
+    /// finish. Every protected page requires authentication (see AGENTS.md "Protect app pages"),
+    /// so call this before navigating to anything other than <c>/Account/*</c> or <c>/health/*</c>.
+    /// </summary>
+    public static async Task SignInAsDemoAsync(IPage page)
+    {
+        await page.GotoAsync("/Account/Login");
+        await page.Locator("[data-testid='login-email']").FillAsync(DemoDataSeeder.DemoEmail);
+        await page.Locator("[data-testid='login-password']").FillAsync(DemoDataSeeder.DemoPassword);
+        await page.Locator("[data-testid='login-submit']").ClickAsync();
         await page.Locator("html[data-app-ready='true']").WaitForAsync();
     }
 
