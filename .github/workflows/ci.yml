@@ -32,7 +32,10 @@ jobs:
           --health-retries=10
 
     env:
-      ConnectionStrings__Relio: "Server=localhost,1433;Database=Relio;User Id=sa;Password=Rel10-CI-only-password!;TrustServerCertificate=True;"
+      # Encrypt=False avoids an SSPI/Kerberos negotiation failure ("Cannot generate SSPI
+      # context") that the SqlClient driver otherwise hits against the ephemeral, unnamed
+      # GitHub Actions service container.
+      ConnectionStrings__Relio: "Server=localhost,1433;Database=Relio;User Id=sa;Password=Rel10-CI-only-password!;Encrypt=False;"
 
     steps:
       - name: Checkout
