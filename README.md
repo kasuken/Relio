@@ -1,0 +1,1 @@
+CLA signatures are stored by the CLA Assistant workflow.
