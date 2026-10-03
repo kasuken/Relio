@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="Relio.Application.Tests/Relio.Application.Tests.csproj" />
+  <Project Path="Relio.Application/Relio.Application.csproj" />
+  <Project Path="Relio.Data/Relio.Data.csproj" />
+  <Project Path="Relio.Domain/Relio.Domain.csproj" />
+  <Project Path="Relio.Web/Relio.Web.csproj" />
+</Solution>
