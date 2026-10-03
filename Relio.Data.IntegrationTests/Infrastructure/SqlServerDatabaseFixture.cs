@@ -1,0 +1,83 @@
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+
+namespace Relio.Data.IntegrationTests.Infrastructure;
+
+/// <summary>
+/// Creates a uniquely named database on the SQL Server instance named by
+/// <see cref="SqlServerTestEnvironment.ServerConnectionString"/>, applies the real EF Core
+/// migrations to it with <see cref="DatabaseFacade.MigrateAsync"/> (proving the migrations
+/// themselves, not just that the current model is reachable), and drops the database again when
+/// the test run finishes.
+/// </summary>
+/// <remarks>
+/// Shared once per test run via <see cref="SqlServerCollection"/> rather than created per test
+/// class or per test method: migrating a database costs real time against a real SQL Server
+/// instance, and every Relio service already scopes every query and mutation to
+/// <c>IOwnedEntity.OwnerId</c> (see the "User-scoped data pattern" section of AGENTS.md), so tests
+/// stay isolated from each other simply by seeding with a fresh random owner id per test
+/// (<see cref="TestDataFactory.NewOwnerId"/>) - no two tests ever read or write the same row, even
+/// though they share one database and one schema.
+/// <para>
+/// When <see cref="SqlServerTestEnvironment.IsAvailable"/> is <see langword="false"/> (e.g. this
+/// machine has no Docker/SQL Server access), <see cref="InitializeAsync"/> and
+/// <see cref="DisposeAsync"/> are no-ops; every test guarded by <see cref="SqlServerFactAttribute"/>
+/// is skipped instead, so nothing ever calls <see cref="CreateDbContext"/>.
+/// </para>
+/// </remarks>
+public sealed class SqlServerDatabaseFixture : IAsyncLifetime
+{
+    private string? _databaseConnectionString;
+
+    public async Task InitializeAsync()
+    {
+        var serverConnectionString = SqlServerTestEnvironment.ServerConnectionString;
+        if (string.IsNullOrWhiteSpace(serverConnectionString))
+        {
+            return;
+        }
+
+        var builder = new SqlConnectionStringBuilder(serverConnectionString)
+        {
+            InitialCatalog = $"Relio_IntegrationTests_{Guid.NewGuid():N}",
+        };
+        _databaseConnectionString = builder.ConnectionString;
+
+        await using var dbContext = CreateDbContext();
+        await dbContext.Database.MigrateAsync();
+    }
+
+    public async Task DisposeAsync()
+    {
+        if (_databaseConnectionString is null)
+        {
+            return;
+        }
+
+        await using var dbContext = CreateDbContext();
+        await dbContext.Database.EnsureDeletedAsync();
+    }
+
+    /// <summary>
+    /// Creates a new <see cref="RelioDbContext"/> against this run's database, using
+    /// <see cref="TimeProvider.System"/> for audit timestamps. Throws if no SQL Server instance
+    /// was available for this run - callers should guard the test with
+    /// <see cref="SqlServerFactAttribute"/> so that never happens.
+    /// </summary>
+    public RelioDbContext CreateDbContext()
+    {
+        if (_databaseConnectionString is null)
+        {
+            throw new InvalidOperationException(
+                $"{nameof(SqlServerDatabaseFixture)} has no database because " +
+                $"{SqlServerTestEnvironment.ConnectionStringEnvironmentVariable} was not set. Guard " +
+                $"the test with [{nameof(SqlServerFactAttribute)}] so it is skipped instead of run.");
+        }
+
+        var options = new DbContextOptionsBuilder<RelioDbContext>()
+            .UseSqlServer(_databaseConnectionString)
+            .Options;
+
+        return new RelioDbContext(options, TimeProvider.System);
+    }
+}
