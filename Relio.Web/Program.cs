@@ -6,6 +6,7 @@ using Relio.Data;
 using Relio.Data.DependencyInjection;
 using Relio.Web.Components;
 using Relio.Web.Security;
+using Relio.Web.Time;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,6 +22,10 @@ builder.Services.AddRelioData(builder.Configuration);
 // Core Identity (epic #14) will populate the NameIdentifier claim this reads.
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
+
+// Reads the browser's IANA time zone via JS interop, for sign-up (#15) to default a new user's
+// time zone to it (see Relio.Application.Time.IUserTimeZoneService).
+builder.Services.AddScoped<IBrowserTimeZoneReader, BrowserTimeZoneReader>();
 
 // "live" answers whether the process is up; "ready" also covers the database so load
 // balancers and the shared release workflow (which smoke-tests /health/ready) know when
