@@ -6,6 +6,17 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- MudBlazor app shell: a responsive nav drawer (Dashboard, People, Reminders, Difficult
+  moments, Settings) that collapses to a hamburger-toggled overlay on phones, an app bar with a
+  System/Light/Dark theme menu, and placeholder pages with calm empty-state copy. Light/dark
+  preference (`ThemeMode`, `ThemeModeState`, `IThemeModeStore`) follows the system setting by
+  default, is changeable from the app bar or Settings, and persists per browser via
+  `wwwroot/js/theme.js` (per-user, server-side persistence comes with accounts, epic #14).
+  Shared `EmptyState` and `ConfirmDialog` components, `DialogServiceExtensions.ShowConfirmAsync`,
+  `SnackbarExtensions`, and `EntryKind`/`EntryKindVisuals` (the single source of truth for each
+  entry kind's icon and colour) round out the shell. `Relio.Web.Tests` (xUnit, AwesomeAssertions,
+  bUnit) covers the theme preference logic, `EntryKindVisuals` distinctness and the shell
+  components.
 - `Relio.Data.IntegrationTests`: SQL Server-backed integration tests that re-prove the
   `PeopleService` cross-user isolation scenarios and the unique `(OwnerId, Name)` tag index against
   a real database, applying the actual EF Core migrations via `Database.MigrateAsync()`. A custom
