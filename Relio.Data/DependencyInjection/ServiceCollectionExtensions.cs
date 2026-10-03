@@ -3,7 +3,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Relio.Application.People;
+using Relio.Application.Time;
 using Relio.Data.People;
+using Relio.Data.Time;
 
 namespace Relio.Data.DependencyInjection;
 
@@ -58,6 +60,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
 
         services.AddScoped<IPeopleService, PeopleService>();
+        services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
 
         return services;
     }

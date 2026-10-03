@@ -6,6 +6,14 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- User time zones for dates and reminders (issue #12): `Relio.Domain.UserProfile` (one per user,
+  `TimeZoneId` defaulting to UTC), `Relio.Application.Time.IUserTimeZoneService` (current user's
+  time zone/"today", set time zone, due-today/overdue checks) implemented by
+  `Relio.Data.Time.UserTimeZoneService`, pure `UserCalendar` helpers (UTC-instant ↔ user-local
+  conversion, next-birthday-occurrence with Feb 29 handled as Feb 28 in non-leap years), IANA time
+  zone id validation (`TimeZoneIds`), a self-hosted browser-time-zone JS reader
+  (`Relio.Web.Time.IBrowserTimeZoneReader`, for sign-up #15 to default to), and the `AddUserProfile`
+  migration. Documented in the new "Dates and time zones" section of AGENTS.md.
 - MudBlazor app shell: a responsive nav drawer (Dashboard, People, Reminders, Difficult
   moments, Settings) that collapses to a hamburger-toggled overlay on phones, an app bar with a
   System/Light/Dark theme menu, and placeholder pages with calm empty-state copy. Light/dark
