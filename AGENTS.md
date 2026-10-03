@@ -154,11 +154,11 @@ time zone. Never call `DateTime.Now`/`DateTime.UtcNow`/`DateTime.Today` anywhere
 ## Accounts and authentication
 
 Established by issue #15, under epic #14. ASP.NET Core Identity, local accounts only - no social
-login, ever (epic #14's guardrail). Later issues extend this without restructuring it: #16
-(login/logout/lockout/remember-me polish - this issue ships a minimal login/logout, just enough to
-reach the app and prove it end to end), #17 (password reset), #18 (account settings), #19
-(first-user admin + `Registration:Mode`), #20 (2FA - `RelioUser` already has the columns it needs,
-from `IdentityUser`).
+login, ever (epic #14's guardrail). Issue #16 hardened the minimal login/logout #15 shipped into
+the real thing (lockout, remember-me, open-redirect protection, circuit revalidation - see its own
+bullet below). Later issues extend this further without restructuring it: #17 (password reset),
+#18 (account settings), #19 (first-user admin + `Registration:Mode`), #20 (2FA - `RelioUser`
+already has the columns it needs, from `IdentityUser`).
 
 - **The user entity** is `Relio.Data.Identity.RelioUser : IdentityUser`, in `Relio.Data` (not
   `Relio.Domain`, which stays free of any framework dependency - see the "User-scoped data
@@ -171,6 +171,45 @@ from `IdentityUser`).
   800-63B, with complexity rules added for defence in depth, given this stores private
   relationship data), unique email, the cookie scheme, the fallback authorization policy, and which
   `IEmailSender<RelioUser>` to register. Extend options here, not in `Program.cs`.
+- **Login, lockout and session (issue #16)**: `Relio.Web.Identity.AccountOptions`, bound from the
+  `Account` configuration section (`ServiceCollectionExtensions.BuildAccountOptions`, unit tested
+  with no DI container, like `RequiresConfirmedAccount`) - safe defaults, override in
+  `appsettings*.json`/environment variables/user secrets, never hard-code a different value inline:
+  - `Account:Lockout` → `IdentityOptions.Lockout`: `MaxFailedAccessAttempts` (5), `DefaultLockoutTimeSpan`
+    (15 minutes), `AllowedForNewUsers` (`true` - every account is lockout-protected from creation).
+    `Login.razor` passes `lockoutOnFailure: true` to `PasswordSignInAsync`; a locked-out result shows
+    a deliberately vague message (no exact unlock time, no attempt count) and - because
+    `SignInManager` checks lockout *before* the password - the same message even with the correct
+    password while still locked out.
+  - `Account:Cookie:ExpireTimeSpan` (14 days) → the application cookie's sliding-expiration ticket
+    lifetime, for both persistent and session cookies - see `AccountCookieOptions`'s remarks for why
+    one value covers both. The cookie itself is `HttpOnly`, `SameSite=Lax`, and `Secure` (relaxed to
+    `SameAsRequest` only in `Development`, where tests/local `dotnet run` serve plain HTTP with no
+    HTTPS endpoint). "Remember me" (`Login.razor`'s checkbox, a plain HTML `<input type="checkbox">`
+    - same static-SSR reasoning as every other account-page field) sets `isPersistent` per sign-in:
+    checked → a persistent cookie (survives closing the browser); unchecked → a session cookie (no
+    `Expires` attribute, gone once the browser closes).
+  - **No account enumeration**: unknown email, wrong password, and (outside an active lockout) a
+    just-triggered lockout all show the exact same message, `"Email or password is incorrect."` -
+    only the *locked-out* message differs, and that is reachable for any real account regardless of
+    whether the attacker knows the correct password. `Login.razor` logs every outcome
+    (success/wrong-password/locked-out/unconfirmed) with the user id only, never the submitted
+    email - see the gdpr-compliant skill.
+  - **Open redirect protection**: `Relio.Web.Security.ReturnUrlValidator.GetSafeReturnUrl` (pure,
+    unit tested) reduces a `returnUrl` to a same-origin path or falls back to `/` - rejects a
+    different host, a protocol-relative `//evil.example`, and the `/\evil.example` backslash
+    variant browsers normalize the same way. `Login.razor` and `RedirectToLogin.razor` both go
+    through it before calling `NavigationManager.NavigateTo`.
+  - **Logout**: `POST /Account/Logout` (see the next bullet) always redirects to `/Account/Login`
+    directly, logs the signed-out user id, and - combined with `Program.cs`'s `Cache-Control:
+    no-store` on every authenticated response - means the back button after signing out does not
+    reveal a cached protected page.
+  - **Circuit revalidation**: `Relio.Web.Security.RelioRevalidatingAuthenticationStateProvider`
+    (registered in `Program.cs` in place of the plain cascading `AuthenticationStateProvider`)
+    re-checks a connected circuit's security stamp every 30 minutes, the standard ASP.NET Core
+    Identity Blazor template shape adapted to `RelioUser` - without it, a circuit that was already
+    open when a session was revoked (signed out elsewhere, password changed) would stay "signed
+    in" until the circuit itself ended, no matter how long that took.
 - **Account pages** live in `Relio.Web/Components/Account/Pages` (`Register.razor`, `Login.razor`,
   `RegisterConfirmation.razor`, `ConfirmEmail.razor`, `AccessDenied.razor`), with shared
   infrastructure in `Relio.Web/Components/Account` (`IdentityComponentsEndpointRouteBuilderExtensions`
@@ -237,6 +276,11 @@ from `IdentityUser`).
   `Email:Provider=Smtp` with a test email sink, see `EmailConfirmationTests`), construct a *new*
   `RelioWebAppFactory(configureTestServices: ...)` rather than the base class's
   `WithWebHostBuilder` - see `RelioWebAppFactory`'s remarks for why that matters.
+  `AuthenticationTests` (issue #16) registers a fresh account per test (its own
+  `RegisterNewUserAsync` helper) rather than reusing the shared demo user for anything that fails a
+  sign-in on purpose (wrong password, lockout) - the demo user is shared across the whole
+  collection, and locking it out (even temporarily) would make every other test that signs in as it
+  flaky.
 
 ## End-to-end tests
 
