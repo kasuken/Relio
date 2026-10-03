@@ -1,0 +1,173 @@
+@page "/Account/Register"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+@using System.ComponentModel.DataAnnotations
+@using System.Text
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using Relio.Application.Time
+@using Relio.Data
+@using Relio.Data.Identity
+@using Relio.Domain
+
+@inject UserManager<RelioUser> UserManager
+@inject IUserStore<RelioUser> UserStore
+@inject SignInManager<RelioUser> SignInManager
+@inject IEmailSender<RelioUser> EmailSender
+@inject RelioDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject ILogger<Register> Logger
+
+<PageTitle>Create your account - Relio</PageTitle>
+
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">Create your account</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+    Relio is a private notebook about the people in your life. Only you can see what you keep here.
+</MudText>
+
+<EditForm Model="Input" FormName="register" OnValidSubmit="RegisterAsync" method="post">
+    <DataAnnotationsValidator />
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="register-error">@_errorMessage</MudAlert>
+    }
+
+    @* Plain HTML inputs, not MudTextField: MudBlazor's inputs only post their value back to the
+       server when a live circuit drives their two-way binding, so on this static SSR page (see
+       the [ExcludeFromInteractiveRouting] attribute above) they would render with no "name"
+       attribute at all and the form post would arrive with the field empty. See ".rl-field" in
+       wwwroot/app.css for the styling that keeps these on the same tokens as every other input. *@
+    <div class="rl-field @(_errorMessage is not null ? "rl-field-invalid" : null)">
+        <label for="register-email">Email</label>
+        <input id="register-email" name="Input.Email" type="email" required
+               value="@Input.Email" data-testid="register-email" />
+        <ValidationMessage For="@(() => Input.Email)" />
+    </div>
+
+    <div class="rl-field">
+        <label for="register-password">Password</label>
+        <input id="register-password" name="Input.Password" type="password" required
+               data-testid="register-password" />
+        <span class="rl-field-helper">At least 12 characters, with upper and lower case, a digit and a symbol.</span>
+        <ValidationMessage For="@(() => Input.Password)" />
+    </div>
+
+    <div class="rl-field">
+        <label for="register-confirm-password">Confirm password</label>
+        <input id="register-confirm-password" name="Input.ConfirmPassword" type="password" required
+               data-testid="register-confirm-password" />
+        <ValidationMessage For="@(() => Input.ConfirmPassword)" />
+    </div>
+
+    @* Filled by the self-hosted script below, not Blazor JS interop: this page renders as
+       static SSR (see the [ExcludeFromInteractiveRouting] attribute above) so the password can
+       be hashed and the sign-in cookie written directly against HttpContext - there is no live
+       circuit here for Relio.Web.Time.BrowserTimeZoneReader's JS interop to use. See the "Dates
+       and time zones" section of AGENTS.md. *@
+    <input type="hidden" name="Input.TimeZoneId" id="register-timezone-input" value="@Input.TimeZoneId" />
+
+    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+               FullWidth="true" data-testid="register-submit" Class="mt-2">
+        Create account
+    </MudButton>
+</EditForm>
+
+<MudText Typo="Typo.body2" Class="mud-text-secondary mt-6">
+    Already have an account? <MudLink Href="/Account/Login">Sign in</MudLink>
+</MudText>
+
+@* A plain, synchronous script - not type="module" importing wwwroot/js/timezone.js: a module
+   import is an asynchronous network fetch, which races an automated (or simply fast) form
+   submission on this static SSR page. A classic script tag runs synchronously as soon as the
+   parser reaches it, i.e. immediately after the hidden input above already exists in the DOM and
+   well before any submit can happen, at the cost of duplicating timezone.js's one-line body here. *@
+<script>
+    (function () {
+        var timeZoneInput = document.getElementById('register-timezone-input');
+        if (!timeZoneInput) {
+            return;
+        }
+        try {
+            timeZoneInput.value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        } catch {
+            timeZoneInput.value = 'UTC';
+        }
+    })();
+</script>
+
+@code {
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    private string? _errorMessage;
+
+    private async Task RegisterAsync()
+    {
+        var user = new RelioUser();
+        await UserStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
+        await ((IUserEmailStore<RelioUser>)UserStore).SetEmailAsync(user, Input.Email, CancellationToken.None);
+
+        var result = await UserManager.CreateAsync(user, Input.Password);
+        if (!result.Succeeded)
+        {
+            _errorMessage = result.Errors.Any(e => e.Code is "DuplicateUserName" or "DuplicateEmail")
+                ? "An account with this email already exists. Try signing in instead."
+                : string.Join(" ", result.Errors.Select(e => e.Description));
+            return;
+        }
+
+        Logger.LogInformation("A new account was registered.");
+
+        // No ICurrentUser yet: the sign-in cookie written below (or the confirmation step, if one
+        // is required first) only takes effect on the *next* request, so this request has nobody
+        // signed in to resolve through Relio.Web.Security.AuthenticationStateCurrentUser. Writing
+        // the profile directly here, the same way Relio.Data.Seeding.DemoDataSeeder does, is the
+        // established escape hatch for the one moment a user's own data is created before they
+        // exist as a signed-in principal.
+        var timeZone = TimeZoneIds.TryParse(Input.TimeZoneId, out var parsedTimeZone)
+            ? parsedTimeZone
+            : TimeZoneIds.Parse(TimeZoneIds.Default);
+        DbContext.UserProfiles.Add(new UserProfile { OwnerId = user.Id, TimeZoneId = timeZone.Id });
+        await DbContext.SaveChangesAsync();
+
+        if (UserManager.Options.SignIn.RequireConfirmedAccount)
+        {
+            var userId = await UserManager.GetUserIdAsync(user);
+            var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+
+            var confirmationUrl = NavigationManager.GetUriWithQueryParameters(
+                NavigationManager.ToAbsoluteUri("/Account/ConfirmEmail").ToString(),
+                new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code });
+
+            await EmailSender.SendConfirmationLinkAsync(user, Input.Email, confirmationUrl);
+
+            NavigationManager.NavigateTo("/Account/RegisterConfirmation?requiresConfirmation=true", forceLoad: true);
+        }
+        else
+        {
+            await SignInManager.SignInAsync(user, isPersistent: false);
+            NavigationManager.NavigateTo("/Account/RegisterConfirmation", forceLoad: true);
+        }
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "Enter your email address.")]
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter a password.")]
+        public string Password { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Confirm your password.")]
+        [Compare(nameof(Password), ErrorMessage = "The password and confirmation do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+
+        /// <summary>The browser's IANA time zone id, filled by the hidden script above.</summary>
+        public string TimeZoneId { get; set; } = TimeZoneIds.Default;
+    }
+}

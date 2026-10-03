@@ -5,11 +5,15 @@ using MudBlazor.Services;
 using Relio.Application.Security;
 using Relio.Data;
 using Relio.Data.DependencyInjection;
+using Relio.Data.Seeding;
 using Relio.Web.Components;
+using Relio.Web.Components.Account;
+using Relio.Web.Identity;
 using Relio.Web.Security;
 using Relio.Web.Time;
 using Relio.Web.Theme;
 using DataServiceCollectionExtensions = Relio.Data.DependencyInjection.ServiceCollectionExtensions;
+using IdentityServiceCollectionExtensions = Relio.Web.Identity.ServiceCollectionExtensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,14 +41,22 @@ builder.Services.AddScoped<ThemeModeState>();
 
 builder.Services.AddRelioData(builder.Configuration);
 
-// ICurrentUser is the only way Application services read the signed-in user; it never depends
-// on HttpContext directly (see the "User-scoped data pattern" section of AGENTS.md). ASP.NET
-// Core Identity (epic #14) will populate the NameIdentifier claim this reads.
+// ASP.NET Core Identity (epic #14): local accounts, password policy, cookie auth and the
+// email sender selected by Email:Provider. See Relio.Web.Identity.ServiceCollectionExtensions
+// for every Identity option Relio sets - #16-#20 extend them there, not in Program.cs.
+builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
+builder.Services.AddRelioIdentity(builder.Configuration);
 
-// Reads the browser's IANA time zone via JS interop, for sign-up (#15) to default a new user's
-// time zone to it (see Relio.Application.Time.IUserTimeZoneService).
+// ICurrentUser is the only way Application services read the signed-in user; it never depends
+// on HttpContext directly (see the "User-scoped data pattern" section of AGENTS.md).
+// AuthenticationStateCurrentUser (not HttpContext-backed) is what makes this keep working once a
+// Blazor Server circuit's SignalR connection takes over from the initial HTTP request - see its
+// own remarks.
+builder.Services.AddScoped<ICurrentUser, AuthenticationStateCurrentUser>();
+
+// Reads the browser's IANA time zone via JS interop, for later interactive use (account settings,
+// #18). Sign-up (#15) itself cannot use JS interop - see Components/Account/Pages/Register.razor.
 builder.Services.AddScoped<IBrowserTimeZoneReader, BrowserTimeZoneReader>();
 
 // "live" answers whether the process is up; "ready" also covers the database so load
@@ -59,6 +71,17 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
     app.UseHsts();
+}
+
+if (!IdentityServiceCollectionExtensions.RequiresConfirmedAccount(builder.Configuration))
+{
+    // Logged once at startup, not per-registration, so it is visible without being noisy (see
+    // Relio.Web.Email.NullEmailSender for the per-send warning).
+    app.Logger.LogWarning(
+        "Email:Provider is not set to 'Smtp': Relio will not send any account emails (confirmation, " +
+        "password reset). New accounts do not require email confirmation. This is expected for a " +
+        "self-hosted instance with no email provider configured (epic #14's guardrail); set " +
+        "Email:Provider=Smtp and Email:Smtp:* to enable them.");
 }
 
 if (DataServiceCollectionExtensions.IsInMemoryProvider(builder.Configuration))
@@ -85,13 +108,28 @@ else if (app.Environment.IsDevelopment())
     using var scope = app.Services.CreateScope();
     await scope.ServiceProvider.GetRequiredService<RelioDbContext>().Database.MigrateAsync();
 }
+
+// DemoDataSeeder itself refuses (logging an error) when the environment is Production, and does
+// nothing when DemoData:Enabled is not true - see its own remarks. Always runs after the schema
+// is ready (above) and is safe to run on every startup (idempotent).
+using (var seedScope = app.Services.CreateScope())
+{
+    await seedScope.ServiceProvider.GetRequiredService<DemoDataSeeder>().SeedAsync();
+}
+
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.UseAntiforgery();
 
-app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
-app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") })
+    .AllowAnonymous();
+
+app.MapRelioIdentityEndpoints();
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()

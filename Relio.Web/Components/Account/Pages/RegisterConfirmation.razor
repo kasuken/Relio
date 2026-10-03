@@ -1,0 +1,35 @@
+@page "/Account/RegisterConfirmation"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+<PageTitle>Account created - Relio</PageTitle>
+
+@if (RequiresConfirmation)
+{
+    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-4" data-testid="register-confirmation-heading">
+        Check your email
+    </MudText>
+    <MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+        Your account was created. Follow the confirmation link we sent you to finish setting it up
+        and sign in.
+    </MudText>
+    <MudLink Href="/Account/Login">Back to sign in</MudLink>
+}
+else
+{
+    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-4" data-testid="register-confirmation-heading">
+        Your account is ready
+    </MudText>
+    <MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+        Welcome to Relio. You're signed in - continue whenever you're ready.
+    </MudText>
+    <MudButton Href="/" Variant="Variant.Filled" Color="Color.Primary" data-testid="register-confirmation-continue">
+        Continue to Relio
+    </MudButton>
+}
+
+@code {
+    [SupplyParameterFromQuery]
+    private bool RequiresConfirmation { get; set; }
+}

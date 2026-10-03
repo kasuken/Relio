@@ -1,0 +1,12 @@
+@page "/Account/AccessDenied"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+<PageTitle>Access denied - Relio</PageTitle>
+
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-4">Access denied</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+    You don't have access to that page.
+</MudText>
+<MudLink Href="/">Back to Relio</MudLink>

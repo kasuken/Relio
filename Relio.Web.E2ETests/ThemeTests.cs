@@ -11,6 +11,7 @@ public class ThemeTests(RelioAppFixture fixture)
     {
         var page = await fixture.NewPageAsync();
 
+        await RelioAppFixture.SignInAsDemoAsync(page);
         await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
 
         await page.Locator("button[aria-label='Change appearance']").ClickAsync();

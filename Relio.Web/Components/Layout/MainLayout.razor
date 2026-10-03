@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject ThemeModeState ThemeState
 @inject IJSRuntime JS
+@inject NavigationManager NavigationManager
 
 <MudThemeProvider @ref="_themeProvider" Theme="RelioTheme.Theme" IsDarkMode="ThemeState.IsDark" />
 
@@ -19,6 +20,21 @@
                            OnClick="ToggleDrawer" />
             <span class="rl-wordmark">Relio</span>
             <MudSpacer />
+            <AuthorizeView>
+                <Authorized>
+                    <form action="Account/Logout" method="post" class="rl-signout-form">
+                        <AntiforgeryToken />
+                        <input type="hidden" name="returnUrl" value="@NavigationManager.ToBaseRelativePath(NavigationManager.Uri)" />
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary mr-2" data-testid="signed-in-as">
+                            @context.User.Identity?.Name
+                        </MudText>
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text" Size="Size.Small"
+                                   data-testid="sign-out">
+                            Sign out
+                        </MudButton>
+                    </form>
+                </Authorized>
+            </AuthorizeView>
             <ThemeModeMenu />
         </MudAppBar>
         <MudDrawer @bind-Open="_drawerOpen"

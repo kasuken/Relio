@@ -1,0 +1,61 @@
+@page "/Account/ConfirmEmail"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+@using System.Text
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using Relio.Data.Identity
+
+@inject UserManager<RelioUser> UserManager
+
+<PageTitle>Confirm your email - Relio</PageTitle>
+
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-4" data-testid="confirm-email-heading">@_heading</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">@_message</MudText>
+<MudLink Href="/Account/Login">Go to sign in</MudLink>
+
+@code {
+    [SupplyParameterFromQuery]
+    private string? UserId { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? Code { get; set; }
+
+    private string _heading = "Email not confirmed";
+    private string _message = "This confirmation link is invalid.";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrEmpty(UserId) || string.IsNullOrEmpty(Code))
+        {
+            return;
+        }
+
+        var user = await UserManager.FindByIdAsync(UserId);
+        if (user is null)
+        {
+            // Same message as an invalid/expired code - never let this page reveal whether a
+            // user id exists.
+            return;
+        }
+
+        string decodedCode;
+        try
+        {
+            decodedCode = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(Code));
+        }
+        catch (FormatException)
+        {
+            return;
+        }
+
+        var result = await UserManager.ConfirmEmailAsync(user, decodedCode);
+        if (result.Succeeded)
+        {
+            _heading = "Email confirmed";
+            _message = "Your email address is confirmed. You can sign in now.";
+        }
+    }
+}

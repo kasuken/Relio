@@ -57,6 +57,33 @@ dotnet ef database update --project Relio.Data --startup-project Relio.Web
 `/health/live` reports whether the process is running; `/health/ready` also checks the database
 and returns unhealthy when it cannot be reached.
 
+### Accounts
+
+Relio uses ASP.NET Core Identity with local accounts only (no social login). Register at
+`/Account/Register`; a strong password is required (at least 12 characters, with upper and lower
+case, a digit and a symbol - see AGENTS.md for the rationale). Every page except the account pages
+and the health endpoints requires sign-in.
+
+Email is optional. By default (`Email:Provider=None`) Relio sends no email at all and new accounts
+do not need to confirm their address - this is what a self-hosted instance with no mail server
+gets out of the box. Set `Email:Provider=Smtp` and `Email:Smtp:Host`/`Port`/`Username`/`FromAddress`
+(and `Email:Smtp:Password` via user secrets or an environment variable, never in
+`appsettings*.json`) to require email confirmation and send real account emails.
+
+### Run locally without SQL Server
+
+For a quick look at the app with no database to set up, run against the EF Core InMemory provider
+with sample data seeded (a demo account and ~8 example people - see
+`Relio.Data.Seeding.DemoDataSeeder`):
+
+```bash
+Database__Provider=InMemory DemoData__Enabled=true dotnet run --project Relio.Web
+```
+
+Sign in at `/Account/Login` with `demo@relio.local` / `Relio-Demo#2026` (test/demo only - never
+reuse this password for anything real). `DemoData:Enabled` only ever seeds outside the Production
+environment; it refuses (and logs an error) if set in Production.
+
 ## Testing
 
 ```bash

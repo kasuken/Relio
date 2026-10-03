@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Relio.Application.People;
 using Relio.Application.Time;
 using Relio.Data.People;
+using Relio.Data.Seeding;
 using Relio.Data.Time;
 
 namespace Relio.Data.DependencyInjection;
@@ -83,6 +84,12 @@ public static class ServiceCollectionExtensions
 
         services.AddScoped<IPeopleService, PeopleService>();
         services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
+
+        // DemoDataSeeder depends on UserManager<RelioUser>, registered by Relio.Web's
+        // AddRelioIdentity - that's fine, DI only needs it present by the time Program.cs resolves
+        // this from a scope, not at registration time. See DemoDataOptions for the Enabled flag.
+        services.Configure<DemoDataOptions>(configuration.GetSection(DemoDataOptions.SectionName));
+        services.AddScoped<DemoDataSeeder>();
 
         return services;
     }

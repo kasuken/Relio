@@ -21,8 +21,17 @@ namespace Relio.Web.E2ETests.Infrastructure;
 /// real socket). Overriding <see cref="CreateHost"/> to build and <c>Start</c> the host directly
 /// gives it a real, listening Kestrel endpoint instead, whose address is read back from
 /// <see cref="IServerAddressesFeature"/> once the host is up.
+///
+/// To run a variant of the app (e.g. a different <c>Email:Provider</c> with a test email sink),
+/// construct a *new* <c>RelioWebAppFactory(configureTestServices: ...)</c> rather than calling the
+/// base class's <c>WithWebHostBuilder</c>: that method returns an internal
+/// <c>DelegatedWebApplicationFactory</c> wrapper which still invokes *this* class's
+/// <see cref="CreateHost"/> override on the *original* instance, overwriting its
+/// <see cref="ServerAddress"/>/real host - exactly the shared fixture other tests depend on. A
+/// fresh instance has its own independent real host, with no such risk.
 /// </remarks>
-public sealed class RelioWebAppFactory : WebApplicationFactory<Program>
+public sealed class RelioWebAppFactory(Action<IServiceCollection>? configureTestServices = null)
+    : WebApplicationFactory<Program>
 {
     private IHost? _realHost;
 
@@ -32,6 +41,18 @@ public sealed class RelioWebAppFactory : WebApplicationFactory<Program>
     /// e.g. <see cref="WebApplicationFactory{TEntryPoint}.Services"/>).
     /// </summary>
     public string ServerAddress { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// A new DI scope against the real, running app's service provider - not this factory's own
+    /// <see cref="WebApplicationFactory{TEntryPoint}.Services"/>, which (see <see cref="CreateHost"/>'s
+    /// remarks) belongs to a throwaway <c>TestServer</c>-backed host, not the real Kestrel one.
+    /// Tests use this to assert through the real app's services (e.g. <c>RelioDbContext</c>,
+    /// <c>UserManager&lt;RelioUser&gt;</c>) rather than only through the browser UI - e.g. proving
+    /// a stored time zone or cross-user data isolation via the actual service, not a page.
+    /// </summary>
+    public IServiceScope CreateRealScope() =>
+        (_realHost ?? throw new InvalidOperationException("The real host has not started yet."))
+        .Services.CreateScope();
 
     protected override IHost CreateHost(IHostBuilder builder)
     {
@@ -48,10 +69,20 @@ public sealed class RelioWebAppFactory : WebApplicationFactory<Program>
             ServiceCollectionExtensions.ProviderConfigurationKey.Replace(":", "__"),
             ServiceCollectionExtensions.InMemoryProvider);
 
+        // Same timing constraint as Database:Provider above - Program.cs reads this (via
+        // DemoDataSeeder's options) before builder.Build(), so it must already be set as an
+        // environment variable by the time this method's own builder.Build() call runs.
+        Environment.SetEnvironmentVariable("DemoData__Enabled", "true");
+
         builder.ConfigureWebHost(webHostBuilder =>
         {
             // Port 0: ask the OS for any free loopback port, so parallel test runs never collide.
             webHostBuilder.UseKestrel(options => options.Listen(IPAddress.Loopback, 0));
+
+            if (configureTestServices is not null)
+            {
+                webHostBuilder.ConfigureTestServices(configureTestServices);
+            }
         });
 
         // Builds and starts the REAL app (Program.cs, full DI, real Kestrel socket) - this is

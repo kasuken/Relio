@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Relio.Data.Identity;
 using Relio.Domain;
 
 namespace Relio.Data;
@@ -15,7 +17,15 @@ namespace Relio.Data;
 /// apply a global query filter on owner id; see the "User-scoped data pattern" section of
 /// AGENTS.md for why ownership is instead enforced explicitly in each service method.
 /// </remarks>
-public sealed class RelioDbContext(DbContextOptions<RelioDbContext> options, TimeProvider timeProvider) : DbContext(options)
+/// <remarks>
+/// Inherits <see cref="IdentityDbContext{TUser}"/> (epic #14) instead of plain <see cref="DbContext"/>
+/// so ASP.NET Core Identity's own tables (<c>AspNetUsers</c>, <c>AspNetUserClaims</c>, etc.) live in
+/// the same database and migration history as the rest of Relio. Identity's own entities are not
+/// <see cref="IOwnedEntity"/> - they are not user-owned data, they *are* the user - so they are
+/// untouched by <see cref="ApplyAuditTimestamps"/> below.
+/// </remarks>
+public sealed class RelioDbContext(DbContextOptions<RelioDbContext> options, TimeProvider timeProvider)
+    : IdentityDbContext<RelioUser>(options)
 {
     private readonly TimeProvider _timeProvider = timeProvider;
 
