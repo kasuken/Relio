@@ -79,10 +79,10 @@ for every new owned entity and service; do not invent new plumbing per feature.
   `dotnet ef migrations add <Name> --project Relio.Data --startup-project Relio.Web`.
 
 **Web (`Relio.Web`).**
-- The real `ICurrentUser` is `Relio.Web.Security.HttpContextCurrentUser`, reading the
-  `ClaimTypes.NameIdentifier` claim off `HttpContext` via `IHttpContextAccessor`. Registered in
-  `Program.cs`. Until epic #14 lands, there is no Identity middleware populating that claim, so it
-  resolves as unauthenticated - that's expected for now.
+- The real `ICurrentUser` is `Relio.Web.Security.AuthenticationStateCurrentUser` (epic #14, issue
+  #15), reading the `ClaimTypes.NameIdentifier` claim off `AuthenticationStateProvider`'s current
+  `ClaimsPrincipal` - see the "Accounts and authentication" section below for why this is
+  `AuthenticationStateProvider`-backed rather than `HttpContext`-backed. Registered in `Program.cs`.
 
 **Tests.**
 - Prove cross-user isolation for every new service: create data as user A, then assert user B's

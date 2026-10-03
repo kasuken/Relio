@@ -12,7 +12,8 @@ public interface ICurrentUser
     bool IsAuthenticated { get; }
 
     /// <summary>
-    /// The signed-in user's id (matches the future ASP.NET Core Identity user id, epic #14), or
+    /// The signed-in user's id (matches the ASP.NET Core Identity user id, see
+    /// <c>Relio.Data.Identity.RelioUser</c>, epic #14), or
     /// <see langword="null"/> when <see cref="IsAuthenticated"/> is <see langword="false"/>.
     /// </summary>
     string? UserId { get; }
