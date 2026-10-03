@@ -1,0 +1,44 @@
+@* A MudDialog-based yes/no confirmation. Show it with DialogServiceExtensions.ShowConfirmAsync,
+   which returns a plain bool rather than making every caller unpack a DialogResult. *@
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h3">@Title</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body1">@Message</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">@CancelLabel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="@(Destructive ? Color.Error : Color.Primary)"
+                   OnClick="Confirm">
+            @ConfirmLabel
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Message { get; set; } = string.Empty;
+
+    [Parameter]
+    public string ConfirmLabel { get; set; } = "Confirm";
+
+    [Parameter]
+    public string CancelLabel { get; set; } = "Cancel";
+
+    /// <summary>True for an irreversible/destructive action (e.g. delete); styles the confirm button in <c>error</c> rather than <c>pen</c>.</summary>
+    [Parameter]
+    public bool Destructive { get; set; }
+
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(true));
+
+    private void Cancel() => MudDialog.Cancel();
+}

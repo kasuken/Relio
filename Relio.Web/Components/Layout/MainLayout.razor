@@ -1,17 +1,34 @@
 @inherits LayoutComponentBase
-@using Relio.Web.Theme
+@implements IDisposable
+@inject ThemeModeState ThemeState
 
-<MudThemeProvider @ref="_themeProvider" Theme="RelioTheme.Theme" IsDarkMode="_isDarkMode" />
+<MudThemeProvider @ref="_themeProvider" Theme="RelioTheme.Theme" IsDarkMode="ThemeState.IsDark" />
 
-<div class="rl-app" data-theme="@(_isDarkMode ? "dark" : "light")">
+<div class="rl-app">
     <MudPopoverProvider />
     <MudDialogProvider />
     <MudSnackbarProvider />
 
     <MudLayout>
         <MudAppBar Elevation="0" Dense="false">
+            <MudIconButton Icon="@Icons.Material.Outlined.Menu"
+                           Color="Color.Inherit"
+                           Edge="Edge.Start"
+                           aria-label="Toggle navigation"
+                           OnClick="ToggleDrawer" />
             <span class="rl-wordmark">Relio</span>
+            <MudSpacer />
+            <ThemeModeMenu />
         </MudAppBar>
+        <MudDrawer @bind-Open="_drawerOpen"
+                   Elevation="0"
+                   Variant="DrawerVariant.Responsive"
+                   Breakpoint="Breakpoint.Md"
+                   ClipMode="DrawerClipMode.Always">
+            <nav aria-label="Primary">
+                <NavMenu />
+            </nav>
+        </MudDrawer>
         <MudMainContent>
             <MudContainer MaxWidth="MaxWidth.Large" Class="rl-page py-8">
                 @Body
@@ -28,7 +45,10 @@
 
 @code {
     private MudThemeProvider? _themeProvider;
-    private bool _isDarkMode;
+
+    // Persistent on desktop, temporary (hamburger-toggled) on phones - DrawerVariant.Responsive
+    // handles the behaviour difference; this just tracks the current open/closed state.
+    private bool _drawerOpen = true;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -37,15 +57,23 @@
             return;
         }
 
-        // Relio follows the system light/dark setting until the user picks one in settings.
-        _isDarkMode = await _themeProvider.GetSystemDarkModeAsync();
-        await _themeProvider.WatchSystemDarkModeAsync(OnSystemDarkModeChanged);
+        ThemeState.Changed += OnThemeStateChanged;
+
+        // wwwroot/js/theme.js already applied the stored (or system) preference to the
+        // document before first paint, to avoid a flash of the wrong theme. This still has to
+        // resolve MudBlazor's own internal palette (IsDarkMode) after the circuit connects, so
+        // MudBlazor-rendered chrome can briefly show the light palette on a dark-preferring
+        // browser - an unavoidable Blazor Server limitation, not a missed case.
+        var systemIsDark = await _themeProvider.GetSystemDarkModeAsync();
+        await ThemeState.InitializeAsync(systemIsDark);
+        await _themeProvider.WatchSystemDarkModeAsync(ThemeState.SetSystemPreferenceAsync);
+
         StateHasChanged();
     }
 
-    private Task OnSystemDarkModeChanged(bool isDarkMode)
-    {
-        _isDarkMode = isDarkMode;
-        return InvokeAsync(StateHasChanged);
-    }
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    private void OnThemeStateChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => ThemeState.Changed -= OnThemeStateChanged;
 }

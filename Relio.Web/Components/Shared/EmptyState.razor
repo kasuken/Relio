@@ -1,0 +1,40 @@
+@* Calm empty state: a short invitation to the next step, built from the thread's three
+   markers instead of an illustration (see docs/design-system/README.md). *@
+
+<div class="rl-empty">
+    <div class="rl-empty-mark" aria-hidden="true">
+        <span class="rl-m1"></span><span class="rl-m2"></span><span class="rl-m3"></span>
+    </div>
+    <MudText Typo="Typo.h2" HtmlTag="@HeadingTag">@Title</MudText>
+    <MudText Typo="Typo.body1" Class="mud-text-secondary">@Message</MudText>
+    @if (!string.IsNullOrWhiteSpace(ActionLabel) && OnAction.HasDelegate)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OnAction">@ActionLabel</MudButton>
+    }
+</div>
+
+@code {
+    /// <summary>The one-sentence invitation's heading, e.g. "No one here yet".</summary>
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>The supporting sentence inviting the next step.</summary>
+    [Parameter, EditorRequired]
+    public string Message { get; set; } = string.Empty;
+
+    /// <summary>Optional single call-to-action label, e.g. "Add a person". Shown only when <see cref="OnAction"/> has a handler.</summary>
+    [Parameter]
+    public string? ActionLabel { get; set; }
+
+    [Parameter]
+    public EventCallback OnAction { get; set; }
+
+    /// <summary>
+    /// The HTML heading tag for <see cref="Title"/>. Defaults to "h1": when an empty state is a
+    /// page's only content, its heading is the page's single h1 (see Routes.razor's
+    /// FocusOnNavigate, which focuses the page's h1 after navigation). Pass "h2" or lower when
+    /// the page already has its own h1 above the empty state.
+    /// </summary>
+    [Parameter]
+    public string HeadingTag { get; set; } = "h1";
+}
