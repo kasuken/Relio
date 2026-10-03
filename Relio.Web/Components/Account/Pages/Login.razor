@@ -7,8 +7,10 @@
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Identity
 @using Relio.Data.Identity
+@using Relio.Web.Security
 
 @inject SignInManager<RelioUser> SignInManager
+@inject UserManager<RelioUser> UserManager
 @inject NavigationManager NavigationManager
 @inject ILogger<Login> Logger
 
@@ -40,6 +42,16 @@
         <ValidationMessage For="@(() => Input.Password)" />
     </div>
 
+    @* A plain HTML checkbox, for the same static-SSR reason the fields above are plain HTML
+       (see the matching comment on Register.razor): an unchecked checkbox simply submits
+       nothing, which SupplyParameterFromForm leaves at InputModel.RememberMe's default (false) -
+       no hidden "false" companion field needed. *@
+    <div class="rl-checkbox-field">
+        <input id="login-remember-me" name="Input.RememberMe" type="checkbox" value="true"
+               data-testid="login-remember-me" />
+        <label for="login-remember-me">Remember me</label>
+    </div>
+
     <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
                FullWidth="true" data-testid="login-submit" Class="mt-2">
         Sign in
@@ -69,29 +81,63 @@
         await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
     }
 
+    /// <summary>
+    /// Deliberately the same message whether the email does not exist, the password is wrong, or
+    /// (see <see cref="LoginAsync"/>) an unlocked account's password check fails - never let the
+    /// login form distinguish "no such account" from "wrong password" (no account enumeration).
+    /// </summary>
+    private const string InvalidCredentialsMessage = "Email or password is incorrect.";
+
+    /// <summary>
+    /// Deliberately vague about exactly when the lockout lifts or how many attempts were made -
+    /// just enough for a genuine user to understand what happened and that trying again shortly
+    /// will work, without handing an attacker a precise timer or attempt-count oracle.
+    /// </summary>
+    private const string LockedOutMessage =
+        "Too many failed sign-in attempts. Your account is temporarily locked - please try again in a few minutes.";
+
     private async Task LoginAsync()
     {
-        // Lockout is #16's concern (remember-me, lockout polish) - not enforced yet, so
-        // lockoutOnFailure stays false here deliberately.
+        // Looked up once, by email, so every branch below can log the user id (never the email -
+        // see AGENTS.md "Privacy"/the gdpr-compliant skill) without a second round trip. A
+        // not-found account still goes through the exact same error message as a wrong password
+        // (see InvalidCredentialsMessage) - only the log line differs, and even that never
+        // includes the submitted email.
+        var user = await UserManager.FindByEmailAsync(Input.Email);
+        if (user is null)
+        {
+            Logger.LogInformation("Sign-in failed: no account matches the submitted email.");
+            _errorMessage = InvalidCredentialsMessage;
+            return;
+        }
+
         var result = await SignInManager.PasswordSignInAsync(
-            Input.Email, Input.Password, isPersistent: false, lockoutOnFailure: false);
+            user, Input.Password, isPersistent: Input.RememberMe, lockoutOnFailure: true);
 
         if (result.Succeeded)
         {
-            Logger.LogInformation("A user signed in.");
-            NavigationManager.NavigateTo(string.IsNullOrEmpty(ReturnUrl) ? "/" : ReturnUrl, forceLoad: true);
+            Logger.LogInformation("User {UserId} signed in.", user.Id);
+            var safeReturnUrl = ReturnUrlValidator.GetSafeReturnUrl(ReturnUrl, NavigationManager.BaseUri);
+            NavigationManager.NavigateTo(safeReturnUrl, forceLoad: true);
+            return;
+        }
+
+        if (result.IsLockedOut)
+        {
+            Logger.LogWarning("User {UserId} is locked out after repeated failed sign-in attempts.", user.Id);
+            _errorMessage = LockedOutMessage;
             return;
         }
 
         if (result.IsNotAllowed)
         {
+            Logger.LogInformation("User {UserId} attempted to sign in before confirming their email.", user.Id);
             _errorMessage = "Confirm your email address before signing in. Check your inbox for the confirmation link.";
             return;
         }
 
-        // Deliberately the same message whether the email does not exist or the password is
-        // wrong - never let a login form distinguish the two.
-        _errorMessage = "Enter a valid email and password.";
+        Logger.LogInformation("User {UserId} submitted an incorrect password.", user.Id);
+        _errorMessage = InvalidCredentialsMessage;
     }
 
     private sealed class InputModel
@@ -102,5 +148,12 @@
 
         [Required(ErrorMessage = "Enter your password.")]
         public string Password { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Whether to issue a persistent (survives closing the browser) sign-in cookie rather
+        /// than a session-only one. Unset (missing from the form post) when the checkbox is left
+        /// unchecked - see the matching comment above the checkbox markup.
+        /// </summary>
+        public bool RememberMe { get; set; }
     }
 }

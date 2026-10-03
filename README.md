@@ -64,6 +64,11 @@ Relio uses ASP.NET Core Identity with local accounts only (no social login). Reg
 case, a digit and a symbol - see AGENTS.md for the rationale). Every page except the account pages
 and the health endpoints requires sign-in.
 
+Sign in at `/Account/Login`; "Remember me" issues a persistent cookie that survives closing the
+browser, otherwise the session cookie ends when the browser does. Five failed sign-ins in a row
+lock the account out for 15 minutes (`Account:Lockout`, configurable - see AGENTS.md's "Accounts
+and authentication" section).
+
 Email is optional. By default (`Email:Provider=None`) Relio sends no email at all and new accounts
 do not need to confirm their address - this is what a self-hosted instance with no mail server
 gets out of the box. Set `Email:Provider=Smtp` and `Email:Smtp:Host`/`Port`/`Username`/`FromAddress`

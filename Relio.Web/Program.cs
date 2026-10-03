@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor;
@@ -45,8 +46,15 @@ builder.Services.AddRelioData(builder.Configuration);
 // email sender selected by Email:Provider. See Relio.Web.Identity.ServiceCollectionExtensions
 // for every Identity option Relio sets - #16-#20 extend them there, not in Program.cs.
 builder.Services.AddCascadingAuthenticationState();
+
+// Issue #16: a connected circuit otherwise only ever sees the principal captured once, when it
+// was created - this makes it periodically re-check the user's security stamp, so a session
+// revoked mid-connection (signed out everywhere, password changed) is actually noticed. Replaces
+// (not adds to) the cascading registration above - see the provider's own remarks.
+builder.Services.AddScoped<AuthenticationStateProvider, RelioRevalidatingAuthenticationStateProvider>();
+
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddRelioIdentity(builder.Configuration);
+builder.Services.AddRelioIdentity(builder.Configuration, builder.Environment);
 
 // ICurrentUser is the only way Application services read the signed-in user; it never depends
 // on HttpContext directly (see the "User-scoped data pattern" section of AGENTS.md).
@@ -122,6 +130,28 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Issue #16: "the back button doesn't reveal data" after signing out. context.User is populated
+// by UseAuthentication above, so this must run after it; it must run before anything writes the
+// response body, so the header is queued via OnStarting rather than set directly here. Every
+// authenticated response - not just the account pages - gets this: Relio has no page a signed-in
+// user would want a shared/forward cache (CDN, browser back/forward cache) to retain after they
+// sign out, e.g. on a shared computer.
+app.Use(async (context, next) =>
+{
+    context.Response.OnStarting(() =>
+    {
+        if (context.User.Identity?.IsAuthenticated == true)
+        {
+            context.Response.Headers.CacheControl = "no-store, no-cache";
+            context.Response.Headers.Pragma = "no-cache";
+        }
+
+        return Task.CompletedTask;
+    });
+
+    await next();
+});
 
 app.UseAntiforgery();
 

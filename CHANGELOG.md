@@ -6,6 +6,21 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Login, logout and session persistence (issue #16): hardens #15's minimal login/logout into the
+  real thing. Account lockout (`IdentityOptions.Lockout`, configurable via the new
+  `Account:Lockout` section - 5 failed attempts, 15 minutes, enabled for new accounts) with a calm,
+  non-specific message; "Remember me" (persistent vs. session sign-in cookie, `Account:Cookie:ExpireTimeSpan`,
+  14 days); a hardened application cookie (`HttpOnly`, `SameSite=Lax`, `Secure` outside
+  Development); a single generic "Email or password is incorrect" message for both an unknown
+  email and a wrong password (no account enumeration); open-redirect protection for `returnUrl`
+  (`Relio.Web.Security.ReturnUrlValidator`, rejecting a different host, a protocol-relative
+  `//evil.example`, and the `/\evil.example` backslash variant); `Cache-Control: no-store` on every
+  authenticated response, so the back button after signing out never reveals a cached page; and
+  `Relio.Web.Security.RelioRevalidatingAuthenticationStateProvider`, which re-checks a connected
+  Blazor Server circuit's security stamp every 30 minutes so a revoked session is actually noticed
+  instead of staying "signed in" for the rest of a long-lived circuit. Sign-in
+  successes/failures/lockouts/sign-outs are logged with the user id only, never the email or
+  password. See the "Accounts and authentication" section of AGENTS.md.
 - Account registration with email and password (issue #15): ASP.NET Core Identity with
   `Relio.Data.Identity.RelioUser` (`RelioDbContext` is now an `IdentityDbContext<RelioUser>`, see
   the `AddIdentity` migration), a strong password policy (12+ characters, mixed case, digit and
