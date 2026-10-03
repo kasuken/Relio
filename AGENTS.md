@@ -1,8 +1,8 @@
 # Relio agent guidance
 
 This file is the canonical entry point for automated contributors. More specific
-instructions under `.github/instructions/` apply when they do not conflict with
-this file or with the existing implementation.
+instructions under `.github/instructions/` and `.github/skills/` apply when they
+do not conflict with this file or with the existing implementation.
 
 ## Product and architecture
 
