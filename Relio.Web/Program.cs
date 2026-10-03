@@ -1,18 +1,37 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using MudBlazor;
 using MudBlazor.Services;
 using Relio.Application.Security;
 using Relio.Data;
 using Relio.Data.DependencyInjection;
 using Relio.Web.Components;
 using Relio.Web.Security;
+using Relio.Web.Theme;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-builder.Services.AddMudServices();
+// Calm, consistent snackbar behaviour (see docs/design-system/README.md): bottom of the
+// screen, one at a time, closeable, never stacking duplicate messages.
+builder.Services.AddMudServices(config =>
+{
+    config.SnackbarConfiguration.PositionClass = Defaults.Classes.Position.BottomCenter;
+    config.SnackbarConfiguration.PreventDuplicates = true;
+    config.SnackbarConfiguration.NewestOnTop = false;
+    config.SnackbarConfiguration.ShowCloseIcon = true;
+    config.SnackbarConfiguration.VisibleStateDuration = 4000;
+    config.SnackbarConfiguration.HideTransitionDuration = 250;
+    config.SnackbarConfiguration.ShowTransitionDuration = 250;
+    config.SnackbarConfiguration.SnackbarVariant = Variant.Filled;
+});
+
+// Circuit-scoped light/dark preference shared by MainLayout, the app bar's theme menu and
+// Settings (see Theme/ThemeModeState.cs). Per-browser only until accounts (epic #14) land.
+builder.Services.AddScoped<IThemeModeStore, JsThemeModeStore>();
+builder.Services.AddScoped<ThemeModeState>();
 
 builder.Services.AddRelioData(builder.Configuration);
 
