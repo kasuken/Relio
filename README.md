@@ -28,13 +28,34 @@ after your relationships, available as a hosted service or self-hosted.
 
 ## Getting started
 
-Prerequisites: the .NET 10 SDK (see `global.json`).
+Prerequisites: the .NET 10 SDK (see `global.json`) and a SQL Server instance (local, Docker or
+Azure SQL).
+
+Relio reads its database connection string from the `ConnectionStrings:Relio` configuration key.
+It is never committed; set it locally with user secrets:
+
+```bash
+dotnet user-secrets set ConnectionStrings:Relio "Server=localhost;Database=Relio;Trusted_Connection=True;TrustServerCertificate=True;" --project Relio.Web
+```
+
+When hosting, set the `ConnectionStrings__Relio` environment variable instead.
 
 ```bash
 dotnet restore Relio.slnx
 dotnet build Relio.slnx
 dotnet run --project Relio.Web
 ```
+
+In Development, `Relio.Web` applies pending EF Core migrations automatically on startup. In every
+other environment, applying migrations is an explicit, separate step:
+
+```bash
+dotnet tool restore
+dotnet ef database update --project Relio.Data --startup-project Relio.Web
+```
+
+`/health/live` reports whether the process is running; `/health/ready` also checks the database
+and returns unhealthy when it cannot be reached.
 
 ## Contributing
 
