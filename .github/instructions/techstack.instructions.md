@@ -11,6 +11,7 @@ applyTo: "**"
 * MudBlazor for all UI components; do not introduce other UI frameworks
 * Responsive design for desktop, tablet and mobile
 * Minimalist interface: notes, interactions and difficult moments must be visually distinct
+* Follow `docs/design-system/README.md`; colours, type and radii come from `RelioTheme` and the CSS tokens in `wwwroot/app.css`
 
 ## Backend
 

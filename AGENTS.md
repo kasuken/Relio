@@ -26,7 +26,9 @@ do not conflict with this file or with the existing implementation.
 
 ## Current product decisions
 
-- MudBlazor is the only UI component framework.
+- MudBlazor is the only UI component framework. All UI follows the design system in
+  `docs/design-system/README.md`: use the theme and tokens, never hard-coded colours or fonts.
+- No third-party requests from the app (fonts are self-hosted, no CDNs or analytics scripts).
 - No AI features in the MVP.
 - Tests use xUnit and AwesomeAssertions.
 
