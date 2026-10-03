@@ -140,12 +140,103 @@ time zone. Never call `DateTime.Now`/`DateTime.UtcNow`/`DateTime.Today` anywhere
   `UserCalendar.NextOccurrence`.
 - `Relio.Web.Time.IBrowserTimeZoneReader`/`BrowserTimeZoneReader` read the browser's IANA time zone
   id via a self-hosted JS module (`wwwroot/js/timezone.js`, `Intl.DateTimeFormat().resolvedOptions().timeZone` -
-  no third-party script), for sign-up (#15) to default a new user's time zone instead of leaving it
-  at UTC. Web-only; Application/Data services never depend on it.
+  no third-party script), for interactive components (e.g. account settings, #18) to default to it
+  instead of UTC. Web-only; Application/Data services never depend on it. Sign-up (#15) cannot use
+  this - its Register page is static SSR (see "Accounts and authentication" below) with no live
+  circuit for JS interop - so it reads the same `timezone.js` logic from a plain, synchronous
+  `<script>` that fills a hidden form field instead; see
+  `Relio.Web/Components/Account/Pages/Register.razor`.
 - Tests must cover users far from UTC (e.g. `Pacific/Kiritimati`, UTC+14; `Pacific/Pago_Pago`,
   UTC-11) around the UTC midnight boundary, and a DST transition (e.g. `America/New_York`,
   `Europe/Rome`), using `Microsoft.Extensions.TimeProvider.Testing`'s `FakeTimeProvider` for
   deterministic "now". See `Relio.Application.Tests/Time/UserCalendarTests.cs`.
+
+## Accounts and authentication
+
+Established by issue #15, under epic #14. ASP.NET Core Identity, local accounts only - no social
+login, ever (epic #14's guardrail). Later issues extend this without restructuring it: #16
+(login/logout/lockout/remember-me polish - this issue ships a minimal login/logout, just enough to
+reach the app and prove it end to end), #17 (password reset), #18 (account settings), #19
+(first-user admin + `Registration:Mode`), #20 (2FA - `RelioUser` already has the columns it needs,
+from `IdentityUser`).
+
+- **The user entity** is `Relio.Data.Identity.RelioUser : IdentityUser`, in `Relio.Data` (not
+  `Relio.Domain`, which stays free of any framework dependency - see the "User-scoped data
+  pattern" section above). Every other owned entity still only ever stores its id as `OwnerId`;
+  nothing takes a navigation property to it. `RelioDbContext` is an `IdentityDbContext<RelioUser>`
+  (migration `AddIdentity`); audit-timestamp stamping in `SaveChanges`/`SaveChangesAsync` is
+  unaffected, since Identity's own entities are not `IOwnedEntity`.
+- **Identity options live in one place**: `Relio.Web.Identity.ServiceCollectionExtensions.AddRelioIdentity`
+  - password policy (length 12+, mixed case, digit, symbol - length over complexity per NIST SP
+  800-63B, with complexity rules added for defence in depth, given this stores private
+  relationship data), unique email, the cookie scheme, the fallback authorization policy, and which
+  `IEmailSender<RelioUser>` to register. Extend options here, not in `Program.cs`.
+- **Account pages** live in `Relio.Web/Components/Account/Pages` (`Register.razor`, `Login.razor`,
+  `RegisterConfirmation.razor`, `ConfirmEmail.razor`, `AccessDenied.razor`), with shared
+  infrastructure in `Relio.Web/Components/Account` (`IdentityComponentsEndpointRouteBuilderExtensions`
+  maps the `POST /Account/Logout` minimal API endpoint - logout, like register/login, must write
+  directly to the HTTP response to clear the auth cookie) and `Components/Account/Shared`
+  (`AccountLayout`, `RedirectToLogin`). Add new account pages (#17's reset, #18's settings) to this
+  same folder.
+- **Why static SSR**: `App.razor`'s `<Routes @rendermode="InteractiveServer" />` makes every routed
+  page interactive by default, but `SignInManager`/`UserManager` need to write the auth cookie
+  directly to the HTTP response of the request that is actually submitting the form - something an
+  interactive Blazor Server circuit (a SignalR connection, not a request/response pair) cannot do.
+  Every account page carries `@attribute [ExcludeFromInteractiveRouting]` (plus `[AllowAnonymous]`)
+  to force static SSR regardless of that ambient render mode.
+- **MudBlazor in static SSR forms**: MudBlazor's input components (`MudTextField`, etc.) only post
+  their value back to the server when a *live circuit* is driving their two-way binding - on a
+  static SSR page they render with no `name` attribute at all, so a real form post arrives with the
+  field empty. Account pages therefore use plain HTML `<input name="Input.X">` elements (styled
+  from the same design tokens via the `.rl-field` CSS class in `wwwroot/app.css`, not MudBlazor's
+  own classes) for every value that must survive the post, and keep `MudButton`
+  (`ButtonType="ButtonType.Submit"`) only for the submit button, which needs no two-way binding and
+  renders a plain `<button type="submit">`.
+- **`ICurrentUser` in interactive components**: `Relio.Web.Security.AuthenticationStateCurrentUser`
+  (not `HttpContext`-backed) is the real `ICurrentUser`. `IHttpContextAccessor.HttpContext` is only
+  populated for the initial HTTP request/prerender - once a Blazor Server circuit's SignalR
+  connection takes over, it is `null` for the rest of the circuit, silently breaking any
+  `ICurrentUser` built on it. `AuthenticationStateProvider` does not have this problem: Blazor
+  Server's own provider captures the signed-in user once, when the circuit is created, and holds it
+  for the circuit's whole lifetime. `ICurrentUser` stays a synchronous abstraction (every
+  Application service already depends on it that way); `AuthenticationStateCurrentUser` blocks on
+  `GetAuthenticationStateAsync().GetAwaiter().GetResult()`, which is safe specifically because that
+  call never performs real async work for the circuit's lifetime - see its own remarks. Verified
+  end to end by `Relio.Web.E2ETests` (sign in, then exercise a service call from an interactive
+  component).
+- **Protecting pages**: `Relio.Web.Identity.ServiceCollectionExtensions.AddRelioIdentity` sets a
+  fallback authorization policy (`RequireAuthenticatedUser`), so every page requires sign-in unless
+  it opts out with `[AllowAnonymous]` (the account pages) or `.AllowAnonymous()` (the `/health/*`
+  endpoints). The cookie's `LoginPath` means an anonymous request to a protected page redirects to
+  `/Account/Login` automatically, before Blazor even renders anything. `Routes.razor`'s
+  `AuthorizeRouteView` (`NotAuthorized` → `RedirectToLogin`) is defence in depth for a circuit whose
+  session stops being valid while it is already open (a client-side navigation inside an existing
+  circuit does not go through the HTTP pipeline/cookie redirect again).
+- **Email abstraction**: ASP.NET Core Identity's built-in `IEmailSender<TUser>`, implemented by
+  `Relio.Web.Email.NullEmailSender` (`Email:Provider=None`, the default - sends nothing, logs a
+  warning per call, never requires email confirmation) and `Relio.Web.Email.SmtpEmailSender`
+  (`Email:Provider=Smtp` - requires confirmation, sends via `System.Net.Mail.SmtpClient`, chosen
+  over MailKit because Relio only needs plain transactional emails for now; revisit if a later
+  feature needs more). `Email:Smtp:Password` (and any other secret) never goes in
+  `appsettings*.json` - user secrets locally, environment variables/host secret store in
+  production. Never log an email body or a confirmation/reset token/link - it is a bearer
+  credential (see the gdpr-compliant skill).
+- **Demo data**: `Relio.Data.Seeding.DemoDataSeeder` creates a `demo@relio.local` account (test/demo
+  password only, see its XML docs) with realistic sample people (one archived, one with a Feb 29
+  birthday) and a non-UTC time zone, writing directly through `RelioDbContext` rather than through
+  `IPeopleService`/`IUserTimeZoneService` - those require a signed-in `ICurrentUser`, which does not
+  exist at startup (`Relio.Web.Components.Account.Pages.Register` uses the same escape hatch for
+  the one request that creates a brand new user's own `UserProfile`, for the same reason). Runs
+  once at startup, only when `DemoData:Enabled=true` (default `false`) and the environment is not
+  Production (refuses, logging an error, otherwise); idempotent. See the README's "Run locally
+  without SQL Server" section.
+- **Tests**: `Relio.Web.E2ETests` signs in through the real login page -
+  `RelioAppFixture.SignInAsDemoAsync(page)` - before visiting any protected route; every existing
+  shell test (`NavigationTests`, `DashboardTests`, etc.) does this first. `RelioWebAppFactory`
+  enables `DemoData:Enabled` for the shared fixture. To exercise a differently-configured app (e.g.
+  `Email:Provider=Smtp` with a test email sink, see `EmailConfirmationTests`), construct a *new*
+  `RelioWebAppFactory(configureTestServices: ...)` rather than the base class's
+  `WithWebHostBuilder` - see `RelioWebAppFactory`'s remarks for why that matters.
 
 ## End-to-end tests
 

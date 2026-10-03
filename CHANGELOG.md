@@ -6,6 +6,23 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Account registration with email and password (issue #15): ASP.NET Core Identity with
+  `Relio.Data.Identity.RelioUser` (`RelioDbContext` is now an `IdentityDbContext<RelioUser>`, see
+  the `AddIdentity` migration), a strong password policy (12+ characters, mixed case, digit and
+  symbol), a MudBlazor-styled Register/Login flow under `Relio.Web/Components/Account/Pages`
+  (static SSR - see AGENTS.md on why Identity account pages can't be interactive), a sign-up-time
+  browser time zone capture via a hidden field filled by a self-hosted script, and an
+  `IEmailSender<RelioUser>` abstraction (`Email:Provider=None` by default - no email sent, no
+  confirmation required; `Email:Provider=Smtp` requires confirmation and sends through
+  `System.Net.Mail.SmtpClient`). Every page now requires sign-in by default (a fallback
+  authorization policy plus `AuthorizeRouteView`), except the account pages and `/health/*`.
+  `ICurrentUser` is now backed by `AuthenticationStateProvider`
+  (`Relio.Web.Security.AuthenticationStateCurrentUser`) instead of `HttpContext`, so it keeps
+  resolving the signed-in user after a Blazor Server circuit's SignalR connection takes over - see
+  the new "Accounts and authentication" section of AGENTS.md. Also adds
+  `Relio.Data.Seeding.DemoDataSeeder` (`DemoData:Enabled`, off by default and refused outside
+  Production), seeding a `demo@relio.local` account with realistic sample people, for exploring
+  Relio without registering first - see the README's "Run locally without SQL Server" section.
 - EF Core InMemory database mode for tests/local dev: `Database:Provider=InMemory` (vs. the
   default `SqlServer`) in `Relio.Data.DependencyInjection.ServiceCollectionExtensions.AddRelioData`
   - no connection string required, no migrations (`EnsureCreatedAsync` instead), and a loud startup
