@@ -147,6 +147,49 @@ time zone. Never call `DateTime.Now`/`DateTime.UtcNow`/`DateTime.Today` anywhere
   `Europe/Rome`), using `Microsoft.Extensions.TimeProvider.Testing`'s `FakeTimeProvider` for
   deterministic "now". See `Relio.Application.Tests/Time/UserCalendarTests.cs`.
 
+## End-to-end tests
+
+`Relio.Web.E2ETests` drives the real Relio.Web app (the `Program` entry point, via its trailing
+`public partial class Program;` marker) with Playwright, in a real headless Chromium browser - not
+bUnit's rendered-component model (`Relio.Web.Tests`), which never exercises JS interop, real HTTP,
+or an actual SignalR circuit.
+
+- **Database**: tests run the app with `Database:Provider=InMemory` (see "Current product
+  decisions" below and `Relio.Data.DependencyInjection.ServiceCollectionExtensions`) - no SQL
+  Server, no connection string, no migrations (`Database.EnsureCreatedAsync()` instead). Never the
+  default; it is test/dev only and logs a startup warning when active.
+- **Fixture API** (`Relio.Web.E2ETests/Infrastructure/`):
+  - `RelioAppFixture` is an `IAsyncLifetime` shared across every test class via
+    `[Collection(RelioAppCollection.Name)]` - one running app (`RelioWebAppFactory`, a real Kestrel
+    socket on a random loopback port) and one shared headless Chromium for the whole run.
+  - `fixture.BaseUrl` is the app's base address; `await fixture.NewPageAsync(Viewports.Phone |
+    Viewports.Desktop)` opens a fresh, isolated browser context (own cookies/localStorage) and
+    page - always get a fresh page per test rather than sharing one.
+  - `RelioAppFixture.GotoAndWaitForInteractiveAsync(page, path)` navigates and waits for
+    `<html data-app-ready="true">` (set by `MainLayout.razor`/`wwwroot/js/theme.js` once the
+    circuit has connected and the first interactive render finished) - use this instead of a fixed
+    delay, or tests race Blazor Server's circuit connecting.
+  - `RelioAppFixture.ClosePageAsync(page)` ends a test: exports a Playwright trace (screenshots,
+    DOM snapshots, actions) to `playwright-traces/` next to the test binaries, then closes the
+    context. Always call this instead of `page.Context.CloseAsync()` directly, so a failure always
+    has a trace to inspect.
+  - To exercise a variant of the app (e.g. a later test swapping in an email sink instead of a
+    real sender), build a second factory from
+    `fixture.App.WithWebHostBuilder(builder => builder.ConfigureTestServices(services => ...))` -
+    `RelioWebAppFactory.CreateHost` starts a fresh Kestrel listener for it, so it does not disturb
+    the shared instance other tests are using.
+- **Running locally**: `dotnet test Relio.Web.E2ETests`. This machine's Playwright NuGet version
+  can expect a different cached Chromium revision than what is on disk; rather than require a
+  network install, set `RELIO_E2E_CHROMIUM=/usr/bin/chromium` (or another system Chromium/Chrome
+  path) to launch that instead of Playwright's bundled browser. Left unset (CI's default), it uses
+  the bundled build installed by `playwright.ps1 install --with-deps chromium` (see
+  `.github/workflows/ci.yml`).
+- **Writing a new test**: add a class under `Relio.Web.E2ETests`, tag it
+  `[Collection(RelioAppCollection.Name)]`, take `RelioAppFixture` by constructor injection, open a
+  page with `fixture.NewPageAsync(...)`, navigate with `GotoAndWaitForInteractiveAsync`, assert
+  with Playwright's `Expect(...)` (`using static Microsoft.Playwright.Assertions;`), and finish with
+  `RelioAppFixture.ClosePageAsync(page)`.
+
 ## Required validation
 
 Run before handing off changes:

@@ -6,6 +6,20 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- EF Core InMemory database mode for tests/local dev: `Database:Provider=InMemory` (vs. the
+  default `SqlServer`) in `Relio.Data.DependencyInjection.ServiceCollectionExtensions.AddRelioData`
+  - no connection string required, no migrations (`EnsureCreatedAsync` instead), and a loud startup
+  warning when active so it is never mistaken for a real deployment.
+- `Relio.Web.E2ETests`: a Playwright (Chromium, headless) end-to-end test project that drives the
+  real Relio.Web app on a real Kestrel socket with the InMemory provider. `RelioAppFixture`/
+  `RelioWebAppFactory` provide the reusable harness (shared app + browser, per-test pages/contexts,
+  phone/desktop viewports, trace export on `ClosePageAsync`) documented in AGENTS.md's new
+  "End-to-end tests" section. Covers the app shell from issue #11: the dashboard empty state, nav
+  drawer link navigation, the phone-viewport hamburger drawer, dark-mode switching/persistence, and
+  the `/health/live`/`/health/ready` endpoints. CI installs the matching Chromium build
+  (`playwright.ps1 install --with-deps chromium`, cached) before running the suite and uploads
+  Playwright traces on failure.
+
 - User time zones for dates and reminders (issue #12): `Relio.Domain.UserProfile` (one per user,
   `TimeZoneId` defaulting to UTC), `Relio.Application.Time.IUserTimeZoneService` (current user's
   time zone/"today", set time zone, due-today/overdue checks) implemented by
@@ -37,3 +51,12 @@ All notable changes to this project are documented in this file.
 - CI: SQL Server service container, a `dotnet ef migrations has-pending-model-changes` gate and a `dotnet ef database update` proof step.
 - Relio design system: MudBlazor light and dark theme that follows the system setting, self-hosted Alegreya and Hanken Grotesk fonts, CSS tokens and the timeline thread styles.
 - Initial .NET 10 Blazor solution with MudBlazor, health checks, CI, CodeQL and CLA workflows.
+
+### Fixed
+
+- The app bar's appearance (System/Light/Dark) menu never opened when actually clicked in a
+  browser: `ThemeModeMenu.razor` wrapped a `MudIconButton` in `MudMenu`'s `ActivatorContent`, and
+  that two-element activator (a wrapping `div` plus an independently-interactive button) did not
+  trigger the menu's open state. Switched to `MudMenu`'s own `Icon`/`AriaLabel` parameters, which
+  render and wire up a single activator button. Found by `Relio.Web.E2ETests.ThemeTests` - the
+  first time this app had been driven in an actual browser.
