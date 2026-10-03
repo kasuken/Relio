@@ -1,0 +1,24 @@
+@* Compact app-bar control for switching System/Light/Dark. See Theme/ThemeModeState.cs. *@
+@inject ThemeModeState ThemeState
+
+<MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+    <ActivatorContent>
+        <MudIconButton Icon="@CurrentIcon" Color="Color.Inherit" aria-label="Change appearance" />
+    </ActivatorContent>
+    <ChildContent>
+        <MudMenuItem OnClick="@(() => SetMode(ThemeMode.System))" Icon="@Icons.Material.Outlined.BrightnessAuto">System</MudMenuItem>
+        <MudMenuItem OnClick="@(() => SetMode(ThemeMode.Light))" Icon="@Icons.Material.Outlined.LightMode">Light</MudMenuItem>
+        <MudMenuItem OnClick="@(() => SetMode(ThemeMode.Dark))" Icon="@Icons.Material.Outlined.DarkMode">Dark</MudMenuItem>
+    </ChildContent>
+</MudMenu>
+
+@code {
+    private string CurrentIcon => ThemeState.Mode switch
+    {
+        ThemeMode.Light => Icons.Material.Outlined.LightMode,
+        ThemeMode.Dark => Icons.Material.Outlined.DarkMode,
+        _ => Icons.Material.Outlined.BrightnessAuto,
+    };
+
+    private Task SetMode(ThemeMode mode) => ThemeState.SetModeAsync(mode);
+}

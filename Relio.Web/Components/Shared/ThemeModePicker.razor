@@ -1,0 +1,22 @@
+@* The explicit System/Light/Dark control for the Settings page. Shares its state with the
+   app bar's ThemeModeMenu through the same scoped ThemeModeState. *@
+@inject ThemeModeState ThemeState
+
+<MudButtonGroup Color="Color.Primary" OverrideStyles="false">
+    <MudButton Variant="@(ThemeState.Mode == ThemeMode.System ? Variant.Filled : Variant.Outlined)"
+               OnClick="@(() => SetMode(ThemeMode.System))">
+        System
+    </MudButton>
+    <MudButton Variant="@(ThemeState.Mode == ThemeMode.Light ? Variant.Filled : Variant.Outlined)"
+               OnClick="@(() => SetMode(ThemeMode.Light))">
+        Light
+    </MudButton>
+    <MudButton Variant="@(ThemeState.Mode == ThemeMode.Dark ? Variant.Filled : Variant.Outlined)"
+               OnClick="@(() => SetMode(ThemeMode.Dark))">
+        Dark
+    </MudButton>
+</MudButtonGroup>
+
+@code {
+    private Task SetMode(ThemeMode mode) => ThemeState.SetModeAsync(mode);
+}
