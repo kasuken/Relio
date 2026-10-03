@@ -57,6 +57,22 @@ dotnet ef database update --project Relio.Data --startup-project Relio.Web
 `/health/live` reports whether the process is running; `/health/ready` also checks the database
 and returns unhealthy when it cannot be reached.
 
+## Testing
+
+```bash
+dotnet test Relio.slnx
+```
+
+Most tests need nothing extra. `Relio.Data.IntegrationTests` runs the same cross-user scenarios
+against a real SQL Server database and is skipped automatically when no server is available (it
+always runs in CI). To run it locally, start a disposable server and set the connection string
+for that one command:
+
+```bash
+docker run -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD="Your_password123!" -p 1433:1433 mcr.microsoft.com/mssql/server:2022-latest
+ConnectionStrings__Relio="Server=localhost,1433;Database=Relio;User Id=sa;Password=Your_password123!;Encrypt=False;TrustServerCertificate=True;" dotnet test
+```
+
 ## Contributing
 
 Contributions are welcome. Please read the
