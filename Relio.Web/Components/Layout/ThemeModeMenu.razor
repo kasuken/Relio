@@ -1,10 +1,16 @@
-@* Compact app-bar control for switching System/Light/Dark. See Theme/ThemeModeState.cs. *@
+@* Compact app-bar control for switching System/Light/Dark. See Theme/ThemeModeState.cs.
+
+   Uses MudMenu's own Icon/AriaLabel (not a custom <ActivatorContent> wrapping a separate
+   MudIconButton): with a real browser driving it, the two-element activator (an outer
+   "mud-menu-activator" div plus the inner, independently-ripple-enabled MudIconButton) never
+   actually opened the menu - clicking it left aria-expanded stuck at "false" with no server
+   round-trip, confirmed via Relio.Web.E2ETests.ThemeTests and this component had evidently never
+   been exercised in a browser before. MudMenu's own Icon/AriaLabel path renders a single button
+   it wires up itself and reliably opens. *@
 @inject ThemeModeState ThemeState
 
-<MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
-    <ActivatorContent>
-        <MudIconButton Icon="@CurrentIcon" Color="Color.Inherit" aria-label="Change appearance" />
-    </ActivatorContent>
+<MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
+         Icon="@CurrentIcon" Color="Color.Inherit" AriaLabel="Change appearance">
     <ChildContent>
         <MudMenuItem OnClick="@(() => SetMode(ThemeMode.System))" Icon="@Icons.Material.Outlined.BrightnessAuto">System</MudMenuItem>
         <MudMenuItem OnClick="@(() => SetMode(ThemeMode.Light))" Icon="@Icons.Material.Outlined.LightMode">Light</MudMenuItem>

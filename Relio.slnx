@@ -6,5 +6,6 @@
   <Project Path="Relio.Data/Relio.Data.csproj" />
   <Project Path="Relio.Domain/Relio.Domain.csproj" />
   <Project Path="Relio.Web/Relio.Web.csproj" />
+  <Project Path="Relio.Web.E2ETests/Relio.Web.E2ETests.csproj" />
   <Project Path="Relio.Web.Tests/Relio.Web.Tests.csproj" />
 </Solution>

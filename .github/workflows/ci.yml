@@ -58,6 +58,19 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('Relio.Web.E2ETests/Relio.Web.E2ETests.csproj') }}
+
+      # Relio.Web.E2ETests (Relio.Web.E2ETests/Infrastructure/RelioAppFixture.cs) drives a real,
+      # headless Chromium against the real app - it needs the matching browser build installed
+      # (pwsh ships on ubuntu-latest runners; --with-deps also installs the OS libraries Chromium
+      # needs that the runner image doesn't already have).
+      - name: Install Playwright Chromium
+        run: pwsh Relio.Web.E2ETests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+
       - name: Test
         run: dotnet test --no-build --configuration Release --verbosity normal --collect:"XPlat Code Coverage"
 
@@ -68,6 +81,18 @@ jobs:
           name: coverage
           path: '**/TestResults/**/coverage.cobertura.xml'
           if-no-files-found: error
+
+      # RelioAppFixture.ClosePageAsync (Relio.Web.E2ETests/Infrastructure/RelioAppFixture.cs)
+      # exports a Playwright trace (screenshots, DOM snapshots, actions) for every E2E test, not
+      # just failing ones - cheap for this suite's size. Only uploaded when the job actually
+      # fails, so a green run has no extra artifact to manage.
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-traces
+          path: Relio.Web.E2ETests/bin/Release/net10.0/playwright-traces/
+          if-no-files-found: ignore
 
       - name: Check for pending model changes
         run: >-
