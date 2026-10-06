@@ -536,3 +536,138 @@ a {
 .rl-steps > li {
     margin-bottom: var(--space-4);
 }
+
+/* People (issue #22). Hairline rows and plain text, no cards: the list is a notebook index. */
+.rl-meta {
+    font-family: var(--font-sans);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.rl-page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    max-width: var(--measure);
+    margin-bottom: var(--space-6);
+}
+
+.rl-person-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-width: var(--measure);
+}
+
+.rl-person-list > li {
+    border-bottom: 1px solid var(--line);
+}
+
+.rl-person-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: 44px;
+    padding: var(--space-3) var(--space-2);
+    border-radius: var(--radius-md);
+    color: var(--text);
+    text-decoration: none;
+}
+
+.rl-person-row:hover {
+    background: var(--surface-sunken);
+}
+
+.rl-person-row-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* The person form: one reading column, actions below. Full-width buttons on a phone. */
+.rl-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    max-width: var(--measure);
+}
+
+.rl-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin-top: var(--space-6);
+}
+
+@media (max-width: 599.98px) {
+    .rl-form-actions > * {
+        flex: 1 1 100%;
+    }
+}
+
+/* A group of related inputs (the birthday's day, month and year) with a visible group label. */
+.rl-fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.rl-fieldset legend {
+    padding: 0;
+    margin-bottom: var(--space-2);
+    font-family: var(--font-sans);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+/* A person's profile: the name is the display style, the facts are label/value rows. */
+.rl-person-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    max-width: var(--measure);
+    margin-bottom: var(--space-6);
+}
+
+.rl-person-header-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.rl-facts {
+    max-width: var(--measure);
+    margin: 0;
+}
+
+.rl-facts > div {
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.rl-facts dt {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-bottom: var(--space-1);
+    font-family: var(--font-sans);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.rl-facts dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.rl-multiline {
+    white-space: pre-line;
+}

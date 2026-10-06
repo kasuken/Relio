@@ -1,6 +1,66 @@
 @page "/people"
+@using Relio.Application.People
+@using Relio.Domain
+@inject IPeopleService PeopleService
+@inject NavigationManager Navigation
 
 <PageTitle>People - Relio</PageTitle>
 
-<EmptyState Title="No one here yet"
-            Message="The people you want to keep in touch with will show up here once you add them." />
+@* Nothing is rendered until the list has loaded: a flash of "No one here yet" for someone who has
+   people would be wrong, and the load is quick. A minimal list - sorting, paging and the archived
+   view arrive with issue #23. *@
+@if (_people is not null)
+{
+    @if (_people.Count == 0)
+    {
+        <EmptyState Title="No one here yet"
+                    Message="Add the first person you want to keep in touch with."
+                    ActionLabel="Add a person"
+                    OnAction="AddPerson" />
+    }
+    else
+    {
+        <div class="rl-page-header">
+            <MudText Typo="Typo.h2" HtmlTag="h1">People</MudText>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Href="/people/new"
+                       DropShadow="false"
+                       StartIcon="@Icons.Material.Outlined.PersonAdd"
+                       data-testid="people-add">
+                Add a person
+            </MudButton>
+        </div>
+
+        <ul class="rl-person-list" data-testid="people-list">
+            @foreach (var person in _people)
+            {
+                <li>
+                    <a class="rl-person-row" href="/people/@person.Id" data-testid="people-list-item">
+                        <MudAvatar Class="rl-avatar" Size="Size.Medium" aria-hidden="true">@PersonInitials.For(person.FirstName, person.LastName)</MudAvatar>
+                        <span class="rl-person-row-text">
+                            <MudText Typo="Typo.h4" HtmlTag="span" data-testid="people-list-item-name">@person.DisplayName</MudText>
+                            @if (person.RelationshipType is not null)
+                            {
+                                <span class="rl-meta" data-testid="people-list-item-relationship">@person.RelationshipType.Name</span>
+                            }
+                        </span>
+                    </a>
+                </li>
+            }
+        </ul>
+    }
+}
+
+@code {
+    private IReadOnlyList<Person>? _people;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Read-only on purpose: prerendering runs this once for the server-rendered HTML and again
+        // when the circuit connects.
+        _people = await PeopleService.ListAsync();
+    }
+
+    private void AddPerson() => Navigation.NavigateTo("/people/new");
+}

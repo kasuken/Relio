@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Relio.Application.Ownership;
 using Relio.Application.People;
 using Relio.Application.Security;
+using Relio.Application.Time;
 using Relio.Domain;
 
 namespace Relio.Data.People;
@@ -13,6 +14,21 @@ namespace Relio.Data.People;
 /// AGENTS.md for the rationale. Every query and mutation is explicitly filtered by
 /// <see cref="IOwnedEntity.OwnerId"/> - there is no global query filter on the context.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>The context can outlive a request.</b> <see cref="RelioDbContext"/> is scoped, and in an
+/// interactive Blazor Server component a scope lives as long as the circuit - minutes or hours.
+/// A tracked entity would then answer later reads from memory, hiding changes made elsewhere, and
+/// a failed <c>SaveChanges</c> would leave an <i>Added</i> entity that the next save inserts again.
+/// So reads are untracked (<c>AsNoTracking</c>), and every mutation loads what it changes tracked,
+/// saves once, and clears the change tracker in a <c>finally</c> block. Not an
+/// <c>IDbContextFactory</c>: ASP.NET Core Identity's stores need the scoped context, and tests
+/// construct this class directly, so the constructor must stay as it is.
+/// </para>
+/// <para>
+/// Nothing here logs a name, a nickname or any profile text (see the gdpr-compliant skill).
+/// </para>
+/// </remarks>
 public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser currentUser, TimeProvider timeProvider) : IPeopleService
 {
     /// <inheritdoc />
@@ -21,7 +37,9 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
         var ownerId = currentUser.RequireUserId();
 
         return await dbContext.People
+            .AsNoTracking()
             .Include(p => p.Tags)
+            .Include(p => p.RelationshipType)
             .FirstOrDefaultAsync(p => p.Id == personId && p.OwnerId == ownerId, cancellationToken);
     }
 
@@ -30,7 +48,10 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
     {
         var ownerId = currentUser.RequireUserId();
 
-        var query = dbContext.People.Where(p => p.OwnerId == ownerId);
+        var query = dbContext.People
+            .AsNoTracking()
+            .Include(p => p.RelationshipType)
+            .Where(p => p.OwnerId == ownerId);
         if (!includeArchived)
         {
             query = query.Where(p => !p.IsArchived);
@@ -48,25 +69,30 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
         ArgumentNullException.ThrowIfNull(request);
         var ownerId = currentUser.RequireUserId();
 
-        var tags = await ResolveOwnedTagsAsync(ownerId, request.TagIds, cancellationToken);
+        await ValidateAsync(ownerId, request, cancellationToken);
 
-        var person = new Person
+        try
         {
-            OwnerId = ownerId,
-            FirstName = request.FirstName,
-            LastName = request.LastName,
-            Birthday = request.Birthday,
-        };
+            await EnsureOwnedRelationshipTypeAsync(ownerId, request.RelationshipTypeId, cancellationToken);
+            var tags = await ResolveOwnedTagsAsync(ownerId, request.TagIds, cancellationToken);
 
-        foreach (var tag in tags)
-        {
-            person.Tags.Add(tag);
+            var person = new Person { OwnerId = ownerId };
+            ApplyProfile(person, request);
+
+            foreach (var tag in tags)
+            {
+                person.Tags.Add(tag);
+            }
+
+            dbContext.People.Add(person);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            return person;
         }
-
-        dbContext.People.Add(person);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        return person;
+        finally
+        {
+            dbContext.ChangeTracker.Clear();
+        }
     }
 
     /// <inheritdoc />
@@ -75,30 +101,39 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
         ArgumentNullException.ThrowIfNull(request);
         var ownerId = currentUser.RequireUserId();
 
-        var person = await dbContext.People
-            .Include(p => p.Tags)
-            .FirstOrDefaultAsync(p => p.Id == personId && p.OwnerId == ownerId, cancellationToken);
-        if (person is null)
+        // Depends only on the request, so it says nothing about whether the person exists.
+        await ValidateAsync(ownerId, request, cancellationToken);
+
+        try
         {
-            return false;
+            var person = await dbContext.People
+                .Include(p => p.Tags)
+                .FirstOrDefaultAsync(p => p.Id == personId && p.OwnerId == ownerId, cancellationToken);
+            if (person is null)
+            {
+                return false;
+            }
+
+            // Resolve foreign ids before mutating the tracked person, so a bad id leaves the
+            // existing person untouched.
+            await EnsureOwnedRelationshipTypeAsync(ownerId, request.RelationshipTypeId, cancellationToken);
+            var tags = await ResolveOwnedTagsAsync(ownerId, request.TagIds, cancellationToken);
+
+            ApplyProfile(person, request);
+
+            person.Tags.Clear();
+            foreach (var tag in tags)
+            {
+                person.Tags.Add(tag);
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return true;
         }
-
-        // Resolve tags before mutating the tracked person, so a bad tag id leaves the existing
-        // person untouched.
-        var tags = await ResolveOwnedTagsAsync(ownerId, request.TagIds, cancellationToken);
-
-        person.FirstName = request.FirstName;
-        person.LastName = request.LastName;
-        person.Birthday = request.Birthday;
-
-        person.Tags.Clear();
-        foreach (var tag in tags)
+        finally
         {
-            person.Tags.Add(tag);
+            dbContext.ChangeTracker.Clear();
         }
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return true;
     }
 
     /// <inheritdoc />
@@ -106,21 +141,28 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
     {
         var ownerId = currentUser.RequireUserId();
 
-        var person = await dbContext.People
-            .FirstOrDefaultAsync(p => p.Id == personId && p.OwnerId == ownerId, cancellationToken);
-        if (person is null)
+        try
         {
-            return false;
-        }
+            var person = await dbContext.People
+                .FirstOrDefaultAsync(p => p.Id == personId && p.OwnerId == ownerId, cancellationToken);
+            if (person is null)
+            {
+                return false;
+            }
 
-        if (!person.IsArchived)
+            if (!person.IsArchived)
+            {
+                person.IsArchived = true;
+                person.ArchivedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            return true;
+        }
+        finally
         {
-            person.IsArchived = true;
-            person.ArchivedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
-            await dbContext.SaveChangesAsync(cancellationToken);
+            dbContext.ChangeTracker.Clear();
         }
-
-        return true;
     }
 
     /// <inheritdoc />
@@ -128,21 +170,102 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
     {
         var ownerId = currentUser.RequireUserId();
 
-        var person = await dbContext.People
-            .FirstOrDefaultAsync(p => p.Id == personId && p.OwnerId == ownerId, cancellationToken);
-        if (person is null)
+        try
         {
-            return false;
+            var person = await dbContext.People
+                .FirstOrDefaultAsync(p => p.Id == personId && p.OwnerId == ownerId, cancellationToken);
+            if (person is null)
+            {
+                return false;
+            }
+
+            if (person.IsArchived)
+            {
+                person.IsArchived = false;
+                person.ArchivedAtUtc = null;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            return true;
+        }
+        finally
+        {
+            dbContext.ChangeTracker.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Throws <see cref="PersonValidationException"/> when <paramref name="input"/> breaks a rule
+    /// in <see cref="PersonProfileRules"/>. "Today" for the future-birthday rule is today in the
+    /// user's own time zone.
+    /// </summary>
+    private async Task ValidateAsync(string ownerId, IPersonProfileInput input, CancellationToken cancellationToken)
+    {
+        var today = await GetUserTodayAsync(ownerId, cancellationToken);
+
+        var errors = PersonProfileRules.Validate(input, today);
+        if (errors.Count > 0)
+        {
+            throw new PersonValidationException(errors);
+        }
+    }
+
+    /// <summary>
+    /// Today's date in <paramref name="ownerId"/>'s time zone. A missing profile or an
+    /// unreadable stored zone falls back to UTC rather than refusing to save a person.
+    /// </summary>
+    private async Task<DateOnly> GetUserTodayAsync(string ownerId, CancellationToken cancellationToken)
+    {
+        var timeZoneId = await dbContext.UserProfiles
+            .AsNoTracking()
+            .Where(p => p.OwnerId == ownerId)
+            .Select(p => p.TimeZoneId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var timeZone = TimeZoneIds.TryParse(timeZoneId, out var parsed) ? parsed : TimeZoneInfo.Utc;
+        return UserCalendar.Today(timeProvider, timeZone);
+    }
+
+    /// <summary>Writes every profile field of <paramref name="input"/> onto <paramref name="person"/>, normalized.</summary>
+    private static void ApplyProfile(Person person, IPersonProfileInput input)
+    {
+        person.FirstName = PersonProfileRules.NormalizeRequired(input.FirstName);
+        person.LastName = PersonProfileRules.NormalizeOptional(input.LastName);
+        person.Nickname = PersonProfileRules.NormalizeOptional(input.Nickname);
+        person.RelationshipTypeId = input.RelationshipTypeId;
+        person.HowWeMet = PersonProfileRules.NormalizeOptional(input.HowWeMet);
+        person.Details = PersonProfileRules.NormalizeOptional(input.Details);
+
+        // Validation guarantees day and month come together, and that a year never comes alone.
+        var hasBirthday = input.BirthdayDay is not null && input.BirthdayMonth is not null;
+        person.BirthdayDay = hasBirthday ? input.BirthdayDay : null;
+        person.BirthdayMonth = hasBirthday ? input.BirthdayMonth : null;
+        person.BirthdayYear = hasBirthday ? input.BirthdayYear : null;
+    }
+
+    /// <summary>
+    /// Throws <see cref="ForeignEntityNotOwnedException"/> when <paramref name="relationshipTypeId"/>
+    /// is not one of <paramref name="ownerId"/>'s relationship types - whether it does not exist
+    /// or belongs to someone else, the two are indistinguishable to the caller. A null id (no
+    /// relationship type) is fine.
+    /// </summary>
+    private async Task EnsureOwnedRelationshipTypeAsync(
+        string ownerId,
+        Guid? relationshipTypeId,
+        CancellationToken cancellationToken)
+    {
+        if (relationshipTypeId is not Guid id)
+        {
+            return;
         }
 
-        if (person.IsArchived)
+        var owned = await dbContext.RelationshipTypes
+            .AsNoTracking()
+            .AnyAsync(t => t.Id == id && t.OwnerId == ownerId, cancellationToken);
+        if (!owned)
         {
-            person.IsArchived = false;
-            person.ArchivedAtUtc = null;
-            await dbContext.SaveChangesAsync(cancellationToken);
+            throw new ForeignEntityNotOwnedException("relationship types");
         }
-
-        return true;
     }
 
     /// <summary>

@@ -1,0 +1,15 @@
+@page "/people/new"
+@inject NavigationManager Navigation
+
+<PageTitle>Add a person - Relio</PageTitle>
+
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">Add a person</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+    Only the first name is required. Add the rest now or later.
+</MudText>
+
+<PersonForm OnSaved="OpenProfile" />
+
+@code {
+    private void OpenProfile(Guid personId) => Navigation.NavigateTo($"/people/{personId}");
+}

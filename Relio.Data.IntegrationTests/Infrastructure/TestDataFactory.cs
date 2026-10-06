@@ -19,6 +19,9 @@ internal static class TestDataFactory
     public static PeopleService CreateService(RelioDbContext dbContext, string? ownerId) =>
         new(dbContext, new FakeCurrentUser(ownerId), TimeProvider.System);
 
+    public static RelationshipTypeService CreateRelationshipTypeService(RelioDbContext dbContext, string? ownerId) =>
+        new(dbContext, new FakeCurrentUser(ownerId));
+
     public static async Task<Guid> CreatePersonAsync(RelioDbContext dbContext, string ownerId, string firstName)
     {
         var person = new Person { OwnerId = ownerId, FirstName = firstName };
@@ -33,5 +36,14 @@ internal static class TestDataFactory
         dbContext.Tags.Add(tag);
         await dbContext.SaveChangesAsync();
         return tag.Id;
+    }
+
+    public static async Task<Guid> CreateRelationshipTypeAsync(
+        RelioDbContext dbContext, string ownerId, string name, int sortOrder = 0)
+    {
+        var type = new RelationshipType { OwnerId = ownerId, Name = name, SortOrder = sortOrder };
+        dbContext.RelationshipTypes.Add(type);
+        await dbContext.SaveChangesAsync();
+        return type.Id;
     }
 }

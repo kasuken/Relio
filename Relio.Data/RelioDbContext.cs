@@ -35,6 +35,9 @@ public sealed class RelioDbContext(DbContextOptions<RelioDbContext> options, Tim
     /// <summary>The current user's tags.</summary>
     public DbSet<Tag> Tags => Set<Tag>();
 
+    /// <summary>The current user's relationship types ("Friend", "Colleague", ...), seeded per user at registration.</summary>
+    public DbSet<RelationshipType> RelationshipTypes => Set<RelationshipType>();
+
     /// <summary>User profiles (currently just the user's time zone, see epic #12), one per user.</summary>
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
 

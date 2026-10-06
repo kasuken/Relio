@@ -1,3 +1,5 @@
+using Relio.Domain;
+
 namespace Relio.Application.Time;
 
 /// <summary>
@@ -44,13 +46,23 @@ public static class UserCalendar
     /// alternative, March 1st, was considered and rejected - see the "Dates and time zones"
     /// section of AGENTS.md).
     /// </summary>
-    public static DateOnly NextOccurrence(DateOnly birthday, DateOnly today)
+    public static DateOnly NextOccurrence(DateOnly birthday, DateOnly today) =>
+        NextOccurrence(Birthday.Create(birthday.Month, birthday.Day, birthday.Year), today);
+
+    /// <summary>
+    /// The next occurrence of <paramref name="birthday"/> on or after <paramref name="today"/>,
+    /// whether or not its year is known - the year of birth plays no part. The February 28th rule
+    /// of <see cref="NextOccurrence(DateOnly, DateOnly)"/> applies to a year-less 29 February too.
+    /// </summary>
+    public static DateOnly NextOccurrence(Birthday birthday, DateOnly today)
     {
+        ArgumentNullException.ThrowIfNull(birthday);
+
         var candidate = OccurrenceInYear(birthday, today.Year);
         return candidate >= today ? candidate : OccurrenceInYear(birthday, today.Year + 1);
     }
 
-    private static DateOnly OccurrenceInYear(DateOnly birthday, int year)
+    private static DateOnly OccurrenceInYear(Birthday birthday, int year)
     {
         if (birthday.Month == 2 && birthday.Day == 29 && !DateTime.IsLeapYear(year))
         {

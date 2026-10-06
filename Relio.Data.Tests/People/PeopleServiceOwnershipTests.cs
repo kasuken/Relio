@@ -81,7 +81,7 @@ public class PeopleServiceOwnershipTests
         var personId = await CreatePersonAsync(dbContext, UserA, "Alice");
 
         var serviceForUserB = CreateService(dbContext, UserB);
-        var updated = await serviceForUserB.UpdateAsync(personId, new UpdatePersonRequest("Eve", null, null));
+        var updated = await serviceForUserB.UpdateAsync(personId, new UpdatePersonRequest { FirstName = "Eve" });
 
         updated.Should().BeFalse();
         var stillOwnedByUserA = await dbContext.People.AsNoTracking().SingleAsync(p => p.Id == personId);
@@ -125,7 +125,7 @@ public class PeopleServiceOwnershipTests
 
         var serviceForUserA = CreateService(dbContext, UserA);
         var act = () => serviceForUserA.CreateAsync(
-            new CreatePersonRequest("Alice", null, null, [tagIdOwnedByUserB]));
+            new CreatePersonRequest { FirstName = "Alice", TagIds = [tagIdOwnedByUserB] });
 
         (await act.Should().ThrowAsync<ForeignEntityNotOwnedException>())
             .WithMessage("*tags*");
@@ -142,7 +142,7 @@ public class PeopleServiceOwnershipTests
 
         var serviceForUserA = CreateService(dbContext, UserA);
         var act = () => serviceForUserA.UpdateAsync(
-            personId, new UpdatePersonRequest("Alice", null, null, [tagIdOwnedByUserB]));
+            personId, new UpdatePersonRequest { FirstName = "Alice", TagIds = [tagIdOwnedByUserB] });
 
         await act.Should().ThrowAsync<ForeignEntityNotOwnedException>();
 
@@ -159,9 +159,92 @@ public class PeopleServiceOwnershipTests
         var tagId = await CreateTagAsync(dbContext, UserA, "family");
 
         var serviceForUserA = CreateService(dbContext, UserA);
-        var person = await serviceForUserA.CreateAsync(new CreatePersonRequest("Alice", null, null, [tagId]));
+        var person = await serviceForUserA.CreateAsync(new CreatePersonRequest { FirstName = "Alice", TagIds = [tagId] });
 
         person.Tags.Should().ContainSingle(t => t.Id == tagId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_cannot_assign_another_users_relationship_type()
+    {
+        await using var dbContext = CreateDbContext();
+        var typeIdOwnedByUserB = await CreateRelationshipTypeAsync(dbContext, UserB, "Friend");
+
+        var serviceForUserA = CreateService(dbContext, UserA);
+        var act = () => serviceForUserA.CreateAsync(
+            new CreatePersonRequest { FirstName = "Alice", RelationshipTypeId = typeIdOwnedByUserB });
+
+        (await act.Should().ThrowAsync<ForeignEntityNotOwnedException>())
+            .WithMessage("*relationship types*");
+
+        (await dbContext.People.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task CreateAsync_reports_a_nonexistent_and_a_foreign_relationship_type_with_the_same_message()
+    {
+        await using var dbContext = CreateDbContext();
+        var typeIdOwnedByUserB = await CreateRelationshipTypeAsync(dbContext, UserB, "Friend");
+        var serviceForUserA = CreateService(dbContext, UserA);
+
+        var foreign = await FluentActions
+            .Awaiting(() => serviceForUserA.CreateAsync(
+                new CreatePersonRequest { FirstName = "Alice", RelationshipTypeId = typeIdOwnedByUserB }))
+            .Should().ThrowAsync<ForeignEntityNotOwnedException>();
+        var missing = await FluentActions
+            .Awaiting(() => serviceForUserA.CreateAsync(
+                new CreatePersonRequest { FirstName = "Alice", RelationshipTypeId = Guid.NewGuid() }))
+            .Should().ThrowAsync<ForeignEntityNotOwnedException>();
+
+        // A request must never be able to tell "doesn't exist" from "belongs to someone else".
+        foreign.Which.Message.Should().Be(missing.Which.Message);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_cannot_assign_another_users_relationship_type()
+    {
+        await using var dbContext = CreateDbContext();
+        var personId = await CreatePersonAsync(dbContext, UserA, "Alice");
+        var typeIdOwnedByUserB = await CreateRelationshipTypeAsync(dbContext, UserB, "Friend");
+
+        var serviceForUserA = CreateService(dbContext, UserA);
+        var act = () => serviceForUserA.UpdateAsync(
+            personId, new UpdatePersonRequest { FirstName = "Alice", RelationshipTypeId = typeIdOwnedByUserB });
+
+        await act.Should().ThrowAsync<ForeignEntityNotOwnedException>();
+
+        var unchanged = await dbContext.People.AsNoTracking().SingleAsync(p => p.Id == personId);
+        unchanged.RelationshipTypeId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CreateAsync_can_assign_the_current_users_own_relationship_type()
+    {
+        await using var dbContext = CreateDbContext();
+        var typeId = await CreateRelationshipTypeAsync(dbContext, UserA, "Friend");
+
+        var serviceForUserA = CreateService(dbContext, UserA);
+        var person = await serviceForUserA.CreateAsync(
+            new CreatePersonRequest { FirstName = "Alice", RelationshipTypeId = typeId });
+
+        person.RelationshipTypeId.Should().Be(typeId);
+        var stored = await serviceForUserA.GetAsync(person.Id);
+        stored!.RelationshipType!.Name.Should().Be("Friend");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_for_another_users_person_returns_false_even_with_an_invalid_relationship_type()
+    {
+        await using var dbContext = CreateDbContext();
+        var personId = await CreatePersonAsync(dbContext, UserA, "Alice");
+
+        var serviceForUserB = CreateService(dbContext, UserB);
+        var updated = await serviceForUserB.UpdateAsync(
+            personId, new UpdatePersonRequest { FirstName = "Eve", RelationshipTypeId = Guid.NewGuid() });
+
+        // The primary entity is reported as "no result" before any foreign id is looked at, so the
+        // answer for another user's person is the same whatever else the request contains.
+        updated.Should().BeFalse();
     }
 
     [Fact]
@@ -193,6 +276,14 @@ public class PeopleServiceOwnershipTests
         dbContext.People.Add(person);
         await dbContext.SaveChangesAsync();
         return person.Id;
+    }
+
+    private static async Task<Guid> CreateRelationshipTypeAsync(RelioDbContext dbContext, string ownerId, string name)
+    {
+        var type = new RelationshipType { OwnerId = ownerId, Name = name };
+        dbContext.RelationshipTypes.Add(type);
+        await dbContext.SaveChangesAsync();
+        return type.Id;
     }
 
     private static async Task<Guid> CreateTagAsync(RelioDbContext dbContext, string ownerId, string name)

@@ -89,6 +89,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
 
         services.AddScoped<IPeopleService, PeopleService>();
+        services.AddScoped<IRelationshipTypeService, RelationshipTypeService>();
         services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
         services.AddScoped<IUserProfileService, UserProfileService>();
         services.AddScoped<ITwoFactorStatusService, TwoFactorStatusService>();
