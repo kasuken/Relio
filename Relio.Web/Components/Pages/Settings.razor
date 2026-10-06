@@ -4,14 +4,27 @@
 
 <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-6">Settings</MudText>
 
-<MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-2">Appearance</MudText>
+<MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-2">Profile</MudText>
+<DisplayNameSettings />
+
+<MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-8 mb-2">Time zone</MudText>
+<TimeZoneSettings />
+
+<MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-8 mb-2">Sign-in and security</MudText>
+<SignInSecuritySettings />
+
+<MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-8 mb-2">Reminder emails</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-4">
+    Choose which reminders Relio emails you. This arrives with email reminders.
+</MudText>
+@* TODO(#40): enable and link once notification preferences exist (reminders epic #36). *@
+<MudButton Variant="Variant.Outlined" Disabled="true" data-testid="settings-reminder-email-preferences">
+    Reminder email preferences
+</MudButton>
+
+<MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-8 mb-2">Appearance</MudText>
 <MudText Typo="Typo.body1" Class="mud-text-secondary mb-4">
     Relio follows your system's light and dark setting by default. Choose System, Light or Dark
     to set it for this browser instead.
 </MudText>
 <ThemeModePicker />
-
-<MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-8 mb-2">Account</MudText>
-<MudText Typo="Typo.body1" Class="mud-text-secondary">
-    Account settings arrive with sign-in.
-</MudText>

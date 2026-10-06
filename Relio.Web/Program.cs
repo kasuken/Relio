@@ -63,8 +63,9 @@ builder.Services.AddRelioIdentity(builder.Configuration, builder.Environment);
 // own remarks.
 builder.Services.AddScoped<ICurrentUser, AuthenticationStateCurrentUser>();
 
-// Reads the browser's IANA time zone via JS interop, for later interactive use (account settings,
-// #18). Sign-up (#15) itself cannot use JS interop - see Components/Account/Pages/Register.razor.
+// Reads the browser's IANA time zone via JS interop, so account settings (#18) can suggest it
+// (never silently saving it) in the interactive TimeZoneSettings component. Sign-up (#15) itself
+// cannot use JS interop - see Components/Account/Pages/Register.razor.
 builder.Services.AddScoped<IBrowserTimeZoneReader, BrowserTimeZoneReader>();
 
 // "live" answers whether the process is up; "ready" also covers the database so load

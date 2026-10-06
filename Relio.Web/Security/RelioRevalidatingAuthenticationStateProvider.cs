@@ -13,7 +13,7 @@ namespace Relio.Web.Security;
 /// Periodically re-validates a connected Blazor Server circuit's signed-in user against the
 /// database security stamp (issue #16), so a circuit notices when its session stops being valid
 /// mid-connection - e.g. the account was signed out of everywhere its password was changed, or
-/// (once #18/#20 ship) its password or two-factor settings changed. Without this, every
+/// its password changed in account settings (#18) or, once #20 ships, its two-factor settings changed. Without this, every
 /// <c>AuthenticationStateProvider</c> consumer (<see cref="AuthenticationStateCurrentUser"/>,
 /// <c>AuthorizeRouteView</c>, <c>AuthorizeView</c>) only ever sees the principal captured once,
 /// when the circuit was created, and a revoked session would stay "signed in" for the rest of the

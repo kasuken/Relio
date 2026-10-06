@@ -21,7 +21,7 @@ public interface IUserTimeZoneService
 
     /// <summary>
     /// Sets the current user's time zone, creating their profile if it does not already exist.
-    /// Used by sign-up (#15, defaulted from the browser) and account settings (#18).
+    /// Used by sign-up (#15, defaulted from the browser) and account settings (#18); every other feature only reads.
     /// </summary>
     /// <exception cref="InvalidTimeZoneIdException">
     /// <paramref name="ianaTimeZoneId"/> is not a known IANA time zone id.

@@ -6,6 +6,29 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Account settings (issue #18): `/settings` is now the account hub - a display name (optional, up to
+  100 characters, stored on `UserProfile.DisplayName` and read/written through the new
+  `IUserProfileService`), the time zone (a searchable picker over `TimeZoneIds.GetAvailableIds()`
+  that also accepts a typed IANA id, and *suggests* the browser's time zone when it differs from the
+  saved one - never saved without pressing Save), links to change email and password, a disabled
+  placeholder for reminder email preferences (arrives with #40), and the existing appearance
+  control. Changing the password (`/Account/Manage/ChangePassword`) requires the current password,
+  keeps the session that changed it signed in (`SignInManager.RefreshSignInAsync`) and signs out
+  every other session. Changing the email (`/Account/Manage/Email`) requires the current password
+  too: with `Email:Provider=Smtp` the new address is stored as `RelioUser.PendingEmail` and a
+  single-use confirmation link (carrying only a user id and an opaque token, never an email address)
+  is sent to it, and the address only changes once `/Account/ConfirmEmailChange` is followed - a newer
+  request invalidates an older link, and an address that is already registered gets the identical
+  response as a usable one (no account enumeration); with `Email:Provider=None` no confirmation is
+  possible, so the change applies immediately and the page says so. The signed-in email in the app
+  bar now links to `/settings`, and the SMTP confirmation email's wording is neutral so it serves
+  both sign-up and email changes. Adds two migrations (`AddUserProfileDisplayName`,
+  `AddRelioUserPendingEmail`), `EmailOptions.CanSendEmail`, and unit, bUnit, SQL Server integration
+  and Playwright end-to-end coverage. `App.razor` now chooses the `<Routes>` render mode per request
+  (`HttpContext.AcceptsInteractiveRouting()`), which pages marked `[ExcludeFromInteractiveRouting]`
+  need to stay static SSR once a circuit can start on them (the signed-in change email/password
+  pages are the first such pages). See the "Account settings" bullet in the "Accounts and
+  authentication" section of AGENTS.md.
 - Password reset by email (issue #17): `/Account/ForgotPassword` → `/Account/ResetPassword` →
   `/Account/ResetPasswordConfirmation`, linked from "Forgot your password?" on the login page. The
   forgot-password page always shows the same confirmation message regardless of whether the

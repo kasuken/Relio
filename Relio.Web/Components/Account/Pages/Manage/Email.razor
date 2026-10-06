@@ -1,0 +1,237 @@
+@page "/Account/Manage/Email"
+@attribute [Authorize]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+@using System.ComponentModel.DataAnnotations
+@using System.Text
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.Extensions.Options
+@using Relio.Data.Identity
+@using Relio.Web.Email
+
+@inject UserManager<RelioUser> UserManager
+@inject SignInManager<RelioUser> SignInManager
+@inject IEmailSender<RelioUser> EmailSender
+@inject IOptions<EmailOptions> EmailOptionsAccessor
+@inject NavigationManager NavigationManager
+@inject ILogger<Email> Logger
+
+<PageTitle>Change your email - Relio</PageTitle>
+
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">Change your email</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-2">
+    Current email: <span data-testid="manage-email-current">@_user?.Email</span>
+</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+    You sign in with your email address, so changing it changes how you sign in.
+</MudText>
+
+@* Says nothing about any account - only whether email delivery is configured at all on this
+   instance - so it reveals nothing about which addresses are registered. *@
+@if (!EmailOptionsAccessor.Value.CanSendEmail)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4" data-testid="manage-email-no-confirmation-note">
+        This Relio instance doesn't send email, so a new address takes effect straight away, with no
+        confirmation step. Double-check it before saving.
+    </MudAlert>
+}
+
+@if (Status == "confirmation-sent")
+{
+    <MudAlert Severity="Severity.Success" Class="mb-4" data-testid="manage-email-status">
+        If that address can be used, we've sent a confirmation link to it. Your email address
+        changes once you follow the link.
+    </MudAlert>
+}
+else if (Status == "changed")
+{
+    <MudAlert Severity="Severity.Success" Class="mb-4" data-testid="manage-email-status">
+        Your email address has been changed.
+    </MudAlert>
+}
+
+<EditForm Model="Input" FormName="change-email" OnValidSubmit="ChangeEmailAsync" method="post">
+    <DataAnnotationsValidator />
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="manage-email-error">@_errorMessage</MudAlert>
+    }
+
+    @* Plain HTML inputs, not MudTextField - see Register.razor's matching comment: MudBlazor's
+       inputs need a live circuit to post their value, which this static SSR page does not have. *@
+    <div class="rl-field">
+        <label for="manage-email-new">New email</label>
+        <input id="manage-email-new" name="Input.NewEmail" type="email" required autocomplete="email"
+               value="@Input.NewEmail" data-testid="manage-email-new" />
+        <ValidationMessage For="@(() => Input.NewEmail)" />
+    </div>
+
+    <div class="rl-field">
+        <label for="manage-email-password">Current password</label>
+        <input id="manage-email-password" name="Input.CurrentPassword" type="password" required
+               autocomplete="current-password" data-testid="manage-email-password" />
+        <span class="rl-field-helper">We ask for it so nobody else can change your sign-in email from an open session.</span>
+        <ValidationMessage For="@(() => Input.CurrentPassword)" />
+    </div>
+
+    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+               FullWidth="true" data-testid="manage-email-submit" Class="mt-2">
+        Change email
+    </MudButton>
+</EditForm>
+
+<MudText Typo="Typo.body2" Class="mud-text-secondary mt-6">
+    <MudLink Href="/settings" data-testid="manage-back-to-settings">Back to settings</MudLink>
+</MudText>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery]
+    private string? Status { get; set; }
+
+    private RelioUser? _user;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await UserManager.GetUserAsync(HttpContext.User);
+        if (_user is null)
+        {
+            // A valid cookie for an account that no longer exists: end the session instead of
+            // rendering a form that could never succeed.
+            await SignInManager.SignOutAsync();
+            NavigationManager.NavigateTo("/Account/Login", forceLoad: true);
+        }
+    }
+
+    /// <summary>
+    /// Starts an email change. Requires the current password. With an email provider configured
+    /// (<c>Email:Provider=Smtp</c>) the new address is stored as <see cref="RelioUser.PendingEmail"/>
+    /// and a single-use confirmation link goes to it - the address only changes once that link is
+    /// followed (see ConfirmEmailChange.razor). With no provider (<c>None</c>, the default) no
+    /// confirmation is possible, so the change applies immediately; the note at the top of the
+    /// page says so. See "Account settings" in AGENTS.md.
+    /// </summary>
+    private async Task ChangeEmailAsync()
+    {
+        if (_user is null)
+        {
+            return;
+        }
+
+        if (!await UserManager.CheckPasswordAsync(_user, Input.CurrentPassword))
+        {
+            Logger.LogInformation(
+                "User {UserId} submitted an incorrect current password when changing their email.", _user.Id);
+            _errorMessage = "Your current password is incorrect.";
+            return;
+        }
+
+        if (string.Equals(UserManager.NormalizeEmail(Input.NewEmail), _user.NormalizedEmail, StringComparison.Ordinal))
+        {
+            _errorMessage = "That's already your email address.";
+            return;
+        }
+
+        var existing = await UserManager.FindByEmailAsync(Input.NewEmail);
+        var taken = existing is not null && existing.Id != _user.Id;
+
+        if (EmailOptionsAccessor.Value.CanSendEmail)
+        {
+            await RequestConfirmedChangeAsync(_user, taken);
+        }
+        else
+        {
+            await ApplyChangeImmediatelyAsync(_user, taken);
+        }
+    }
+
+    private async Task RequestConfirmedChangeAsync(RelioUser user, bool taken)
+    {
+        if (taken)
+        {
+            // Same outcome as a usable address - no account enumeration. The same token work is
+            // done and thrown away, so response time is not an easy oracle either; nothing is sent
+            // and nothing is stored.
+            _ = await UserManager.GenerateChangeEmailTokenAsync(user, Input.NewEmail);
+            Logger.LogInformation("User {UserId} requested an email change to an address already in use.", user.Id);
+        }
+        else
+        {
+            // Stored server-side so the link carries only a user id and an opaque token, never an
+            // email address (see the gdpr-compliant skill). A newer request overwrites this and so
+            // invalidates the older link: change-email tokens are bound to the address they were
+            // generated for. UpdateAsync does not rotate the security stamp.
+            user.PendingEmail = Input.NewEmail;
+            var update = await UserManager.UpdateAsync(user);
+            if (!update.Succeeded)
+            {
+                _errorMessage = string.Join(" ", update.Errors.Select(e => e.Description));
+                return;
+            }
+
+            var code = await UserManager.GenerateChangeEmailTokenAsync(user, Input.NewEmail);
+            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+
+            var confirmationUrl = NavigationManager.GetUriWithQueryParameters(
+                NavigationManager.ToAbsoluteUri("/Account/ConfirmEmailChange").ToString(),
+                new Dictionary<string, object?> { ["userId"] = user.Id, ["code"] = code });
+
+            await EmailSender.SendConfirmationLinkAsync(user, Input.NewEmail, confirmationUrl);
+
+            Logger.LogInformation("User {UserId} requested an email change.", user.Id);
+        }
+
+        NavigationManager.NavigateTo("/Account/Manage/Email?status=confirmation-sent", forceLoad: true);
+    }
+
+    private async Task ApplyChangeImmediatelyAsync(RelioUser user, bool taken)
+    {
+        if (taken)
+        {
+            _errorMessage = "That email address can't be used. Try a different one.";
+            return;
+        }
+
+        var oldEmail = user.Email;
+
+        var result = await UserManager.SetEmailAsync(user, Input.NewEmail);
+        if (result.Succeeded && string.Equals(user.UserName, oldEmail, StringComparison.OrdinalIgnoreCase))
+        {
+            // The user name is the email address (Register.razor), so keep sign-in working with
+            // the new one.
+            result = await UserManager.SetUserNameAsync(user, Input.NewEmail);
+        }
+
+        if (!result.Succeeded)
+        {
+            _errorMessage = string.Join(" ", result.Errors.Select(e => e.Description));
+            return;
+        }
+
+        // The security stamp rotated: re-issue this session's cookie (and its signed-in-as name),
+        // otherwise the user who just changed their email would be signed out themselves.
+        await SignInManager.RefreshSignInAsync(user);
+
+        Logger.LogInformation("User {UserId} changed their email address.", user.Id);
+        NavigationManager.NavigateTo("/Account/Manage/Email?status=changed", forceLoad: true);
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "Enter your new email address.")]
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+        public string NewEmail { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter your current password.")]
+        public string CurrentPassword { get; set; } = string.Empty;
+    }
+}

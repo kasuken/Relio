@@ -1,0 +1,38 @@
+@* The "Sign-in and security" section of /settings (issue #18). Shows the signed-in email and links
+   to the static SSR pages under /Account/Manage: changing the email or password has to write the
+   auth cookie to the HTTP response, which an interactive circuit cannot do - see "Accounts and
+   authentication" in AGENTS.md. Those targets are [ExcludeFromInteractiveRouting], so the interactive
+   router answers a click on these links with a full page load, which is what they need. *@
+
+<MudText Typo="Typo.body2" Class="mud-text-secondary">Email</MudText>
+<MudText Typo="Typo.body1" Class="mb-3" data-testid="settings-current-email">@_email</MudText>
+
+<div class="d-flex flex-wrap gap-2">
+    <MudButton Href="/Account/Manage/Email"
+               Variant="Variant.Outlined"
+               Color="Color.Primary"
+               data-testid="settings-change-email">
+        Change email
+    </MudButton>
+    <MudButton Href="/Account/Manage/ChangePassword"
+               Variant="Variant.Outlined"
+               Color="Color.Primary"
+               data-testid="settings-change-password">
+        Change password
+    </MudButton>
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    private string? _email;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthenticationState is not null)
+        {
+            _email = (await AuthenticationState).User.Identity?.Name;
+        }
+    }
+}

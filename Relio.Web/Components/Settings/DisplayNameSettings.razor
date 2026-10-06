@@ -1,0 +1,60 @@
+@* The "Profile" section of /settings (issue #18): the user's optional display name. Interactive
+   (MudBlazor inputs bind live over the circuit). Persisted through IUserProfileService, which
+   trims it and rejects anything over UserProfile.DisplayNameMaxLength. *@
+@using Relio.Application.Profile
+@using Relio.Domain
+
+@inject IUserProfileService ProfileService
+@inject ISnackbar Snackbar
+
+<MudTextField T="string"
+              @bind-Value="_displayName"
+              Label="Display name"
+              HelperText="How Relio addresses you. Optional."
+              MaxLength="UserProfile.DisplayNameMaxLength"
+              Counter="UserProfile.DisplayNameMaxLength"
+              Immediate="true"
+              Error="@(_error is not null)"
+              ErrorText="@_error"
+              Variant="Variant.Outlined"
+              Class="rl-settings-field" />
+
+<MudButton Variant="Variant.Filled"
+           Color="Color.Primary"
+           Class="mt-3"
+           Disabled="_saving"
+           OnClick="SaveAsync"
+           data-testid="settings-display-name-save">
+    Save
+</MudButton>
+
+@code {
+    private string? _displayName;
+    private string? _error;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _displayName = await ProfileService.GetDisplayNameAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+
+        try
+        {
+            await ProfileService.SetDisplayNameAsync(_displayName);
+            Snackbar.Saved("Display name saved");
+        }
+        catch (ArgumentException)
+        {
+            _error = $"Keep it to {UserProfile.DisplayNameMaxLength} characters or fewer.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

@@ -12,6 +12,19 @@ public class EmailOptionsTests
         options.Provider.Should().Be(EmailOptions.NoneProvider);
     }
 
+    [Theory]
+    [InlineData("None", false)]
+    [InlineData("Smtp", true)]
+    [InlineData("smtp", true)]
+    [InlineData("Carrier-pigeon", false)]
+    [InlineData("", false)]
+    public void CanSendEmail_is_true_only_for_the_Smtp_provider(string provider, bool expected)
+    {
+        var options = new EmailOptions { Provider = provider };
+
+        options.CanSendEmail.Should().Be(expected);
+    }
+
     [Fact]
     public void Smtp_defaults_are_reasonable_for_submission_over_TLS()
     {
