@@ -693,10 +693,16 @@ a {
 /* A person's profile: the name is the display style, the facts are label/value rows. */
 .rl-person-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-4);
     max-width: var(--measure);
     margin-bottom: var(--space-6);
+}
+
+/* The Edit button sits at the end of the header, on its own line when the name is long. */
+.rl-person-header-action {
+    margin-left: auto;
 }
 
 .rl-person-header-text {
@@ -734,4 +740,52 @@ a {
 
 .rl-multiline {
     white-space: pre-line;
+}
+
+/* Tags (issue #24): the chosen tags above the tag picker, and the tags on a profile. */
+.rl-tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    max-width: var(--measure);
+    margin-bottom: var(--space-4);
+}
+
+/* One contact method in the person form: a hairline between rows, no cards. */
+.rl-contact-row {
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--line);
+}
+
+/* The remove button lines up with the 56px input beside it and is a 44px target on a phone. */
+.rl-contact-remove {
+    display: flex;
+    align-items: flex-start;
+}
+
+.rl-contact-row .mud-icon-button {
+    width: 44px;
+    height: 44px;
+    margin-top: 6px;
+}
+
+.rl-contact-add {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+}
+
+/* A link made from a contact method on the profile (mailto: or tel: only, see ContactLinks). */
+.rl-contact-link {
+    color: var(--link);
+    text-decoration: underline;
+    overflow-wrap: anywhere;
+}
+
+/* The remove button inside a tag chip in the form: small, tucked against the name. */
+.rl-tag-remove.mud-icon-button {
+    margin-inline-start: var(--space-1);
+    padding: 2px;
 }

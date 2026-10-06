@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Relio.Data.IntegrationTests.Infrastructure;
 
@@ -72,9 +73,11 @@ public sealed class SqlServerDatabaseFixture : IAsyncLifetime
     /// Creates a new <see cref="RelioDbContext"/> against this run's database, using
     /// <see cref="TimeProvider.System"/> for audit timestamps. Throws if no SQL Server instance
     /// was available for this run - callers should guard the test with
-    /// <see cref="SqlServerFactAttribute"/> so that never happens.
+    /// <see cref="SqlServerFactAttribute"/> so that never happens. <paramref name="interceptors"/>
+    /// are added to the context, for tests that need to do something at a precise moment (a
+    /// competing write between a read and the save) that two contexts alone cannot time.
     /// </summary>
-    public RelioDbContext CreateDbContext()
+    public RelioDbContext CreateDbContext(params IInterceptor[] interceptors)
     {
         if (_databaseConnectionString is null)
         {
@@ -86,6 +89,7 @@ public sealed class SqlServerDatabaseFixture : IAsyncLifetime
 
         var options = new DbContextOptionsBuilder<RelioDbContext>()
             .UseSqlServer(_databaseConnectionString)
+            .AddInterceptors(interceptors)
             .Options;
 
         return new RelioDbContext(options, TimeProvider.System);

@@ -297,4 +297,71 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
 
         types.Select(t => t.Name).Should().Equal("Family", "Friend");
     }
+
+    [SqlServerFact]
+    public async Task UpdateAsync_cannot_edit_another_users_contact_method()
+    {
+        await using var dbContext = fixture.CreateDbContext();
+        var ownerA = TestDataFactory.NewOwnerId();
+        var ownerB = TestDataFactory.NewOwnerId();
+        var personId = await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
+        var otherPersonId = await TestDataFactory.CreatePersonAsync(dbContext, ownerB, "Bob");
+        var contactMethodIdOwnedByB = await TestDataFactory.CreateContactMethodAsync(dbContext, ownerB, otherPersonId, "bob@example.com");
+
+        var act = () => TestDataFactory.CreateService(dbContext, ownerA).UpdateAsync(
+            personId,
+            new UpdatePersonRequest
+            {
+                FirstName = "Alice",
+                ContactMethods = [new ContactMethodInput(contactMethodIdOwnedByB, ContactMethodKind.Email, null, "alice@example.com")],
+            });
+
+        (await act.Should().ThrowAsync<ForeignEntityNotOwnedException>()).Which.EntityName.Should().Be("contact methods");
+
+        var untouched = await dbContext.ContactMethods.AsNoTracking().SingleAsync(c => c.Id == contactMethodIdOwnedByB);
+        untouched.OwnerId.Should().Be(ownerB);
+        untouched.PersonId.Should().Be(otherPersonId);
+        untouched.Value.Should().Be("bob@example.com");
+    }
+
+    [SqlServerFact]
+    public async Task UpdateAsync_cannot_move_a_contact_method_to_another_person_of_the_same_user()
+    {
+        await using var dbContext = fixture.CreateDbContext();
+        var owner = TestDataFactory.NewOwnerId();
+        var firstPersonId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Alice");
+        var secondPersonId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ann");
+        var contactMethodId = await TestDataFactory.CreateContactMethodAsync(dbContext, owner, firstPersonId, "alice@example.com");
+
+        var act = () => TestDataFactory.CreateService(dbContext, owner).UpdateAsync(
+            secondPersonId,
+            new UpdatePersonRequest
+            {
+                FirstName = "Ann",
+                ContactMethods = [new ContactMethodInput(contactMethodId, ContactMethodKind.Email, null, "alice@example.com")],
+            });
+
+        await act.Should().ThrowAsync<ForeignEntityNotOwnedException>();
+        (await dbContext.ContactMethods.AsNoTracking().SingleAsync(c => c.Id == contactMethodId)).PersonId.Should().Be(firstPersonId);
+    }
+
+    [SqlServerFact]
+    public async Task UpdateAsync_never_attaches_another_users_tag_by_name()
+    {
+        await using var dbContext = fixture.CreateDbContext();
+        var ownerA = TestDataFactory.NewOwnerId();
+        var ownerB = TestDataFactory.NewOwnerId();
+        var personId = await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
+        var tagIdOwnedByB = await TestDataFactory.CreateTagAsync(dbContext, ownerB, "Climbing");
+
+        var updated = await TestDataFactory.CreateService(dbContext, ownerA).UpdateAsync(
+            personId, new UpdatePersonRequest { FirstName = "Alice", NewTagNames = ["climbing"] });
+
+        // B's tag has the same name, but A gets a tag of their own; B's is neither used nor touched.
+        updated.Should().BeTrue();
+        var person = await dbContext.People.AsNoTracking().Include(p => p.Tags).SingleAsync(p => p.Id == personId);
+        person.Tags.Should().ContainSingle().Which.OwnerId.Should().Be(ownerA);
+        person.Tags.Single().Id.Should().NotBe(tagIdOwnedByB);
+        (await dbContext.Tags.AsNoTracking().Where(t => t.OwnerId == ownerB).CountAsync()).Should().Be(1);
+    }
 }

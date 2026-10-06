@@ -42,6 +42,10 @@ public class PersonFormMessagesTests
     [InlineData(PersonValidationError.BirthdayYearWithoutDayAndMonth, PersonFormField.Birthday, "Add the day and month too, or clear the year.")]
     [InlineData(PersonValidationError.BirthdayNotARealDate, PersonFormField.Birthday, "That date doesn't exist. Check the day, month and year.")]
     [InlineData(PersonValidationError.BirthdayInTheFuture, PersonFormField.Birthday, "Enter a date in the past or today.")]
+    [InlineData(PersonValidationError.TooManyContactMethods, PersonFormField.ContactMethods, "A person can have up to 20 contact methods. Remove one to add another.")]
+    [InlineData(PersonValidationError.TooManyTags, PersonFormField.Tags, "A person can have up to 20 tags. Remove one to add another.")]
+    [InlineData(PersonValidationError.TagNameTooLong, PersonFormField.Tags, "Keep tag names to 50 characters or fewer.")]
+    [InlineData(PersonValidationError.TagNameConflict, PersonFormField.Tags, "A tag with a very similar name already exists. Choose it from the list.")]
     public void Each_error_is_shown_under_its_field_with_the_agreed_wording(
         PersonValidationError error, PersonFormField field, string message)
     {

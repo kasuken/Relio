@@ -15,8 +15,9 @@ public interface IPeopleService
     /// Returns the person with <paramref name="personId"/>, or <see langword="null"/> when it
     /// does not exist or does not belong to the current user. The two cases are deliberately
     /// indistinguishable to the caller. The person comes back as an untracked snapshot with its
-    /// tags and <see cref="Person.RelationshipType"/> loaded, so a later read always sees what is
-    /// in the database now.
+    /// tags (ordered by name), its <see cref="Person.ContactMethods"/> (ordered by
+    /// <see cref="ContactMethod.SortOrder"/>) and <see cref="Person.RelationshipType"/> loaded, so a
+    /// later read always sees what is in the database now.
     /// </summary>
     Task<Person?> GetAsync(Guid personId, CancellationToken cancellationToken = default);
 
@@ -48,25 +49,39 @@ public interface IPeopleService
     Task<PeopleListResult> ListPageAsync(PeopleListQuery query, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Creates a new person owned by the current user. Text is trimmed and blank optional text is
-    /// stored as nothing. Throws <see cref="PersonValidationException"/> (nothing is saved) when
-    /// <paramref name="request"/> breaks a rule in <see cref="PersonProfileRules"/>, and
-    /// <see cref="Relio.Application.Ownership.ForeignEntityNotOwnedException"/> if it references a
-    /// relationship type or tag id that does not belong to the current user.
+    /// Creates a new person owned by the current user, with the contact methods and tags in the
+    /// request. Text is trimmed and blank optional text is stored as nothing. Throws
+    /// <see cref="PersonValidationException"/> (nothing is saved) when <paramref name="request"/>
+    /// breaks a rule in <see cref="PersonProfileRules"/> or <see cref="ContactMethodRules"/>, and
+    /// <see cref="Relio.Application.Ownership.ForeignEntityNotOwnedException"/> (naming which kind
+    /// in <c>EntityName</c>) if it references a relationship type or tag id that does not belong to
+    /// the current user, or carries a contact method id (a new person has none to edit). A tag name
+    /// that matches none of the user's tags creates a tag in the same save.
     /// </summary>
+    /// <exception cref="ArgumentException">Two contact methods in the request share an id.</exception>
     Task<Person> CreateAsync(CreatePersonRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates the person with <paramref name="personId"/>. Returns <see langword="false"/> when
     /// it does not exist or does not belong to the current user (indistinguishable to the
-    /// caller); returns <see langword="true"/> on success. Every profile field is replaced. Throws
-    /// <see cref="PersonValidationException"/> when <paramref name="request"/> breaks a rule in
-    /// <see cref="PersonProfileRules"/>, and
-    /// <see cref="Relio.Application.Ownership.ForeignEntityNotOwnedException"/> if it references a
-    /// relationship type or tag id that does not belong to the current user - in both cases
-    /// nothing is saved. A person that does not exist or is not the current user's returns
-    /// <see langword="false"/> before any of that is checked.
+    /// caller); returns <see langword="true"/> on success. Every profile field is replaced, the tag
+    /// set is replaced (tags named in <see cref="UpdatePersonRequest.NewTagNames"/> are matched
+    /// ignoring case and created when new), and the contact methods are diffed by id: matched
+    /// ones are edited, ones missing from the request are deleted, ones without an id are added.
+    /// Throws <see cref="PersonValidationException"/> when <paramref name="request"/> breaks a rule
+    /// in <see cref="PersonProfileRules"/> or <see cref="ContactMethodRules"/>, and
+    /// <see cref="Relio.Application.Ownership.ForeignEntityNotOwnedException"/> (naming which kind
+    /// in <c>EntityName</c>) if it references a relationship type, tag or contact method that does
+    /// not belong to the current user - in both cases nothing is saved. A person that does not
+    /// exist or is not the current user's returns <see langword="false"/> before any of that is
+    /// checked.
     /// </summary>
+    /// <remarks>
+    /// Last write wins: there is no concurrency token, and a save from a stale tab replaces what is
+    /// there (it only notices a contact method that was deleted meanwhile, by its id).
+    /// <see cref="Person.UpdatedAtUtc"/> is not bumped when only tags or contact methods change.
+    /// </remarks>
+    /// <exception cref="ArgumentException">Two contact methods in the request share an id.</exception>
     Task<bool> UpdateAsync(Guid personId, UpdatePersonRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>

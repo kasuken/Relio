@@ -201,6 +201,94 @@ public class PersonProfileRulesTests
         exception.Errors.Should().HaveCount(2);
     }
 
+    [Fact]
+    public void PersonValidationException_lists_contact_method_rows_by_index_but_never_values()
+    {
+        var exception = new PersonValidationException(
+            [PersonValidationError.FirstNameRequired],
+            [
+                new ContactMethodProblem(1, ContactMethodValidationError.EmailInvalid),
+                new ContactMethodProblem(3, ContactMethodValidationError.ValueRequired),
+            ]);
+
+        exception.Message.Should().Be(
+            "The person could not be saved: FirstNameRequired, ContactMethods[1].EmailInvalid, ContactMethods[3].ValueRequired.");
+        exception.ContactMethodProblems.Should().HaveCount(2);
+        new PersonValidationException([PersonValidationError.TagNameConflict]).ContactMethodProblems.Should().BeEmpty();
+    }
+
+    private static ContactMethodInput[] ContactMethods(int count) =>
+        [.. Enumerable.Range(0, count).Select(i => new ContactMethodInput(null, ContactMethodKind.Other, null, $"detail {i}"))];
+
+    [Fact]
+    public void Validate_rejects_more_than_20_contact_methods()
+    {
+        PersonProfileRules.Validate(new CreatePersonRequest { FirstName = "Ada", ContactMethods = ContactMethods(20) }, Today)
+            .Should().BeEmpty();
+        PersonProfileRules.Validate(new CreatePersonRequest { FirstName = "Ada", ContactMethods = ContactMethods(21) }, Today)
+            .Should().Equal(PersonValidationError.TooManyContactMethods);
+    }
+
+    [Fact]
+    public void Validate_rejects_more_than_20_tags_counting_ids_and_new_names()
+    {
+        var ids = Enumerable.Range(0, 10).Select(_ => Guid.NewGuid()).ToList();
+        var names = Enumerable.Range(0, 10).Select(i => $"tag {i}").ToList();
+
+        PersonProfileRules.Validate(new UpdatePersonRequest { FirstName = "Ada", TagIds = ids, NewTagNames = names }, Today)
+            .Should().BeEmpty();
+        PersonProfileRules.Validate(new UpdatePersonRequest { FirstName = "Ada", TagIds = ids, NewTagNames = [.. names, "one more"] }, Today)
+            .Should().Equal(PersonValidationError.TooManyTags);
+    }
+
+    [Fact]
+    public void Validate_counts_a_tag_repeated_by_id_or_by_name_once()
+    {
+        var id = Guid.NewGuid();
+
+        var request = new UpdatePersonRequest
+        {
+            FirstName = "Ada",
+            TagIds = Enumerable.Repeat(id, 30).ToList(),
+            NewTagNames = Enumerable.Repeat("Chess", 15).Concat(Enumerable.Repeat("CHESS", 15)).ToList(),
+        };
+
+        PersonProfileRules.Validate(request, Today).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Validate_rejects_a_new_tag_name_over_50_characters()
+    {
+        var atLimit = new string('t', Tag.NameMaxLength);
+
+        PersonProfileRules.Validate(new CreatePersonRequest { FirstName = "Ada", NewTagNames = ["  " + atLimit + " "] }, Today)
+            .Should().BeEmpty();
+        PersonProfileRules.Validate(new CreatePersonRequest { FirstName = "Ada", NewTagNames = [atLimit + "t"] }, Today)
+            .Should().Equal(PersonValidationError.TagNameTooLong);
+    }
+
+    [Fact]
+    public void Validate_ignores_blank_new_tag_names()
+    {
+        var request = new CreatePersonRequest { FirstName = "Ada", NewTagNames = ["", "   ", "\t"] };
+
+        PersonProfileRules.Validate(request, Today).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ValidateContactMethods_reports_row_problems_apart_from_the_profile_errors()
+    {
+        var request = new CreatePersonRequest
+        {
+            FirstName = "",
+            ContactMethods = [new ContactMethodInput(null, ContactMethodKind.Email, null, "nope")],
+        };
+
+        PersonProfileRules.Validate(request, Today).Should().Equal(PersonValidationError.FirstNameRequired);
+        PersonProfileRules.ValidateContactMethods(request)
+            .Should().Equal(new ContactMethodProblem(0, ContactMethodValidationError.EmailInvalid));
+    }
+
     private static int LimitOf(string field) => field switch
     {
         nameof(IPersonProfileInput.FirstName) => Person.FirstNameMaxLength,

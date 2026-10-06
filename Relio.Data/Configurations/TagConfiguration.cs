@@ -16,10 +16,13 @@ public sealed class TagConfiguration : IEntityTypeConfiguration<Tag>
 
         builder.Property(t => t.Name)
             .IsRequired()
-            .HasMaxLength(50);
+            .HasMaxLength(Tag.NameMaxLength);
 
         // A user cannot have two tags with the same name; also the lookup path used to
-        // validate the tag ids supplied to IPeopleService.
+        // validate the tag ids supplied to IPeopleService. SQL Server's default collation is
+        // case-insensitive, so "Chess" and "chess" collide here; the InMemory provider is
+        // case-sensitive, so PeopleService matches a typed name against the user's tags in code
+        // first (TagNameRules.Comparer) and treats this index as the authority for a race.
         builder.HasIndex(t => new { t.OwnerId, t.Name }).IsUnique();
     }
 }

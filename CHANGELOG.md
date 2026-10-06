@@ -6,6 +6,20 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Edit person details: contact methods, tags and relationship type (issue #24), epic #21. Each
+  profile has an **Edit** button opening `/people/{id}/edit`, the same form as "Add a person" started
+  from what is saved. It now carries **contact methods** (email, phone, address, social, other, each
+  with an optional label such as Work or Mobile, up to 20 per person) and **tags** (type to find one
+  or to create it; created only when the person is saved, matched ignoring case, up to 20 per person),
+  on both pages. The profile shows tags as labels and contact methods in the order they were
+  arranged; only emails (`mailto:`) and phone numbers (`tel:`) become links, built from validated
+  data. Migration `AddContactMethods` adds the `ContactMethods` table (kind stored as text with a
+  check constraint, cascade delete with the person, indexes on `(OwnerId, PersonId)` and
+  `(OwnerId, NormalizedValue)` for duplicate detection in #27). Saving replaces the person's whole
+  contact method list by id; it is **last write wins**, but a form left open after a contact method was
+  deleted elsewhere says "This profile changed in another tab or window" instead of putting it back.
+  The form no longer submits on Enter (Enter chooses a tag); use the **Save** button. Follow-up: clickjacking
+  protection (`frame-ancestors`) belongs to issue #60.
 - People list with sorting and archived view (issue #23), epic #21. `/people` now sorts by **name**,
   **recently added** or **last contacted** (a "Sort by" select), has a **Show archived** switch that
   mixes archived people into the list with an "Archived" label, shows a count line ("12 people",

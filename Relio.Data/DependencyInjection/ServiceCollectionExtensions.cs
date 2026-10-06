@@ -91,6 +91,7 @@ public static class ServiceCollectionExtensions
 
         AddDataService<IPeopleService, PeopleService>(services);
         AddDataService<IRelationshipTypeService, RelationshipTypeService>(services);
+        AddDataService<ITagService, TagService>(services);
         AddDataService<IUserTimeZoneService, UserTimeZoneService>(services);
         AddDataService<IUserProfileService, UserProfileService>(services);
         AddDataService<ITwoFactorStatusService, TwoFactorStatusService>(services);
@@ -144,9 +145,18 @@ public static class ServiceCollectionExtensions
                 $"locally, or the 'ConnectionStrings__{ConnectionStringName}' environment variable when hosting.");
         }
 
+        // SingleQuery stated outright: loading a person with both its tags and its contact methods
+        // is two collection includes, and EF Core logs a warning for that unless a behaviour is
+        // configured. One query is right here (at most 20 of each, so a few hundred rows) and
+        // consistent; queries never call AsSingleQuery/AsSplitQuery themselves because those are
+        // relational-only and the E2E tests run on the InMemory provider.
         services.AddDbContext<RelioDbContext>(options => options.UseSqlServer(
             connectionString,
-            sqlServerOptions => sqlServerOptions.MigrationsAssembly(typeof(RelioDbContext).Assembly.FullName)));
+            sqlServerOptions =>
+            {
+                sqlServerOptions.MigrationsAssembly(typeof(RelioDbContext).Assembly.FullName);
+                sqlServerOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SingleQuery);
+            }));
     }
 
     private static void AddInMemoryDatabase(IServiceCollection services)

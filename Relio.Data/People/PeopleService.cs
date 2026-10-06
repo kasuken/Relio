@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Relio.Application.Ownership;
 using Relio.Application.Paging;
@@ -30,7 +31,18 @@ namespace Relio.Data.People;
 /// sibling components queue instead of colliding on the one shared context.
 /// </para>
 /// <para>
-/// Nothing here logs a name, a nickname or any profile text (see the gdpr-compliant skill).
+/// Nothing here logs a name, a nickname, a contact method, a tag or any profile text (see the
+/// gdpr-compliant skill).
+/// </para>
+/// <para>
+/// <b>Contact methods and tags (issue #24).</b> An update receives the person's whole list and
+/// diffs it by id: matched rows are edited, rows missing from the request are removed, rows without
+/// an id are added. Every foreign id (relationship type, tags, contact methods) is checked before
+/// anything is mutated, so a bad one changes nothing. New children - contact methods and tags - are
+/// added with <c>DbSet.Add</c> <b>explicitly</b>: <c>OwnedEntity</c> gives every instance a
+/// non-empty <c>Guid</c> up front, so EF Core would otherwise find one merely reachable from a
+/// tracked person and treat it as an existing row. It is last write wins: there is no concurrency
+/// token, so a save from a stale tab replaces what is there, apart from the stale-id check above.
 /// </para>
 /// </remarks>
 public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser currentUser, TimeProvider timeProvider) : IPeopleService
@@ -40,9 +52,13 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
     {
         var ownerId = currentUser.RequireUserId();
 
+        // Filtered includes: tags by name, contact methods in the user's order (and, like every
+        // query, only the owner's). Two collections in one query is deliberate - see
+        // AddRelioData, which states the SingleQuery behaviour for SQL Server.
         return await dbContext.People
             .AsNoTracking()
-            .Include(p => p.Tags)
+            .Include(p => p.Tags.OrderBy(t => t.Name))
+            .Include(p => p.ContactMethods.Where(c => c.OwnerId == ownerId).OrderBy(c => c.SortOrder))
             .Include(p => p.RelationshipType)
             .FirstOrDefaultAsync(p => p.Id == personId && p.OwnerId == ownerId, cancellationToken);
     }
@@ -155,24 +171,40 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
     {
         ArgumentNullException.ThrowIfNull(request);
         var ownerId = currentUser.RequireUserId();
+        ThrowIfRepeatedContactMethodIds(request.ContactMethods);
 
         await ValidateAsync(ownerId, request, cancellationToken);
 
         try
         {
             await EnsureOwnedRelationshipTypeAsync(ownerId, request.RelationshipTypeId, cancellationToken);
-            var tags = await ResolveOwnedTagsAsync(ownerId, request.TagIds, cancellationToken);
+            var tags = await ResolveTagsAsync(ownerId, request.TagIds, request.NewTagNames, cancellationToken);
+
+            // A new person has no contact methods to edit, so any id is somebody else's (or invented).
+            if (request.ContactMethods?.Any(c => c.Id is not null) == true)
+            {
+                throw new ForeignEntityNotOwnedException(ForeignEntityNames.ContactMethods);
+            }
 
             var person = new Person { OwnerId = ownerId };
             ApplyProfile(person, request);
 
-            foreach (var tag in tags)
+            foreach (var tag in tags.All)
             {
                 person.Tags.Add(tag);
             }
 
+            var contactMethods = request.ContactMethods ?? [];
+            for (var position = 0; position < contactMethods.Count; position++)
+            {
+                person.ContactMethods.Add(CreateContactMethod(ownerId, contactMethods[position], position));
+            }
+
+            // Add traverses the whole graph, so the new person, its new contact methods and any new
+            // tags are all inserted; tags that already exist are tracked Unchanged and only get a
+            // join row. (An *update* must add new children explicitly - see UpdateAsync.)
             dbContext.People.Add(person);
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await SaveChangesAsync(tags.Created.Count > 0, cancellationToken);
 
             return person;
         }
@@ -187,6 +219,7 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
     {
         ArgumentNullException.ThrowIfNull(request);
         var ownerId = currentUser.RequireUserId();
+        ThrowIfRepeatedContactMethodIds(request.ContactMethods);
 
         // Depends only on the request, so it says nothing about whether the person exists.
         await ValidateAsync(ownerId, request, cancellationToken);
@@ -195,26 +228,68 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
         {
             var person = await dbContext.People
                 .Include(p => p.Tags)
+                .Include(p => p.ContactMethods.Where(c => c.OwnerId == ownerId))
                 .FirstOrDefaultAsync(p => p.Id == personId && p.OwnerId == ownerId, cancellationToken);
             if (person is null)
             {
                 return false;
             }
 
-            // Resolve foreign ids before mutating the tracked person, so a bad id leaves the
-            // existing person untouched.
+            // Check every foreign id before mutating anything (and before creating any tag), so a
+            // bad id leaves the existing person - and the user's tags - untouched.
             await EnsureOwnedRelationshipTypeAsync(ownerId, request.RelationshipTypeId, cancellationToken);
-            var tags = await ResolveOwnedTagsAsync(ownerId, request.TagIds, cancellationToken);
+            var tags = await ResolveTagsAsync(ownerId, request.TagIds, request.NewTagNames, cancellationToken);
+
+            // Every contact method id must be one of THIS person's, which covers another user's,
+            // another person's of the same user, one that never existed - and one deleted in
+            // another tab while this form was open. All four read the same.
+            var existing = person.ContactMethods.ToDictionary(c => c.Id);
+            var contactMethods = request.ContactMethods ?? [];
+            if (contactMethods.Any(c => c.Id is Guid id && !existing.ContainsKey(id)))
+            {
+                throw new ForeignEntityNotOwnedException(ForeignEntityNames.ContactMethods);
+            }
 
             ApplyProfile(person, request);
 
             person.Tags.Clear();
-            foreach (var tag in tags)
+            foreach (var tag in tags.All)
             {
                 person.Tags.Add(tag);
             }
 
-            await dbContext.SaveChangesAsync(cancellationToken);
+            // New tags go into the context explicitly. OwnedEntity gives every instance a non-empty
+            // Guid up front, so a new tag merely reachable from the tracked person would be
+            // discovered as an existing row (Modified), and the save would fail with a concurrency
+            // exception for an UPDATE that touches no row. The same goes for new contact methods.
+            foreach (var tag in tags.Created)
+            {
+                dbContext.Tags.Add(tag);
+            }
+
+            var kept = new HashSet<Guid>();
+            for (var position = 0; position < contactMethods.Count; position++)
+            {
+                var input = contactMethods[position];
+                if (input.Id is Guid id)
+                {
+                    ApplyContactMethod(existing[id], input, position);
+                    kept.Add(id);
+                }
+                else
+                {
+                    var added = CreateContactMethod(ownerId, input, position);
+                    added.PersonId = person.Id;
+                    dbContext.ContactMethods.Add(added);
+                }
+            }
+
+            foreach (var gone in existing.Values.Where(c => !kept.Contains(c.Id)))
+            {
+                dbContext.ContactMethods.Remove(gone);
+            }
+
+            await SaveChangesAsync(tags.Created.Count > 0, cancellationToken);
             return true;
         }
         finally
@@ -291,10 +366,72 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
         var today = await GetUserTodayAsync(ownerId, cancellationToken);
 
         var errors = PersonProfileRules.Validate(input, today);
-        if (errors.Count > 0)
+        var contactMethodProblems = PersonProfileRules.ValidateContactMethods(input);
+        if (errors.Count > 0 || contactMethodProblems.Count > 0)
         {
-            throw new PersonValidationException(errors);
+            throw new PersonValidationException(errors, contactMethodProblems);
         }
+    }
+
+    /// <summary>
+    /// A request that names one contact method twice is malformed (no form produces it), not a
+    /// validation problem a user can fix, so it is rejected loudly rather than letting the second
+    /// row silently win. Says nothing about the person, so it is safe before any lookup.
+    /// </summary>
+    private static void ThrowIfRepeatedContactMethodIds(IReadOnlyList<ContactMethodInput>? contactMethods)
+    {
+        if (contactMethods is null)
+        {
+            return;
+        }
+
+        var ids = contactMethods.Where(c => c.Id is not null).Select(c => c.Id!.Value).ToList();
+        if (ids.Count != ids.Distinct().Count())
+        {
+            throw new ArgumentException("A contact method can appear only once in a request.", nameof(contactMethods));
+        }
+    }
+
+    /// <summary>
+    /// Saves, translating the unique <c>(OwnerId, Name)</c> index on tags into a validation error
+    /// when - and only when - this save is creating tags: another request took the same name
+    /// between reading the user's tags and now. The person form reloads its tags and asks again.
+    /// </summary>
+    private async Task SaveChangesAsync(bool createdTags, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception) when (createdTags && IsTagNameConflict(exception))
+        {
+            throw new PersonValidationException([PersonValidationError.TagNameConflict]);
+        }
+    }
+
+    private static bool IsTagNameConflict(DbUpdateException exception) =>
+        exception.InnerException is SqlException { Number: 2601 or 2627 } sqlException
+        && sqlException.Message.Contains("IX_Tags_OwnerId_Name", StringComparison.Ordinal);
+
+    private static ContactMethod CreateContactMethod(string ownerId, ContactMethodInput input, int sortOrder)
+    {
+        var contactMethod = new ContactMethod { OwnerId = ownerId };
+        ApplyContactMethod(contactMethod, input, sortOrder);
+        return contactMethod;
+    }
+
+    /// <summary>
+    /// Writes a submitted row onto <paramref name="contactMethod"/>: the trimmed value, the label,
+    /// the comparison key from <see cref="ContactMethodRules.ToNormalizedValue"/> and the position.
+    /// </summary>
+    private static void ApplyContactMethod(ContactMethod contactMethod, ContactMethodInput input, int sortOrder)
+    {
+        var value = ContactMethodRules.NormalizeValue(input.Kind, input.Value);
+        contactMethod.Kind = input.Kind;
+        contactMethod.Label = ContactMethodRules.NormalizeLabel(input.Label);
+        contactMethod.Value = value;
+        contactMethod.NormalizedValue = ContactMethodRules.ToNormalizedValue(input.Kind, value);
+        contactMethod.SortOrder = sortOrder;
     }
 
     /// <summary>
@@ -351,37 +488,74 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
             .AnyAsync(t => t.Id == id && t.OwnerId == ownerId, cancellationToken);
         if (!owned)
         {
-            throw new ForeignEntityNotOwnedException("relationship types");
+            throw new ForeignEntityNotOwnedException(ForeignEntityNames.RelationshipTypes);
         }
     }
 
     /// <summary>
-    /// Resolves the supplied tag ids to tags owned by <paramref name="ownerId"/>. Throws
-    /// <see cref="ForeignEntityNotOwnedException"/> if any id does not resolve - whether because
-    /// the tag does not exist or because it belongs to a different user, the two are
-    /// indistinguishable to the caller.
+    /// Resolves the tags a request wants attached: the supplied ids (each must be one of
+    /// <paramref name="ownerId"/>'s tags - otherwise <see cref="ForeignEntityNotOwnedException"/>,
+    /// whether the tag does not exist or belongs to a different user, the two being
+    /// indistinguishable to the caller) plus the supplied names. A name is matched against the
+    /// owner's tags in code with <see cref="TagNameRules.Comparer"/> (the InMemory provider is
+    /// case-sensitive, so the database cannot be trusted to) and attaches the tag it matches;
+    /// otherwise a new <see cref="Tag"/> is built - not tracked, not saved - and returned in
+    /// <see cref="TagResolution.Created"/> for the caller to add and save in the same unit of work.
     /// </summary>
-    private async Task<List<Tag>> ResolveOwnedTagsAsync(
+    private async Task<TagResolution> ResolveTagsAsync(
         string ownerId,
         IReadOnlyCollection<Guid>? tagIds,
+        IReadOnlyCollection<string>? newTagNames,
         CancellationToken cancellationToken)
     {
-        if (tagIds is null || tagIds.Count == 0)
+        var ids = tagIds?.Distinct().ToList() ?? [];
+        var names = (newTagNames ?? [])
+            .Select(TagNameRules.Normalize)
+            .OfType<string>()
+            .Distinct(TagNameRules.Comparer)
+            .ToList();
+        if (ids.Count == 0 && names.Count == 0)
         {
-            return [];
+            return new TagResolution([], []);
         }
 
-        var distinctIds = tagIds.Distinct().ToList();
-
-        var tags = await dbContext.Tags
-            .Where(t => t.OwnerId == ownerId && distinctIds.Contains(t.Id))
+        // All of the owner's tags, tracked: at most a few hundred short rows, and it is what makes
+        // a name match, an id check and an attach one lookup. (A tag that the person already has is
+        // tracked already, and identity resolution hands back the same instance.)
+        var owned = await dbContext.Tags
+            .Where(t => t.OwnerId == ownerId)
             .ToListAsync(cancellationToken);
+        var ownedById = owned.ToDictionary(t => t.Id);
 
-        if (tags.Count != distinctIds.Count)
+        var attach = new Dictionary<Guid, Tag>();
+        foreach (var id in ids)
         {
-            throw new ForeignEntityNotOwnedException("tags");
+            if (!ownedById.TryGetValue(id, out var tag))
+            {
+                throw new ForeignEntityNotOwnedException(ForeignEntityNames.Tags);
+            }
+
+            attach[id] = tag;
         }
 
-        return tags;
+        var created = new List<Tag>();
+        foreach (var name in names)
+        {
+            var match = owned.FirstOrDefault(t => TagNameRules.Comparer.Equals(t.Name, name));
+            if (match is not null)
+            {
+                attach[match.Id] = match;
+                continue;
+            }
+
+            var tag = new Tag { OwnerId = ownerId, Name = name };
+            created.Add(tag);
+            attach[tag.Id] = tag;
+        }
+
+        return new TagResolution([.. attach.Values], created);
     }
+
+    /// <summary>The tags to attach, and the subset of them that does not exist yet.</summary>
+    private sealed record TagResolution(IReadOnlyList<Tag> All, IReadOnlyList<Tag> Created);
 }

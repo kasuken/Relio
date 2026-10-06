@@ -121,6 +121,39 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
     }
 
     [SqlServerFact]
+    public async Task The_person_form_loading_its_pickers_while_a_save_with_new_tags_runs_does_not_collide()
+    {
+        var ownerId = await SeedProfileAsync("Europe/Rome", "Ada");
+        await using var provider = BuildProvider(ownerId);
+        await using var scope = provider.CreateAsyncScope();
+        var tags = scope.ServiceProvider.GetRequiredService<ITagService>();
+        var types = scope.ServiceProvider.GetRequiredService<IRelationshipTypeService>();
+        var people = scope.ServiceProvider.GetRequiredService<IPeopleService>();
+        var person = await people.CreateAsync(new CreatePersonRequest { FirstName = "Ada" });
+
+        // An edit page: PersonForm lists types and tags while a save of the previous form (which
+        // creates a tag and replaces the contact methods) is still on its way to the database.
+        Task<bool>? update = null;
+        var act = async () =>
+        {
+            update = people.UpdateAsync(person.Id, new UpdatePersonRequest
+            {
+                FirstName = "Ada",
+                NewTagNames = ["Climbing"],
+                ContactMethods = [new ContactMethodInput(null, ContactMethodKind.Email, null, "ada@example.com")],
+            });
+            await Task.WhenAll(update, types.ListAsync(), tags.ListAsync(), people.GetAsync(person.Id));
+        };
+
+        await act.Should().NotThrowAsync();
+        (await update!).Should().BeTrue();
+        (await tags.ListAsync()).Select(t => t.Name).Should().Equal("Climbing");
+        var read = await people.GetAsync(person.Id);
+        read!.Tags.Should().ContainSingle().Which.Name.Should().Be("Climbing");
+        read.ContactMethods.Should().ContainSingle().Which.Value.Should().Be("ada@example.com");
+    }
+
+    [SqlServerFact]
     public async Task Two_saves_started_together_both_land()
     {
         var ownerId = await SeedProfileAsync("Europe/Rome", "Ada");

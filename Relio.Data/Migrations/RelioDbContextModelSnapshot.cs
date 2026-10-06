@@ -296,6 +296,62 @@ namespace Relio.Data.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("Relio.Domain.ContactMethod", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("NormalizedValue")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PersonId");
+
+                    b.HasIndex("OwnerId", "NormalizedValue");
+
+                    b.HasIndex("OwnerId", "PersonId");
+
+                    b.ToTable("ContactMethods", t =>
+                        {
+                            t.HasCheckConstraint("CK_ContactMethods_Kind", "[Kind] IN (N'Email', N'Phone', N'Address', N'Social', N'Other')");
+                        });
+                });
+
             modelBuilder.Entity("Relio.Domain.Person", b =>
                 {
                     b.Property<Guid>("Id")
@@ -542,6 +598,15 @@ namespace Relio.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Relio.Domain.ContactMethod", b =>
+                {
+                    b.HasOne("Relio.Domain.Person", null)
+                        .WithMany("ContactMethods")
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Relio.Domain.Person", b =>
                 {
                     b.HasOne("Relio.Domain.RelationshipType", "RelationshipType")
@@ -550,6 +615,11 @@ namespace Relio.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("RelationshipType");
+                });
+
+            modelBuilder.Entity("Relio.Domain.Person", b =>
+                {
+                    b.Navigation("ContactMethods");
                 });
 #pragma warning restore 612, 618
         }

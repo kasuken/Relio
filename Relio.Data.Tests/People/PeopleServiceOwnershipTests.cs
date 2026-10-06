@@ -284,6 +284,168 @@ public class PeopleServiceOwnershipTests
     }
 
     [Fact]
+    public async Task UpdateAsync_cannot_attach_another_users_tag_even_alongside_a_new_tag_name()
+    {
+        await using var dbContext = CreateDbContext();
+        var personId = await CreatePersonAsync(dbContext, UserA, "Alice");
+        var tagIdOwnedByUserB = await CreateTagAsync(dbContext, UserB, "family");
+
+        var act = () => CreateService(dbContext, UserA).UpdateAsync(
+            personId,
+            new UpdatePersonRequest { FirstName = "Alice", TagIds = [tagIdOwnedByUserB], NewTagNames = ["Climbing"] });
+
+        (await act.Should().ThrowAsync<ForeignEntityNotOwnedException>()).Which.EntityName.Should().Be("tags");
+
+        // Nothing was half done: no "Climbing" tag appeared, and nothing was attached.
+        (await dbContext.Tags.AsNoTracking().Where(t => t.OwnerId == UserA).CountAsync()).Should().Be(0);
+        (await dbContext.People.AsNoTracking().Include(p => p.Tags).SingleAsync(p => p.Id == personId)).Tags.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task UpdateAsync_cannot_edit_another_users_contact_method()
+    {
+        await using var dbContext = CreateDbContext();
+        var personId = await CreatePersonAsync(dbContext, UserA, "Alice");
+        var otherPersonId = await CreatePersonAsync(dbContext, UserB, "Bob");
+        var contactMethodIdOwnedByUserB = await CreateContactMethodAsync(dbContext, UserB, otherPersonId, "bob@example.com");
+
+        var act = () => CreateService(dbContext, UserA).UpdateAsync(
+            personId,
+            new UpdatePersonRequest
+            {
+                FirstName = "Alice",
+                ContactMethods = [new ContactMethodInput(contactMethodIdOwnedByUserB, ContactMethodKind.Email, null, "alice@example.com")],
+            });
+
+        (await act.Should().ThrowAsync<ForeignEntityNotOwnedException>()).Which.EntityName.Should().Be("contact methods");
+
+        var untouched = await dbContext.ContactMethods.AsNoTracking().SingleAsync();
+        untouched.Id.Should().Be(contactMethodIdOwnedByUserB);
+        untouched.OwnerId.Should().Be(UserB);
+        untouched.PersonId.Should().Be(otherPersonId);
+        untouched.Value.Should().Be("bob@example.com");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_cannot_move_a_contact_method_to_another_person_of_the_same_user()
+    {
+        await using var dbContext = CreateDbContext();
+        var firstPersonId = await CreatePersonAsync(dbContext, UserA, "Alice");
+        var secondPersonId = await CreatePersonAsync(dbContext, UserA, "Ann");
+        var contactMethodId = await CreateContactMethodAsync(dbContext, UserA, firstPersonId, "alice@example.com");
+
+        var act = () => CreateService(dbContext, UserA).UpdateAsync(
+            secondPersonId,
+            new UpdatePersonRequest
+            {
+                FirstName = "Ann",
+                ContactMethods = [new ContactMethodInput(contactMethodId, ContactMethodKind.Email, null, "alice@example.com")],
+            });
+
+        await act.Should().ThrowAsync<ForeignEntityNotOwnedException>();
+
+        (await dbContext.ContactMethods.AsNoTracking().SingleAsync()).PersonId.Should().Be(firstPersonId);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_reports_a_nonexistent_and_a_foreign_contact_method_id_with_the_same_message()
+    {
+        await using var dbContext = CreateDbContext();
+        var personId = await CreatePersonAsync(dbContext, UserA, "Alice");
+        var otherPersonId = await CreatePersonAsync(dbContext, UserB, "Bob");
+        var foreignId = await CreateContactMethodAsync(dbContext, UserB, otherPersonId, "bob@example.com");
+        var service = CreateService(dbContext, UserA);
+
+        Task<bool> UpdateWith(Guid contactMethodId) => service.UpdateAsync(
+            personId,
+            new UpdatePersonRequest
+            {
+                FirstName = "Alice",
+                ContactMethods = [new ContactMethodInput(contactMethodId, ContactMethodKind.Email, null, "a@example.com")],
+            });
+
+        var foreign = await FluentActions.Awaiting(() => UpdateWith(foreignId)).Should().ThrowAsync<ForeignEntityNotOwnedException>();
+        var missing = await FluentActions.Awaiting(() => UpdateWith(Guid.NewGuid())).Should().ThrowAsync<ForeignEntityNotOwnedException>();
+
+        foreign.Which.Message.Should().Be(missing.Which.Message);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_for_another_users_person_returns_false_even_with_foreign_contact_method_ids_and_new_tag_names()
+    {
+        await using var dbContext = CreateDbContext();
+        var personId = await CreatePersonAsync(dbContext, UserA, "Alice");
+        var contactMethodId = await CreateContactMethodAsync(dbContext, UserA, personId, "alice@example.com");
+
+        var updated = await CreateService(dbContext, UserB).UpdateAsync(
+            personId,
+            new UpdatePersonRequest
+            {
+                FirstName = "Eve",
+                TagIds = [Guid.NewGuid()],
+                NewTagNames = ["Climbing"],
+                ContactMethods = [new ContactMethodInput(contactMethodId, ContactMethodKind.Email, null, "eve@example.com")],
+            });
+
+        // "No result" for the person comes before any foreign id is looked at, and creates nothing.
+        updated.Should().BeFalse();
+        (await dbContext.Tags.AsNoTracking().CountAsync()).Should().Be(0);
+        (await dbContext.ContactMethods.AsNoTracking().SingleAsync()).Value.Should().Be("alice@example.com");
+        (await dbContext.People.AsNoTracking().SingleAsync()).FirstName.Should().Be("Alice");
+    }
+
+    [Fact]
+    public async Task CreateAsync_rejects_any_contact_method_id()
+    {
+        await using var dbContext = CreateDbContext();
+        var otherPersonId = await CreatePersonAsync(dbContext, UserB, "Bob");
+        var foreignId = await CreateContactMethodAsync(dbContext, UserB, otherPersonId, "bob@example.com");
+        var service = CreateService(dbContext, UserA);
+
+        foreach (var id in new[] { foreignId, Guid.NewGuid() })
+        {
+            var act = () => service.CreateAsync(new CreatePersonRequest
+            {
+                FirstName = "Alice",
+                ContactMethods = [new ContactMethodInput(id, ContactMethodKind.Email, null, "alice@example.com")],
+            });
+
+            (await act.Should().ThrowAsync<ForeignEntityNotOwnedException>()).Which.EntityName.Should().Be("contact methods");
+        }
+
+        (await dbContext.People.AsNoTracking().CountAsync(p => p.OwnerId == UserA)).Should().Be(0);
+        (await dbContext.ContactMethods.AsNoTracking().SingleAsync()).OwnerId.Should().Be(UserB);
+    }
+
+    [Fact]
+    public async Task CreateAsync_with_a_new_tag_name_creates_it_for_the_current_user_only()
+    {
+        await using var dbContext = CreateDbContext();
+        await CreateTagAsync(dbContext, UserB, "Climbing");
+
+        var person = await CreateService(dbContext, UserA).CreateAsync(
+            new CreatePersonRequest { FirstName = "Alice", NewTagNames = ["climbing"] });
+
+        // User B's "Climbing" is not user A's: a new tag is made for A, and B's is untouched.
+        var tags = await dbContext.Tags.AsNoTracking().ToListAsync();
+        tags.Should().HaveCount(2);
+        tags.Single(t => t.OwnerId == UserA).Name.Should().Be("climbing");
+        tags.Single(t => t.OwnerId == UserB).Name.Should().Be("Climbing");
+        person.Tags.Should().ContainSingle().Which.OwnerId.Should().Be(UserA);
+    }
+
+    [Fact]
+    public async Task GetAsync_for_another_users_person_never_returns_their_contact_methods()
+    {
+        await using var dbContext = CreateDbContext();
+        var personId = await CreatePersonAsync(dbContext, UserA, "Alice");
+        await CreateContactMethodAsync(dbContext, UserA, personId, "alice@example.com");
+
+        (await CreateService(dbContext, UserB).GetAsync(personId)).Should().BeNull();
+        (await CreateService(dbContext, UserA).GetAsync(personId))!.ContactMethods.Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task Operations_without_an_authenticated_user_throw()
     {
         await using var dbContext = CreateDbContext();
@@ -331,6 +493,23 @@ public class PeopleServiceOwnershipTests
         dbContext.RelationshipTypes.Add(type);
         await dbContext.SaveChangesAsync();
         return type.Id;
+    }
+
+    private static async Task<Guid> CreateContactMethodAsync(
+        RelioDbContext dbContext, string ownerId, Guid personId, string value)
+    {
+        var contactMethod = new ContactMethod
+        {
+            OwnerId = ownerId,
+            PersonId = personId,
+            Kind = ContactMethodKind.Email,
+            Value = value,
+            NormalizedValue = ContactMethodRules.ToNormalizedValue(ContactMethodKind.Email, value),
+        };
+        dbContext.ContactMethods.Add(contactMethod);
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+        return contactMethod.Id;
     }
 
     private static async Task<Guid> CreateTagAsync(RelioDbContext dbContext, string ownerId, string name)

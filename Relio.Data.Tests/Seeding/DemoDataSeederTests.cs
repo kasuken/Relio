@@ -98,6 +98,43 @@ public class DemoDataSeederTests
     }
 
     [Fact]
+    public async Task SeedAsync_gives_some_people_valid_contact_methods_owned_by_the_demo_user()
+    {
+        await using var dbContext = CreateDbContext();
+        var userManager = UserManagerTestFactory.Create(dbContext);
+        var seeder = CreateSeeder(dbContext, userManager, enabled: true, environmentName: Environments.Development);
+
+        await seeder.SeedAsync();
+
+        var demoUser = await userManager.FindByEmailAsync(DemoDataSeeder.DemoEmail);
+        var contactMethods = await dbContext.ContactMethods.AsNoTracking().ToListAsync();
+        var people = await dbContext.People.AsNoTracking().Where(p => p.OwnerId == demoUser!.Id).ToListAsync();
+
+        contactMethods.Should().NotBeEmpty();
+        contactMethods.Should().OnlyContain(c => c.OwnerId == demoUser!.Id);
+        contactMethods.Should().OnlyContain(c => people.Any(p => p.Id == c.PersonId), "every contact method belongs to one of the demo person's people");
+        contactMethods.Select(c => c.Kind).Distinct().Should().HaveCountGreaterThan(2, "the demo shows more than one kind");
+        contactMethods.Where(c => c.Kind == ContactMethodKind.Email)
+            .Should().OnlyContain(c => c.Value.EndsWith("@example.com") || c.Value.EndsWith("@example.org") || c.Value.EndsWith("@example.net"),
+                "demo data only ever uses reserved example domains");
+
+        // Each one passes the same rules a user's input does, and its key is the one the rules compute.
+        foreach (var contactMethod in contactMethods)
+        {
+            var input = new Relio.Application.People.ContactMethodInput(null, contactMethod.Kind, contactMethod.Label, contactMethod.Value);
+            Relio.Application.People.ContactMethodRules.Validate(input).Should().BeEmpty();
+            contactMethod.NormalizedValue.Should().Be(
+                Relio.Application.People.ContactMethodRules.ToNormalizedValue(contactMethod.Kind, contactMethod.Value));
+        }
+
+        // Per person, positions run 0, 1, 2, ... with no gaps or repeats.
+        foreach (var group in contactMethods.GroupBy(c => c.PersonId))
+        {
+            group.Select(c => c.SortOrder).Order().Should().Equal(Enumerable.Range(0, group.Count()));
+        }
+    }
+
+    [Fact]
     public async Task SeedAsync_refuses_and_logs_an_error_in_production()
     {
         await using var dbContext = CreateDbContext();
