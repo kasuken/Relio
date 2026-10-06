@@ -1,0 +1,162 @@
+@page "/Account/LoginWith2fa"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using Relio.Data.Identity
+@using Relio.Web.Security
+
+@inject SignInManager<RelioUser> SignInManager
+@inject NavigationManager NavigationManager
+@inject ILogger<LoginWith2fa> Logger
+
+@* The second step of signing in for an account with two-factor authentication (issue #20). The
+   password step (Login.razor) has already verified the password and left the short-lived
+   "Identity.TwoFactorUserId" cookie; this page only ever learns who is signing in from that cookie,
+   never from the URL or the form. Static SSR for the same reason as every account page: a successful
+   sign-in must write the auth cookie to this request's response. *@
+
+<PageTitle>Enter your authenticator code - Relio</PageTitle>
+
+@if (_ended)
+{
+    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-4">Sign in again</MudText>
+    @if (_expired)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4" data-testid="login-2fa-expired">
+            Your sign-in timed out. Sign in again to continue.
+        </MudAlert>
+    }
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="login-2fa-error">@_errorMessage</MudAlert>
+    }
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+        <MudLink Href="/Account/Login" data-testid="login-2fa-restart">Sign in</MudLink>
+    </MudText>
+}
+
+@* The form is always rendered (hidden once this step has ended): if the cookie runs out between
+   showing this page and posting it, the post must still find a form with this name instead of failing. *@
+<div hidden="@_ended">
+    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">Enter your authenticator code</MudText>
+    <MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+        Open the authenticator app on your phone and enter the 6-digit code it shows for Relio.
+    </MudText>
+
+    <EditForm Model="Input" FormName="login-2fa" OnValidSubmit="SignInAsync" method="post">
+        <DataAnnotationsValidator />
+
+        @if (!_ended && !string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="login-2fa-error">@_errorMessage</MudAlert>
+        }
+
+        @* Plain HTML input, not MudTextField - see Register.razor's matching comment: MudBlazor's
+           inputs need a live circuit to post their value, which this static SSR page does not have. *@
+        <div class="rl-field">
+            <label for="login-2fa-code">Authenticator code</label>
+            <input id="login-2fa-code" name="Input.TwoFactorCode" type="text" required
+                   inputmode="numeric" autocomplete="one-time-code" autocapitalize="off" spellcheck="false"
+                   data-testid="login-2fa-code" />
+            <ValidationMessage For="@(() => Input!.TwoFactorCode)" />
+        </div>
+
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                   FullWidth="true" data-testid="login-2fa-submit" Class="mt-2">
+            Sign in
+        </MudButton>
+    </EditForm>
+
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mt-6">
+        <MudLink Href="@RecoveryCodeUrl" data-enhance-nav="false" data-testid="login-2fa-use-recovery-code">
+            Can't use your authenticator app? Sign in with a recovery code
+        </MudLink>
+    </MudText>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private InputModel? Input { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    /// <summary>The "Remember me" choice from the password step; decides whether the sign-in cookie persists.</summary>
+    [SupplyParameterFromQuery]
+    private bool RememberMe { get; set; }
+
+    private RelioUser? _user;
+    // _ended: nothing more can be done on this page (the step timed out, or the account was disabled
+    // since the password step) - the form is hidden and the person is pointed back to sign in.
+    // _expired is the "timed out" reason specifically.
+    private bool _ended;
+    private bool _expired;
+    private string? _errorMessage;
+
+    private string SafeReturnUrl => ReturnUrlValidator.GetSafeReturnUrl(ReturnUrl, NavigationManager.BaseUri);
+
+    private string RecoveryCodeUrl =>
+        $"/Account/LoginWithRecoveryCode?returnUrl={Uri.EscapeDataString(SafeReturnUrl)}&rememberMe={(RememberMe ? "true" : "false")}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        // Null when nobody passed the password step, or the five-minute two-factor cookie ran out.
+        _user = await SignInManager.GetTwoFactorAuthenticationUserAsync();
+        _expired = _ended = _user is null;
+    }
+
+    private async Task SignInAsync()
+    {
+        if (_user is null)
+        {
+            _expired = _ended = true;
+            return;
+        }
+
+        if (!TwoFactorCodes.TryNormalizeAuthenticatorCode(Input!.TwoFactorCode, out var code))
+        {
+            // A malformed code never reaches Identity, so a typo does not count towards lockout.
+            _errorMessage = "Enter the 6-digit code from your authenticator app.";
+            return;
+        }
+
+        // rememberClient: false, always - Relio has no "remember this device" (see AGENTS.md).
+        var result = await SignInManager.TwoFactorAuthenticatorSignInAsync(code, RememberMe, rememberClient: false);
+
+        if (result.Succeeded)
+        {
+            Logger.LogInformation("User {UserId} signed in with an authenticator code.", _user.Id);
+            NavigationManager.NavigateTo(SafeReturnUrl, forceLoad: true);
+            return;
+        }
+
+        // Before IsNotAllowed-style handling: RelioSignInResult.Disabled is also "not allowed".
+        if (result is RelioSignInResult { IsDisabled: true })
+        {
+            Logger.LogInformation("User {UserId} tried to sign in to a disabled account.", _user.Id);
+            _errorMessage = SignInMessages.Disabled;
+            _ended = true;
+            return;
+        }
+
+        if (result.IsLockedOut)
+        {
+            Logger.LogWarning("User {UserId} is locked out after repeated failed sign-in attempts.", _user.Id);
+            _errorMessage = SignInMessages.LockedOut;
+            return;
+        }
+
+        Logger.LogInformation("User {UserId} submitted an incorrect authenticator code.", _user.Id);
+        _errorMessage = "That code is incorrect or has expired. Enter the current code from your authenticator app.";
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "Enter the code from your authenticator app.")]
+        public string TwoFactorCode { get; set; } = string.Empty;
+    }
+}

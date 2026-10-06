@@ -1,0 +1,31 @@
+@* A QR code drawn as an inline SVG (issue #20): one square ground and one path, no script, no
+   <image>, no href, no external request - the shared secret it encodes never leaves the server's
+   response. Colours come from the .rl-qr-* classes (design tokens qr-ink on qr-ground, dark on light
+   in both themes); never add fill="..." attributes here. The path data is the QR library's own
+   output of digits and path commands, rendered as an attribute value (HTML-encoded by Blazor), not as
+   markup. *@
+
+<svg class="rl-qr"
+     viewBox="0 0 @Code.ViewBoxSize @Code.ViewBoxSize"
+     role="img"
+     aria-label="@Label"
+     focusable="false"
+     shape-rendering="crispEdges"
+     @attributes="AdditionalAttributes">
+    <rect class="rl-qr-ground" width="@Code.ViewBoxSize" height="@Code.ViewBoxSize" />
+    <path class="rl-qr-ink" d="@Code.PathData" />
+</svg>
+
+@code {
+    /// <summary>The code to draw.</summary>
+    [Parameter, EditorRequired]
+    public QrCodeSvg Code { get; set; } = default!;
+
+    /// <summary>What a screen reader announces for the image.</summary>
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    /// <summary>Extra attributes (e.g. <c>data-testid</c>) forwarded to the <c>svg</c> element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+}

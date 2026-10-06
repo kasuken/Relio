@@ -1,0 +1,114 @@
+@page "/Account/Manage/TwoFactorAuthentication"
+@attribute [Authorize]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+@using Microsoft.AspNetCore.Identity
+@using Relio.Application.Accounts
+@using Relio.Data.Identity
+
+@inject UserManager<RelioUser> UserManager
+@inject SignInManager<RelioUser> SignInManager
+@inject NavigationManager NavigationManager
+
+@* The two-factor hub (issue #20): whether it is on, and links to the pages that change it. This page
+   changes nothing itself - every change is its own password-confirmed page, and recovery codes are
+   never shown here (they are shown once, in the response that creates them). *@
+
+<PageTitle>Two-factor authentication - Relio</PageTitle>
+
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">Two-factor authentication</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+    Two-factor authentication asks for a code from an authenticator app on your phone each time you
+    sign in, as well as your password. Someone who learns your password still can't get in.
+</MudText>
+
+@if (Status == "disabled")
+{
+    <MudAlert Severity="Severity.Success" Class="mb-4" data-testid="manage-2fa-status">
+        Two-factor authentication is off. Other devices signed in to your account are signed out.
+    </MudAlert>
+}
+
+@if (_user is not null)
+{
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">Status</MudText>
+    <MudText Typo="Typo.body1" Class="mb-4" data-testid="manage-2fa-state">@(_isEnabled ? "On" : "Off")</MudText>
+
+    @if (!_isEnabled)
+    {
+        <MudButton Href="/Account/Manage/EnableAuthenticator" Variant="Variant.Filled" Color="Color.Primary"
+                   data-testid="manage-2fa-enable">
+            Set up an authenticator app
+        </MudButton>
+    }
+    else
+    {
+        <MudText Typo="Typo.body1" Class="mb-4" data-testid="manage-2fa-recovery-codes-left">
+            You have @_recoveryCodesLeft recovery @(_recoveryCodesLeft == 1 ? "code" : "codes") left.
+        </MudText>
+
+        @if (_status.RecoveryCodesLow)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-4" data-testid="manage-2fa-recovery-codes-low">
+                @if (_recoveryCodesLeft == 0)
+                {
+                    <text>You have no recovery codes left. Generate new ones so you can still sign in if you lose your phone.</text>
+                }
+                else
+                {
+                    <text>You only have @_recoveryCodesLeft recovery @(_recoveryCodesLeft == 1 ? "code" : "codes") left. Generate new ones so you can still sign in if you lose your phone.</text>
+                }
+            </MudAlert>
+        }
+
+        <div class="d-flex flex-wrap gap-2">
+            <MudButton Href="/Account/Manage/GenerateRecoveryCodes" Variant="Variant.Outlined" Color="Color.Primary"
+                       data-testid="manage-2fa-generate-codes">
+                Generate new recovery codes
+            </MudButton>
+            <MudButton Href="/Account/Manage/ResetAuthenticator" Variant="Variant.Outlined" Color="Color.Primary"
+                       data-testid="manage-2fa-reset">
+                Set up a different authenticator app
+            </MudButton>
+            <MudButton Href="/Account/Manage/Disable2fa" Variant="Variant.Outlined" Color="Color.Primary"
+                       data-testid="manage-2fa-disable">
+                Turn off two-factor authentication
+            </MudButton>
+        </div>
+    }
+}
+
+<MudText Typo="Typo.body2" Class="mud-text-secondary mt-6">
+    <MudLink Href="/settings" data-testid="manage-back-to-settings">Back to settings</MudLink>
+</MudText>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? Status { get; set; }
+
+    private RelioUser? _user;
+    private bool _isEnabled;
+    private int _recoveryCodesLeft;
+    private TwoFactorStatus _status = new(false, 0);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await UserManager.GetUserAsync(HttpContext.User);
+        if (_user is null)
+        {
+            // A valid cookie for an account that no longer exists: end the session instead of
+            // rendering a page that could never work.
+            await SignInManager.SignOutAsync();
+            NavigationManager.NavigateTo("/Account/Login", forceLoad: true);
+            return;
+        }
+
+        _isEnabled = await UserManager.GetTwoFactorEnabledAsync(_user);
+        _recoveryCodesLeft = _isEnabled ? await UserManager.CountRecoveryCodesAsync(_user) : 0;
+        _status = new TwoFactorStatus(_isEnabled, _recoveryCodesLeft);
+    }
+}

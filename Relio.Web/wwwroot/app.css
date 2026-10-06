@@ -47,6 +47,8 @@
     --focus: var(--pen);
     --link: var(--pen);
     --shadow-float: 0 12px 32px rgba(28, 35, 51, 0.16);
+    --qr-ink: #1C2333;
+    --qr-ground: #FFFFFF;
 
     --font-serif: "Alegreya", "Iowan Old Style", Georgia, serif;
     --font-sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -90,6 +92,9 @@
     --focus: var(--pen);
     --link: var(--pen);
     --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.55);
+    /* Deliberately the same as light: a QR code is only scannable dark on light. */
+    --qr-ink: #1C2333;
+    --qr-ground: #FFFFFF;
 
     color-scheme: dark;
 }
@@ -470,4 +475,64 @@ a {
     gap: var(--space-2);
     padding: var(--space-3) 0;
     border-bottom: 1px solid var(--line);
+}
+
+/* Two-factor authentication (issue #20). The QR code is an inline SVG drawn from two classes, so its
+   colours come from tokens (never fill="..." attributes) and stay dark on light in both themes. */
+.rl-qr {
+    display: block;
+    width: 100%;
+    max-width: 224px;
+    height: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+}
+
+.rl-qr-ground {
+    fill: var(--qr-ground);
+}
+
+.rl-qr-ink {
+    fill: var(--qr-ink);
+}
+
+/* The manual-entry key shown next to the QR code: grouped, selectable, wraps instead of widening the page. */
+.rl-shared-key {
+    display: block;
+    word-break: break-all;
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.08em;
+    color: var(--text);
+    background: var(--surface-sunken);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3) var(--space-4);
+}
+
+/* Recovery codes: two columns on a sunken panel, easy to read aloud and copy. */
+.rl-recovery-codes {
+    list-style: none;
+    margin: 0 0 var(--space-4);
+    padding: var(--space-4);
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2) var(--space-4);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.05em;
+    color: var(--text);
+    background: var(--surface-sunken);
+    border-radius: var(--radius-md);
+}
+
+/* The numbered setup steps on the authenticator page. */
+.rl-steps {
+    margin: 0 0 var(--space-6);
+    padding-left: var(--space-6);
+}
+
+.rl-steps > li {
+    margin-bottom: var(--space-4);
 }

@@ -87,6 +87,29 @@ Changing either asks for your current password. With email configured, a new add
 effect once you follow the confirmation link sent to it; with `Email:Provider=None` there is no way
 to send that link, so the change applies immediately and the page says so.
 
+**Two-factor authentication** is optional and per account. Turn it on under *Sign-in and security* in
+settings (`/Account/Manage/TwoFactorAuthentication`): scan the QR code with any authenticator app
+(or type the key shown next to it), enter the code the app shows and your current password, and save
+the ten recovery codes Relio then shows - once, never again. From then on signing in asks for a code
+from the app after the password; if you lose your phone, a recovery code works instead (each one
+once). Wrong codes count towards the same lockout as wrong passwords. Turning it off, switching to a
+different app and generating new recovery codes all ask for your current password. Resetting a
+forgotten password does **not** turn two-factor authentication off. Relio does not offer "remember this
+device": every sign-in asks for a code.
+
+If someone loses their phone *and* every recovery code, there is no way to recover in the app, by
+design. The person who runs the instance can turn it off for that account directly in the database
+(the person can then sign in with their password and set it up again):
+
+```sql
+DECLARE @id nvarchar(450) = (SELECT Id FROM AspNetUsers WHERE NormalizedEmail = N'PERSON@EXAMPLE.COM');
+DELETE FROM AspNetUserTokens WHERE UserId = @id;  -- the authenticator key and the recovery codes
+UPDATE AspNetUsers SET TwoFactorEnabled = 0, SecurityStamp = CONVERT(nvarchar(36), NEWID()) WHERE Id = @id;
+```
+
+The authenticator key and recovery codes are stored in `AspNetUserTokens` as Identity keeps them, in
+plain text, so protect the database and its backups the way you protect the password hashes.
+
 ### Administration and sign-up control
 
 On a new instance the **first account you create becomes the administrator**. The administrator gets

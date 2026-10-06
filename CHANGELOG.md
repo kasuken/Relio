@@ -6,6 +6,32 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Optional two-factor authentication with an authenticator app (issue #20), completing epic #14.
+  Turn it on under *Sign-in and security* in settings: `/Account/Manage/EnableAuthenticator` shows a
+  QR code (generated on the server as an inline SVG with the new `Net.Codecrete.QrCodeGenerator`
+  package - no script, no third-party request) and the key for manual entry, and asks for a code
+  from the app plus the current password before anything is turned on; ten recovery codes are then
+  shown once, in the response that created them. Signing in then asks for a code
+  (`/Account/LoginWith2fa`) or, instead, a recovery code (`/Account/LoginWithRecoveryCode`); the
+  return URL and "Remember me" survive the extra step and both pages validate the return URL again.
+  There is deliberately no "remember this device". Turning it off, switching to a different
+  authenticator app (turn off, then set up again with a new key) and generating new recovery codes
+  each ask for the current password, and turning it on or off ends the account's other sessions.
+  Wrong authenticator codes, wrong recovery codes and wrong passwords share one lockout budget
+  (`Account:Lockout`): `RelioSignInManager` now overrides Identity's recovery-code sign-in, which
+  neither checked lockout nor counted failures, and also refuses an account an administrator
+  disabled between the password and the code. A password reset does not turn two-factor
+  authentication off. The two-factor cookies are `HttpOnly`, `SameSite=Lax` and `Secure` outside
+  Development like the sign-in cookie. `/settings` shows whether it is on and warns calmly when three
+  or fewer recovery codes are left (`ITwoFactorStatusService`, read untracked so a long-lived circuit
+  never shows a stale answer). No migration (Identity's `TwoFactorEnabled` column and `AspNetUserTokens`
+  already exist); the authenticator key and recovery codes are stored the way Identity stores them, in
+  plain text - protecting them at rest is a follow-up. The README documents how an operator recovers
+  an account that lost its phone and every recovery code. New design tokens `qr-ink`/`qr-ground` (dark
+  on light in both themes, since scanners cannot read an inverted code). Unit, bUnit, SQL Server
+  integration and Playwright end-to-end coverage (the end-to-end tests compute the app's codes with a
+  small RFC 6238 helper). See the "Two-factor authentication" bullet in the "Accounts and
+  authentication" section of AGENTS.md.
 - Self-hosted administration (issue #19): the first account created on an instance becomes its
   **Administrator** (an ASP.NET Core Identity role seeded in the migration; only an account that is
   the *only* one right after its own insert is promoted, guarded by a process-wide lock plus a

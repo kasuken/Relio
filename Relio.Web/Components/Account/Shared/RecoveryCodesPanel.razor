@@ -1,0 +1,23 @@
+@* The one place recovery codes are ever shown (issue #20). Rendered only in the response to the POST
+   that created them - never from a redirect target, a query string, TempData or a cookie - and
+   Relio does not store them in a retrievable form for display, so a refresh does not show them again.
+   Authenticated responses already carry Cache-Control: no-store (Program.cs). *@
+
+<MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-2">Save your recovery codes</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-4">
+    If you lose your phone, a recovery code lets you sign in instead of a code from the app. Each one
+    works once. Keep them somewhere safe, like a password manager. Relio won't show them again.
+</MudText>
+
+<ol class="rl-recovery-codes" data-testid="recovery-codes">
+    @foreach (var recoveryCode in Codes)
+    {
+        <li data-testid="recovery-code">@recoveryCode</li>
+    }
+</ol>
+
+@code {
+    /// <summary>The freshly issued codes, in the form Identity created them (<c>XXXXX-XXXXX</c>).</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<string> Codes { get; set; } = [];
+}

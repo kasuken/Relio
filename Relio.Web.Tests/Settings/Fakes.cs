@@ -1,3 +1,4 @@
+using Relio.Application.Accounts;
 using Relio.Application.Profile;
 using Relio.Application.Time;
 using Relio.Domain;
@@ -64,4 +65,13 @@ internal sealed class FakeUserProfileService(string? initialDisplayName = null) 
         Saved.Add(normalized);
         return Task.CompletedTask;
     }
+}
+
+/// <summary>An <see cref="ITwoFactorStatusService"/> that reports whatever a test sets.</summary>
+internal sealed class FakeTwoFactorStatusService(bool isEnabled = false, int recoveryCodesLeft = 0) : ITwoFactorStatusService
+{
+    public TwoFactorStatus Status { get; set; } = new(isEnabled, recoveryCodesLeft);
+
+    public Task<TwoFactorStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(Status);
 }

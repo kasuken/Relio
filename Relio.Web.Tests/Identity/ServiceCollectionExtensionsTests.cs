@@ -1,5 +1,7 @@
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Infrastructure;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -217,6 +219,47 @@ public class ServiceCollectionExtensionsTests
             .Should().Be(RegistrationMode.InviteOnly);
         scope.ServiceProvider.GetRequiredService<IOptions<SecurityStampValidatorOptions>>().Value.ValidationInterval
             .Should().Be(TimeSpan.FromMinutes(2));
+    }
+
+    [Theory]
+    [InlineData("Development", CookieSecurePolicy.SameAsRequest)]
+    [InlineData("Production", CookieSecurePolicy.Always)]
+    public async Task Two_factor_cookies_are_http_only_lax_and_secure_outside_development(
+        string environmentName, CookieSecurePolicy expectedSecurePolicy)
+    {
+        await using var provider = IdentityServicesFactory.Build(environmentName: environmentName);
+        var cookies = provider.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>();
+
+        foreach (var scheme in new[] { IdentityConstants.TwoFactorUserIdScheme, IdentityConstants.TwoFactorRememberMeScheme })
+        {
+            var cookie = cookies.Get(scheme).Cookie;
+            cookie.HttpOnly.Should().BeTrue(scheme);
+            cookie.SameSite.Should().Be(SameSiteMode.Lax, scheme);
+            cookie.SecurePolicy.Should().Be(expectedSecurePolicy, scheme);
+        }
+    }
+
+    [Fact]
+    public void The_two_factor_user_id_cookie_keeps_Identitys_short_five_minute_lifetime()
+    {
+        using var provider = IdentityServicesFactory.Build();
+
+        provider.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(IdentityConstants.TwoFactorUserIdScheme).ExpireTimeSpan.Should().Be(TimeSpan.FromMinutes(5));
+    }
+
+    [Fact]
+    public async Task Authenticator_token_provider_is_registered()
+    {
+        await using var provider = IdentityServicesFactory.Build();
+        using var scope = IdentityServicesFactory.CreateScopeWithHttpContext(provider);
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<RelioUser>>();
+
+        userManager.Options.Tokens.AuthenticatorTokenProvider.Should().Be(TokenOptions.DefaultAuthenticatorProvider);
+        userManager.Options.Tokens.ProviderMap.Should().ContainKey(TokenOptions.DefaultAuthenticatorProvider);
+        userManager.SupportsUserTwoFactor.Should().BeTrue();
+        userManager.SupportsUserAuthenticatorKey.Should().BeTrue();
+        userManager.SupportsUserTwoFactorRecoveryCodes.Should().BeTrue();
     }
 
     private static IConfiguration BuildConfiguration(Dictionary<string, string?> values) =>

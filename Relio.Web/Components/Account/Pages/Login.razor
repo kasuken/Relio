@@ -101,41 +101,18 @@
         _canRegister = (await RegistrationService.GetEligibilityAsync(null)).CanRegister;
     }
 
-    /// <summary>
-    /// Shown when the password was correct but an Administrator disabled the account. Only ever
-    /// reachable with the right password (see <see cref="RelioSignInManager"/>), so it reveals
-    /// nothing to someone guessing at accounts.
-    /// </summary>
-    private const string DisabledMessage =
-        "This account has been disabled. If you think that's a mistake, contact the person who runs this Relio instance.";
-
-    /// <summary>
-    /// Deliberately the same message whether the email does not exist, the password is wrong, or
-    /// (see <see cref="LoginAsync"/>) an unlocked account's password check fails - never let the
-    /// login form distinguish "no such account" from "wrong password" (no account enumeration).
-    /// </summary>
-    private const string InvalidCredentialsMessage = "Email or password is incorrect.";
-
-    /// <summary>
-    /// Deliberately vague about exactly when the lockout lifts or how many attempts were made -
-    /// just enough for a genuine user to understand what happened and that trying again shortly
-    /// will work, without handing an attacker a precise timer or attempt-count oracle.
-    /// </summary>
-    private const string LockedOutMessage =
-        "Too many failed sign-in attempts. Your account is temporarily locked - please try again in a few minutes.";
-
     private async Task LoginAsync()
     {
         // Looked up once, by email, so every branch below can log the user id (never the email -
         // see AGENTS.md "Privacy"/the gdpr-compliant skill) without a second round trip. A
         // not-found account still goes through the exact same error message as a wrong password
-        // (see InvalidCredentialsMessage) - only the log line differs, and even that never
+        // (see SignInMessages.InvalidCredentials) - only the log line differs, and even that never
         // includes the submitted email.
         var user = await UserManager.FindByEmailAsync(Input!.Email);
         if (user is null)
         {
             Logger.LogInformation("Sign-in failed: no account matches the submitted email.");
-            _errorMessage = InvalidCredentialsMessage;
+            _errorMessage = SignInMessages.InvalidCredentials;
             return;
         }
 
@@ -150,17 +127,37 @@
             return;
         }
 
-        if (result.IsLockedOut)
+        if (result.RequiresTwoFactor)
         {
-            Logger.LogWarning("User {UserId} is locked out after repeated failed sign-in attempts.", user.Id);
-            _errorMessage = LockedOutMessage;
+            // Issue #20. Identity has already written the short-lived "Identity.TwoFactorUserId"
+            // cookie; the second step reads the user from it, so nothing about the account travels
+            // in the URL. Only the (already validated) return URL and the remember-me choice are
+            // handed on - the second step validates the return URL again, as it comes back in a
+            // query string anyone can edit.
+            Logger.LogInformation("User {UserId} passed the password check; a two-factor code is required.", user.Id);
+            var target = NavigationManager.GetUriWithQueryParameters(
+                NavigationManager.ToAbsoluteUri("/Account/LoginWith2fa").ToString(),
+                new Dictionary<string, object?>
+                {
+                    ["returnUrl"] = ReturnUrlValidator.GetSafeReturnUrl(ReturnUrl, NavigationManager.BaseUri),
+                    ["rememberMe"] = Input.RememberMe,
+                });
+            NavigationManager.NavigateTo(target, forceLoad: true);
             return;
         }
 
+        if (result.IsLockedOut)
+        {
+            Logger.LogWarning("User {UserId} is locked out after repeated failed sign-in attempts.", user.Id);
+            _errorMessage = SignInMessages.LockedOut;
+            return;
+        }
+
+        // Before IsNotAllowed below: RelioSignInResult.Disabled is also "not allowed".
         if (result is RelioSignInResult { IsDisabled: true })
         {
             Logger.LogInformation("User {UserId} tried to sign in to a disabled account.", user.Id);
-            _errorMessage = DisabledMessage;
+            _errorMessage = SignInMessages.Disabled;
             return;
         }
 
@@ -172,7 +169,7 @@
         }
 
         Logger.LogInformation("User {UserId} submitted an incorrect password.", user.Id);
-        _errorMessage = InvalidCredentialsMessage;
+        _errorMessage = SignInMessages.InvalidCredentials;
     }
 
     private sealed class InputModel
