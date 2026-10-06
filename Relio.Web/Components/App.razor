@@ -19,10 +19,24 @@
 </head>
 
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="RenderModeForPage" />
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script src="@Assets["_content/MudBlazor/MudBlazor.min.js"]"></script>
 </body>
 
 </html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    // Pages marked [ExcludeFromInteractiveRouting] (the account pages) must render as plain static
+    // SSR so SignInManager/UserManager can write the auth cookie to the HTTP response. That only
+    // works if the router itself is not interactive for those requests: with an unconditional
+    // InteractiveServer render mode, the circuit that starts after the page loads can not find the
+    // excluded page in its route table and replaces it with the Not Found page. See the "Why static
+    // SSR" bullet of AGENTS.md "Accounts and authentication".
+    private IComponentRenderMode? RenderModeForPage =>
+        HttpContext.AcceptsInteractiveRouting() ? InteractiveServer : null;
+}

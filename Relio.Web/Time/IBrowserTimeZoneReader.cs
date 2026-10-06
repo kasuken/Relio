@@ -2,9 +2,10 @@ namespace Relio.Web.Time;
 
 /// <summary>
 /// Reads the signed-in browser's IANA time zone id (e.g. <c>"Europe/Rome"</c>) via
-/// <c>Intl.DateTimeFormat().resolvedOptions().timeZone</c>, so sign-up (#15) can default a new
-/// user's <c>Relio.Application.Time.IUserTimeZoneService</c> time zone to it instead of UTC. Web
-/// only - Application/Data services never depend on this; they always read the stored time zone.
+/// <c>Intl.DateTimeFormat().resolvedOptions().timeZone</c>, so account settings (#18) can suggest it as
+/// the user's <c>Relio.Application.Time.IUserTimeZoneService</c> time zone instead of UTC (sign-up, #15,
+/// reads the same value from a plain script instead - see Register.razor). Web only -
+/// Application/Data services never depend on this; they always read the stored time zone.
 /// </summary>
 public interface IBrowserTimeZoneReader
 {

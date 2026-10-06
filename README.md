@@ -80,6 +80,13 @@ self-hosted instance with no mail server gets out of the box. Set `Email:Provide
 environment variable, never in `appsettings*.json`) to require email confirmation and send real
 account emails, including password resets.
 
+Account settings live at `/settings` (also reachable from your email address in the app bar): set a
+display name and your time zone (the browser's is suggested when it differs from the saved one),
+change your password (every other signed-in device is signed out) and change your email address.
+Changing either asks for your current password. With email configured, a new address only takes
+effect once you follow the confirmation link sent to it; with `Email:Provider=None` there is no way
+to send that link, so the change applies immediately and the page says so.
+
 ### Run locally without SQL Server
 
 For a quick look at the app with no database to set up, run against the EF Core InMemory provider

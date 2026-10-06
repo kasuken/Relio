@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Relio.Data.IntegrationTests.Infrastructure;
+using Relio.Data.Identity;
 using Relio.Domain;
 
 namespace Relio.Data.IntegrationTests;
@@ -54,5 +55,30 @@ public sealed class DatabaseSchemaSqlServerTests(SqlServerDatabaseFixture fixtur
         var act = () => dbContext.SaveChangesAsync();
 
         await act.Should().NotThrowAsync();
+    }
+
+    [SqlServerFact]
+    public async Task Applying_the_real_migrations_adds_the_PendingEmail_column()
+    {
+        await using var dbContext = fixture.CreateDbContext();
+        var id = Guid.NewGuid().ToString();
+        dbContext.Users.Add(new RelioUser
+        {
+            Id = id,
+            UserName = $"{id}@example.com",
+            NormalizedUserName = $"{id}@EXAMPLE.COM",
+            Email = $"{id}@example.com",
+            NormalizedEmail = $"{id}@EXAMPLE.COM",
+            PendingEmail = "pending@example.com",
+        });
+        await dbContext.SaveChangesAsync();
+
+        await using var readContext = fixture.CreateDbContext();
+        var pending = await readContext.Users.AsNoTracking()
+            .Where(u => u.Id == id)
+            .Select(u => u.PendingEmail)
+            .SingleAsync();
+
+        pending.Should().Be("pending@example.com");
     }
 }

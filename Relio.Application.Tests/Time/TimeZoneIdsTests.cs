@@ -51,4 +51,37 @@ public class TimeZoneIdsTests
     {
         TimeZoneIds.Default.Should().Be("UTC");
     }
+
+    [Fact]
+    public void GetAvailableIds_includes_UTC()
+    {
+        TimeZoneIds.GetAvailableIds().Should().Contain("UTC");
+    }
+
+    [Fact]
+    public void GetAvailableIds_includes_common_IANA_zones()
+    {
+        // Deliberately zones that map one-to-one on both Windows (via the CLDR mapping) and
+        // Linux/macOS; not Europe/Rome, which a Windows machine only lists as Europe/Berlin - see
+        // GetAvailableIds's remarks.
+        TimeZoneIds.GetAvailableIds().Should().Contain(["America/New_York", "Asia/Tokyo"]);
+    }
+
+    [Fact]
+    public void GetAvailableIds_only_contains_ids_that_TryParse_accepts()
+    {
+        foreach (var id in TimeZoneIds.GetAvailableIds())
+        {
+            TimeZoneIds.TryParse(id, out _).Should().BeTrue($"'{id}' is offered in the picker, so it must be savable");
+        }
+    }
+
+    [Fact]
+    public void GetAvailableIds_is_sorted_and_distinct()
+    {
+        var ids = TimeZoneIds.GetAvailableIds();
+
+        ids.Should().OnlyHaveUniqueItems();
+        ids.Should().BeInAscendingOrder(StringComparer.Ordinal);
+    }
 }

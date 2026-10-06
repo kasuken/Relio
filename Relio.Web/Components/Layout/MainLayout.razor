@@ -23,9 +23,8 @@
                 <Authorized>
                     <form action="Account/Logout" method="post" class="rl-signout-form">
                         <AntiforgeryToken />
-                        <MudText Typo="Typo.body2" Class="mud-text-secondary mr-2" data-testid="signed-in-as">
-                            @context.User.Identity?.Name
-                        </MudText>
+                        <MudLink Href="/settings" Typo="Typo.body2" Class="mr-2" aria-label="Account settings"
+                                 data-testid="signed-in-as">@context.User.Identity?.Name</MudLink>
                         <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text" Size="Size.Small"
                                    data-testid="sign-out">
                             Sign out

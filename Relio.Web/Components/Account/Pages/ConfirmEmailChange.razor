@@ -1,0 +1,112 @@
+@page "/Account/ConfirmEmailChange"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+@using System.Text
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using Relio.Data.Identity
+
+@inject UserManager<RelioUser> UserManager
+@inject SignInManager<RelioUser> SignInManager
+@inject ILogger<ConfirmEmailChange> Logger
+
+<PageTitle>Confirm your new email - Relio</PageTitle>
+
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-4" data-testid="confirm-email-change-heading">@_heading</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-6" data-testid="confirm-email-change-message">@_message</MudText>
+@if (_succeeded && _signedInAsThisUser)
+{
+    <MudLink Href="/settings" data-testid="confirm-email-change-continue">Back to settings</MudLink>
+}
+else
+{
+    <MudLink Href="/Account/Login" data-testid="confirm-email-change-continue">Sign in</MudLink>
+}
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? UserId { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? Code { get; set; }
+
+    private string _heading = "Email not changed";
+
+    // Deliberately the same calm message for a missing parameter, a malformed code, an unknown
+    // user, no pending change, and an expired, used or superseded token - never let this page
+    // distinguish them (no account enumeration, same reasoning as ConfirmEmail.razor).
+    private string _message = "This email change link is invalid or has expired.";
+
+    private bool _succeeded;
+    private bool _signedInAsThisUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrEmpty(UserId) || string.IsNullOrEmpty(Code))
+        {
+            return;
+        }
+
+        var user = await UserManager.FindByIdAsync(UserId);
+        if (user is null || string.IsNullOrEmpty(user.PendingEmail))
+        {
+            return;
+        }
+
+        string decodedCode;
+        try
+        {
+            decodedCode = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(Code));
+        }
+        catch (FormatException)
+        {
+            return;
+        }
+
+        // The new address is read from the server-side PendingEmail, not from the link. A token is
+        // bound to the address it was generated for, so a link from an older request fails once a
+        // newer request overwrote PendingEmail; a used link fails because the security stamp
+        // rotated (and PendingEmail was cleared).
+        var oldEmail = user.Email;
+        var newEmail = user.PendingEmail;
+
+        var result = await UserManager.ChangeEmailAsync(user, newEmail, decodedCode);
+        if (!result.Succeeded)
+        {
+            Logger.LogInformation("Email change confirmation failed for user {UserId}.", user.Id);
+            return;
+        }
+
+        user.PendingEmail = null;
+        var keepsUserNameInSync = string.Equals(user.UserName, oldEmail, StringComparison.OrdinalIgnoreCase);
+
+        // SetUserNameAsync persists the cleared PendingEmail too (it saves the whole user).
+        var update = keepsUserNameInSync
+            ? await UserManager.SetUserNameAsync(user, newEmail)
+            : await UserManager.UpdateAsync(user);
+        if (!update.Succeeded)
+        {
+            Logger.LogWarning("Email change confirmation could not finish updating user {UserId}.", user.Id);
+            return;
+        }
+
+        // Only refresh the session when the link was opened in a browser signed in as this same
+        // user; anyone else (another browser, signed out) simply signs in with the new address.
+        _signedInAsThisUser = UserManager.GetUserId(HttpContext.User) == user.Id;
+        if (_signedInAsThisUser)
+        {
+            await SignInManager.RefreshSignInAsync(user);
+        }
+
+        Logger.LogInformation("User {UserId} confirmed an email change.", user.Id);
+
+        _succeeded = true;
+        _heading = "Email address changed";
+        _message = "Your email address has been changed.";
+    }
+}

@@ -1,10 +1,9 @@
 using System.Text.RegularExpressions;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using static Microsoft.Playwright.Assertions;
-using Relio.Data.Identity;
 using Relio.Web.E2ETests.Infrastructure;
+using static Relio.Web.E2ETests.Infrastructure.AccountTestHelpers;
 
 namespace Relio.Web.E2ETests;
 
@@ -241,94 +240,5 @@ public class PasswordResetTests(RelioAppFixture fixture)
         await page.GotoAsync("/Account/ForgotPassword");
         await page.Locator("[data-testid='forgot-password-email']").FillAsync(email);
         await page.Locator("[data-testid='forgot-password-submit']").ClickAsync();
-    }
-
-    private static async Task LoginAsync(IPage page, string email, string password)
-    {
-        await page.GotoAsync("/Account/Login");
-        await page.Locator("[data-testid='login-email']").FillAsync(email);
-        await page.Locator("[data-testid='login-password']").FillAsync(password);
-        await page.Locator("[data-testid='login-submit']").ClickAsync();
-    }
-
-    private static async Task SignOutAsync(IPage page)
-    {
-        await page.GotoAsync("/");
-        await page.Locator("html[data-app-ready='true']").WaitForAsync();
-        await page.Locator("[data-testid='sign-out']").ClickAsync();
-        await Expect(page).ToHaveURLAsync(new Regex("/Account/Login$"));
-    }
-
-    private static async Task RegisterAndConfirmAsync(IPage page, RelioWebAppFactory factory, string email, string password)
-    {
-        await page.GotoAsync("/Account/Register");
-        await page.Locator("[data-testid='register-email']").FillAsync(email);
-        await page.Locator("[data-testid='register-password']").FillAsync(password);
-        await page.Locator("[data-testid='register-confirm-password']").FillAsync(password);
-        await page.Locator("[data-testid='register-submit']").ClickAsync();
-        await page.Locator("[data-testid='register-confirmation-heading']").WaitForAsync();
-
-        string confirmationLink;
-        using (var scope = factory.CreateRealScope())
-        {
-            confirmationLink = scope.ServiceProvider.GetRequiredService<TestEmailSink>().LastConfirmationLink!;
-        }
-
-        await page.GotoAsync(confirmationLink);
-        await page.Locator("[data-testid='confirm-email-heading']").WaitForAsync();
-    }
-
-    /// <summary>
-    /// Builds a variant app with <c>Email:Provider=Smtp</c> (so registration requires
-    /// confirmation and password reset actually generates a link) and a <see cref="TestEmailSink"/>
-    /// in place of a real SMTP sender - the same approach <see cref="EmailConfirmationTests"/>
-    /// uses, with <see cref="RelioAppFixture"/>'s own remarks on why a fresh factory (not
-    /// <c>WithWebHostBuilder</c>) is required. <paramref name="extraEnvironment"/> lets a test
-    /// (e.g. the expired-link one) also override <c>Account:PasswordReset:*</c> for just this
-    /// instance.
-    /// </summary>
-    private static RelioWebAppFactory CreateSmtpFactory(
-        IReadOnlyDictionary<string, string?>? extraEnvironment = null)
-    {
-        var environment = new Dictionary<string, string?>
-        {
-            ["Email__Provider"] = "Smtp",
-            ["Email__Smtp__FromAddress"] = "relio@example.com",
-        };
-        if (extraEnvironment is not null)
-        {
-            foreach (var (key, value) in extraEnvironment)
-            {
-                environment[key] = value;
-            }
-        }
-
-        // See EmailConfirmationTests' matching comment: these must be environment variables set
-        // before this factory's own builder.Build() call runs, and are safe to mutate only
-        // because every test class in RelioAppCollection is serialized against the others.
-        foreach (var (key, value) in environment)
-        {
-            Environment.SetEnvironmentVariable(key, value);
-        }
-
-        try
-        {
-            var factory = new RelioWebAppFactory(configureTestServices: services =>
-            {
-                services.AddSingleton<TestEmailSink>();
-                services.AddScoped<IEmailSender<RelioUser>>(sp => sp.GetRequiredService<TestEmailSink>());
-            });
-
-            // Forces CreateHost to actually run while the environment variables above are set.
-            _ = factory.Services;
-            return factory;
-        }
-        finally
-        {
-            foreach (var key in environment.Keys)
-            {
-                Environment.SetEnvironmentVariable(key, null);
-            }
-        }
     }
 }

@@ -12,7 +12,21 @@ namespace Relio.Data.Identity;
 /// it, so Domain/Application never need to know Identity exists.
 /// </summary>
 /// <remarks>
-/// Intentionally minimal for #15: email + password only. Two-factor fields already exist on
-/// <see cref="IdentityUser"/> itself, so #20 needs no model change here.
+/// Email + password only (#15), plus <see cref="PendingEmail"/> for account settings (#18).
+/// Two-factor fields already exist on <see cref="IdentityUser"/> itself, so #20 needs no model
+/// change here. Product-facing profile data (display name, time zone) lives on
+/// <c>Relio.Domain.UserProfile</c> instead, not here.
 /// </remarks>
-public sealed class RelioUser : IdentityUser;
+public sealed class RelioUser : IdentityUser
+{
+    /// <summary>
+    /// The new email address awaiting confirmation after the user asked to change it in account
+    /// settings (#18), or <see langword="null"/> when no change is pending. Stored server-side so
+    /// the confirmation link only ever carries the user id and an opaque token - never an email
+    /// address (see the gdpr-compliant skill: no personal data in URLs). Cleared once the change
+    /// is confirmed. Overwritten by a newer request, which also invalidates the older link:
+    /// change-email tokens are bound to the address they were generated for.
+    /// </summary>
+    [PersonalData]
+    public string? PendingEmail { get; set; }
+}

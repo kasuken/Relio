@@ -13,13 +13,13 @@ namespace Relio.Web.E2ETests.Infrastructure;
 /// </summary>
 public sealed class TestEmailSink : IEmailSender<RelioUser>
 {
-    private readonly ConcurrentQueue<string> _confirmationLinks = new();
+    private readonly ConcurrentQueue<(string Recipient, string Link)> _confirmations = new();
     private readonly ConcurrentQueue<string> _passwordResetLinks = new();
 
     /// <inheritdoc />
     public Task SendConfirmationLinkAsync(RelioUser user, string email, string confirmationLink)
     {
-        _confirmationLinks.Enqueue(confirmationLink);
+        _confirmations.Enqueue((email, confirmationLink));
         return Task.CompletedTask;
     }
 
@@ -34,7 +34,16 @@ public sealed class TestEmailSink : IEmailSender<RelioUser>
     public Task SendPasswordResetCodeAsync(RelioUser user, string email, string resetCode) => Task.CompletedTask;
 
     /// <summary>The most recently captured confirmation link, or null if none was sent yet.</summary>
-    public string? LastConfirmationLink => _confirmationLinks.IsEmpty ? null : _confirmationLinks.Last();
+    public string? LastConfirmationLink => _confirmations.IsEmpty ? null : _confirmations.Last().Link;
+
+    /// <summary>
+    /// The address the most recent confirmation email (account confirmation, or an email change,
+    /// #18) was addressed to, or null if none was sent yet.
+    /// </summary>
+    public string? LastConfirmationRecipient => _confirmations.IsEmpty ? null : _confirmations.Last().Recipient;
+
+    /// <summary>How many confirmation emails have been sent so far.</summary>
+    public int ConfirmationEmailCount => _confirmations.Count;
 
     /// <summary>
     /// The most recently captured password reset link, or null if none was sent yet (issue #17) -

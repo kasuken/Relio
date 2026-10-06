@@ -22,6 +22,14 @@ public sealed class EmailOptions
     /// </summary>
     public string Provider { get; set; } = NoneProvider;
 
+    /// <summary>
+    /// Whether this instance can actually deliver email (<see cref="Provider"/> is
+    /// <see cref="SmtpProvider"/>, case-insensitively). Get-only, so configuration binding ignores it.
+    /// Pages use it to decide whether a flow that needs an emailed link (password reset, changing
+    /// the email address) is available.
+    /// </summary>
+    public bool CanSendEmail => string.Equals(Provider, SmtpProvider, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>SMTP settings, used only when <see cref="Provider"/> is <see cref="SmtpProvider"/>.</summary>
     public SmtpOptions Smtp { get; set; } = new();
 }

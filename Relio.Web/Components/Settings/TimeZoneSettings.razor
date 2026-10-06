@@ -1,0 +1,140 @@
+@* The "Time zone" section of /settings (issue #18). Interactive, because it uses JS interop to read
+   the browser's time zone (Relio.Web.Time.IBrowserTimeZoneReader) - something the static SSR
+   account pages cannot do. The browser's zone is only ever *suggested*; nothing is saved until
+   the user presses Save. See the "Dates and time zones" section of AGENTS.md. *@
+@using Relio.Application.Time
+@using Relio.Web.Time
+
+@inject IUserTimeZoneService TimeZoneService
+@inject IBrowserTimeZoneReader BrowserTimeZoneReader
+@inject ISnackbar Snackbar
+
+<MudAutocomplete T="string"
+                 @bind-Value="_selected"
+                 Label="Time zone"
+                 HelperText="Used for birthdays, reminders and dates you record."
+                 SearchFunc="SearchAsync"
+                 CoerceValue="true"
+                 ResetValueOnEmptyText="false"
+                 MaxItems="50"
+                 Error="@(_error is not null)"
+                 ErrorText="@_error"
+                 Variant="Variant.Outlined"
+                 Class="rl-settings-field" />
+
+@if (_browserSuggestion is not null)
+{
+    <MudAlert Severity="Severity.Info" Class="mt-3" data-testid="settings-timezone-browser-suggestion">
+        Your browser is set to @_browserSuggestion.
+        <MudButton Variant="Variant.Text"
+                   Size="Size.Small"
+                   Class="ml-2"
+                   OnClick="UseBrowserTimeZone"
+                   data-testid="settings-timezone-use-browser">
+            Use this time zone
+        </MudButton>
+    </MudAlert>
+}
+
+<MudButton Variant="Variant.Filled"
+           Color="Color.Primary"
+           Class="mt-3"
+           Disabled="_saving"
+           OnClick="SaveAsync"
+           data-testid="settings-timezone-save">
+    Save
+</MudButton>
+
+@code {
+    private string? _selected;
+    private string? _stored;
+    private string? _browserZone;
+    private string? _browserSuggestion;
+    private string? _error;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _stored = (await TimeZoneService.GetTimeZoneAsync()).Id;
+        _selected = _stored;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var browserZone = await BrowserTimeZoneReader.GetBrowserTimeZoneIdAsync();
+
+            // Only suggest what Relio can actually store, and only when it differs from the saved zone.
+            if (TimeZoneIds.TryParse(browserZone, out _))
+            {
+                _browserZone = browserZone;
+                UpdateSuggestion();
+                StateHasChanged();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // The circuit ended before the browser answered; nothing to suggest.
+        }
+        catch (JSException)
+        {
+            // The browser could not report a time zone; the list and typing still work.
+        }
+    }
+
+    private void UpdateSuggestion() =>
+        _browserSuggestion = _browserZone is not null
+            && !string.Equals(_browserZone, _stored, StringComparison.OrdinalIgnoreCase)
+                ? _browserZone
+                : null;
+
+    private void UseBrowserTimeZone() => _selected = _browserZone;
+
+    /// <summary>
+    /// Case-insensitive substring match where a space reads as "_", over the generated zone list
+    /// plus the saved and browser zones (which may not be in it - see
+    /// <see cref="TimeZoneIds.GetAvailableIds"/> for the Windows caveat).
+    /// </summary>
+    private Task<IEnumerable<string>> SearchAsync(string? value, CancellationToken cancellationToken)
+    {
+        IEnumerable<string> ids = TimeZoneIds.GetAvailableIds();
+        ids = ids.Concat(new[] { _stored, _browserZone }.OfType<string>()).Distinct(StringComparer.Ordinal);
+
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            var needle = value.Trim().Replace(' ', '_');
+            ids = ids.Where(id => id.Contains(needle, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return Task.FromResult<IEnumerable<string>>(ids.Order(StringComparer.Ordinal).ToList());
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+
+        try
+        {
+            await TimeZoneService.SetTimeZoneAsync(_selected ?? string.Empty);
+            _stored = TimeZoneIds.Parse(_selected!).Id;
+            _selected = _stored;
+            UpdateSuggestion();
+            Snackbar.Saved("Time zone saved");
+        }
+        catch (InvalidTimeZoneIdException)
+        {
+            _error = "Choose a time zone from the list, for example Europe/Rome.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

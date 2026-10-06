@@ -19,8 +19,9 @@ public sealed class SmtpEmailSender(IOptions<EmailOptions> options, ILogger<Smtp
     : IEmailSender<RelioUser>
 {
     /// <inheritdoc />
+    /// <remarks>Used both to confirm a new account (#15) and to confirm a changed email address (#18), so the wording stays neutral.</remarks>
     public Task SendConfirmationLinkAsync(RelioUser user, string email, string confirmationLink) =>
-        SendAsync(email, "Confirm your Relio account", BuildLinkBody("Confirm your account", confirmationLink));
+        SendAsync(email, "Confirm your email address for Relio", BuildLinkBody("Confirm your email address", confirmationLink));
 
     /// <inheritdoc />
     public Task SendPasswordResetLinkAsync(RelioUser user, string email, string resetLink) =>

@@ -116,8 +116,8 @@ time zone. Never call `DateTime.Now`/`DateTime.UtcNow`/`DateTime.Today` anywhere
 (Domain, Application, Data or Web) - always go through an injected `TimeProvider`, as
 `RelioDbContext` already does for audit timestamps.
 
-- `Relio.Domain.UserProfile` is the per-user settings row (`OwnerId`, `TimeZoneId`), following the
-  user-scoped data pattern above. One row per user, enforced by a unique index on `OwnerId`
+- `Relio.Domain.UserProfile` is the per-user settings row (`OwnerId`, `TimeZoneId`, and the optional
+  `DisplayName` added by #18), following the user-scoped data pattern above. One row per user, enforced by a unique index on `OwnerId`
   (`UserProfileConfiguration`). `TimeZoneId` defaults to `"UTC"` and is always a valid IANA id -
   nothing writes to it without going through `TimeZoneIds.Parse` first.
 - `Relio.Application.Time.TimeZoneIds` validates IANA time zone ids
@@ -125,6 +125,13 @@ time zone. Never call `DateTime.Now`/`DateTime.UtcNow`/`DateTime.Today` anywhere
   Windows, so no Windows-id mapping is needed). Use `TryParse` on read paths that should fall back;
   use `Parse` (throws `InvalidTimeZoneIdException`) on write paths - an unknown id must be
   rejected, never silently coerced to UTC.
+  `TimeZoneIds.GetAvailableIds()` is the (cached, sorted, distinct) list a time zone picker offers.
+  On Linux/macOS it is every IANA zone the system knows; on Windows it is one IANA id per Windows
+  zone (`TryConvertWindowsIdToIanaId`, so `Europe/Berlin` stands in for "W. Europe", and
+  `Europe/Rome` is not listed). It is a convenience, never the set of valid ids: `TryParse` stays
+  the source of truth, so a picker must also accept the stored zone, the browser's zone and typed
+  values (`TimeZoneSettings` does) - and tests must never assert that a specific non-universal zone
+  is in the list.
 - `Relio.Application.Time.UserCalendar` holds pure, synchronous helpers - `ToUserDate` (UTC instant
   → calendar date in a given zone), `Today` (reads a `TimeProvider`), `IsDueToday`, `IsOverdue`, and
   `NextOccurrence` (next birthday/anniversary on or after a date). They take a `TimeZoneInfo`
@@ -140,8 +147,9 @@ time zone. Never call `DateTime.Now`/`DateTime.UtcNow`/`DateTime.Today` anywhere
   `UserCalendar.NextOccurrence`.
 - `Relio.Web.Time.IBrowserTimeZoneReader`/`BrowserTimeZoneReader` read the browser's IANA time zone
   id via a self-hosted JS module (`wwwroot/js/timezone.js`, `Intl.DateTimeFormat().resolvedOptions().timeZone` -
-  no third-party script), for interactive components (e.g. account settings, #18) to default to it
-  instead of UTC. Web-only; Application/Data services never depend on it. Sign-up (#15) cannot use
+  no third-party script), for interactive components. `Settings/TimeZoneSettings.razor` (#18) uses
+  it to *suggest* the browser's zone when it differs from the saved one; the suggestion is never
+  saved without the user pressing Save. Web-only; Application/Data services never depend on it. Sign-up (#15) cannot use
   this - its Register page is static SSR (see "Accounts and authentication" below) with no live
   circuit for JS interop - so it reads the same `timezone.js` logic from a plain, synchronous
   `<script>` that fills a hidden form field instead; see
@@ -156,8 +164,9 @@ time zone. Never call `DateTime.Now`/`DateTime.UtcNow`/`DateTime.Today` anywhere
 Established by issue #15, under epic #14. ASP.NET Core Identity, local accounts only - no social
 login, ever (epic #14's guardrail). Issue #16 hardened the minimal login/logout #15 shipped into
 the real thing (lockout, remember-me, open-redirect protection, circuit revalidation - see its own
-bullet below). Issue #17 added password reset by email (see its own bullet below). Later issues
-extend this further without restructuring it: #18 (account settings), #19 (first-user admin +
+bullet below). Issue #17 added password reset by email (see its own bullet below). Issue #18 added account
+settings (display name, time zone, change email, change password - see "Account settings" below).
+Later issues extend this further without restructuring it: #19 (first-user admin +
 `Registration:Mode`), #20 (2FA - `RelioUser` already has the columns it needs, from `IdentityUser`).
 
 - **The user entity** is `Relio.Data.Identity.RelioUser : IdentityUser`, in `Relio.Data` (not
@@ -166,6 +175,8 @@ extend this further without restructuring it: #18 (account settings), #19 (first
   nothing takes a navigation property to it. `RelioDbContext` is an `IdentityDbContext<RelioUser>`
   (migration `AddIdentity`); audit-timestamp stamping in `SaveChanges`/`SaveChangesAsync` is
   unaffected, since Identity's own entities are not `IOwnedEntity`.
+  `RelioUser.PendingEmail` (migration `AddRelioUserPendingEmail`, [PersonalData], max 256) holds
+  an email address awaiting confirmation (#18); see "Account settings" below.
 - **Identity options live in one place**: `Relio.Web.Identity.ServiceCollectionExtensions.AddRelioIdentity`
   - password policy (length 12+, mixed case, digit, symbol - length over complexity per NIST SP
   800-63B, with complexity rules added for defence in depth, given this stores private
@@ -211,18 +222,29 @@ extend this further without restructuring it: #18 (account settings), #19 (first
     open when a session was revoked (signed out elsewhere, password changed) would stay "signed
     in" until the circuit itself ended, no matter how long that took.
 - **Account pages** live in `Relio.Web/Components/Account/Pages` (`Register.razor`, `Login.razor`,
-  `RegisterConfirmation.razor`, `ConfirmEmail.razor`, `AccessDenied.razor`), with shared
+  `RegisterConfirmation.razor`, `ConfirmEmail.razor`, `AccessDenied.razor`, the reset pages,
+  `ConfirmEmailChange.razor`, and the signed-in `Pages/Manage/ChangePassword.razor` and
+  `Pages/Manage/Email.razor` - the Manage pages are `[Authorize]`, not `[AllowAnonymous]`), with shared
   infrastructure in `Relio.Web/Components/Account` (`IdentityComponentsEndpointRouteBuilderExtensions`
   maps the `POST /Account/Logout` minimal API endpoint - logout, like register/login, must write
   directly to the HTTP response to clear the auth cookie) and `Components/Account/Shared`
-  (`AccountLayout`, `RedirectToLogin`). Add new account pages (#17's reset, #18's settings) to this
-  same folder.
-- **Why static SSR**: `App.razor`'s `<Routes @rendermode="InteractiveServer" />` makes every routed
-  page interactive by default, but `SignInManager`/`UserManager` need to write the auth cookie
-  directly to the HTTP response of the request that is actually submitting the form - something an
-  interactive Blazor Server circuit (a SignalR connection, not a request/response pair) cannot do.
-  Every account page carries `@attribute [ExcludeFromInteractiveRouting]` (plus `[AllowAnonymous]`)
-  to force static SSR regardless of that ambient render mode.
+  (`AccountLayout`, `RedirectToLogin`). Add new account pages to this same folder
+  (`Pages/Manage` for ones that need a signed-in user).
+- **Why static SSR**: `SignInManager`/`UserManager` need to write the auth cookie directly to the
+  HTTP response of the request that is actually submitting the form - something an interactive
+  Blazor Server circuit (a SignalR connection, not a request/response pair) cannot do. Every account
+  page therefore carries `@attribute [ExcludeFromInteractiveRouting]` (plus `[AllowAnonymous]`, or
+  `[Authorize]` for the signed-in `Manage` pages). That attribute only works because `App.razor`
+  picks the `<Routes>` render mode per request - `InteractiveServer` when
+  `HttpContext.AcceptsInteractiveRouting()`, otherwise none (plain static SSR). With an
+  unconditional `InteractiveServer` mode the circuit that starts after an excluded page loads cannot
+  find it in the interactive route table and replaces it with the Not Found page (issue #18 hit
+  this on the first signed-in static page; earlier account pages were only spared because their
+  scripts never loaded for anonymous visitors - see "Static assets" below).
+- **Static assets and anonymous pages**: `MapStaticAssets()` is currently subject to the fallback
+  authorization policy, so an anonymous visitor's requests for the CSS/JS bundles are redirected to
+  the login page. Signed-in pages are unaffected; do not rely on `blazor.web.js` being present on
+  `/Account/Login` or `/Account/Register`.
 - **MudBlazor in static SSR forms**: MudBlazor's input components (`MudTextField`, etc.) only post
   their value back to the server when a *live circuit* is driving their two-way binding - on a
   static SSR page they render with no `name` attribute at all, so a real form post arrives with the
@@ -307,6 +329,48 @@ extend this further without restructuring it: #18 (account settings), #19 (first
     stamp rotation above also signs out every other active session, at its next
     `RelioRevalidatingAuthenticationStateProvider` check (within 30 minutes - see "Circuit
     revalidation" above).
+- **Account settings (issue #18)**: `/settings` (`Components/Pages/Settings.razor`) is an interactive
+  hub made of small components in `Components/Settings/` - `DisplayNameSettings`,
+  `TimeZoneSettings`, `SignInSecuritySettings` - plus a disabled "Reminder email preferences" button
+  (`TODO(#40)`, enabled once notification preferences exist) and the existing appearance control.
+  Anything that has to write the auth cookie lives on a **static SSR** page instead, for the reason
+  under "Why static SSR" above: `Pages/Manage/ChangePassword.razor` and `Pages/Manage/Email.razor`
+  (`[Authorize]` + `[ExcludeFromInteractiveRouting]`, plain `<input name="Input.X">` fields,
+  `AccountLayout`) and the anonymous `ConfirmEmailChange.razor`. The hub links to them with plain
+  `Href`s - the interactive router answers a click on an excluded page with a full page load
+  (covered by `AccountSettingsTests`). Don't add a drawer entry: the shell
+  keeps its five routes (`NavMenuTests`); the signed-in email in the app bar links to `/settings`.
+  - **Display name** lives on `UserProfile.DisplayName` (nullable, `DisplayNameMaxLength` = 100),
+    read/written through `Relio.Application.Profile.IUserProfileService` (implemented in
+    `Relio.Data.Profile.UserProfileService`, same user-scoped pattern as `UserTimeZoneService`; it
+    trims, treats whitespace as "cleared", rejects longer values with `ArgumentException` before
+    touching the database, and creates the profile with the default time zone if missing). It is
+    deliberately *not* a column on `RelioUser`: it is product profile data, and Domain/Application
+    never see Identity.
+  - **Change password**: `UserManager.ChangePasswordAsync` rotates the security stamp, which signs
+    out every other session at its next validation (the application cookie's
+    `SecurityStampValidatorOptions.ValidationInterval`, 30 minutes by default, and the circuit
+    revalidation above). The session that changed it would be signed out too, so the page calls
+    `SignInManager.RefreshSignInAsync(user)` right after - always do this after any call that rotates
+    the stamp for the signed-in user (`ChangePasswordAsync`, `SetEmailAsync`, `SetUserNameAsync`,
+    `ChangeEmailAsync`). A wrong current password and a policy failure are reported separately and
+    never reveal anything about other accounts.
+  - **Change email** always requires the current password. `Email:Provider=Smtp`
+    (`EmailOptions.CanSendEmail`): the new address is stored as `RelioUser.PendingEmail` (so the link
+    carries only `userId` and an opaque change-email token, never an email address - see the
+    gdpr-compliant skill) and sent through `IEmailSender<RelioUser>.SendConfirmationLinkAsync`, which
+    is why `SmtpEmailSender`'s confirmation wording is neutral. `ConfirmEmailChange.razor` reads the
+    new address from `PendingEmail`, calls `ChangeEmailAsync` (token bound to that address and the
+    security stamp - so the link is **single use**, and a **newer request overwrites `PendingEmail`
+    and invalidates the older link**), clears `PendingEmail`, keeps `UserName` equal to the email,
+    and refreshes the session only when the browser is signed in as that same user. An address that
+    is already registered gets the identical "we've sent a link" response and no email (the same
+    token work is done and discarded), so it cannot be used to enumerate accounts. Invalid, expired,
+    used and superseded links all show the same message. `Email:Provider=None` (the default):
+    there is nothing to send, so the change **applies immediately** (`SetEmailAsync` +
+    `SetUserNameAsync`) and the page says so up front; a taken address is rejected plainly, as
+    registration already does. Notifying the old address is a follow-up.
+  - Log user ids only, never email addresses or links (gdpr-compliant skill).
 - **Demo data**: `Relio.Data.Seeding.DemoDataSeeder` creates a `demo@relio.local` account (test/demo
   password only, see its XML docs) with realistic sample people (one archived, one with a Feb 29
   birthday) and a non-UTC time zone, writing directly through `RelioDbContext` rather than through
@@ -329,6 +393,16 @@ extend this further without restructuring it: #18 (account settings), #19 (first
   sign-in on purpose (wrong password, lockout) - the demo user is shared across the whole
   collection, and locking it out (even temporarily) would make every other test that signs in as it
   flaky.
+  Tests that change account state (password, email, time zone - `AccountSettingsTests`,
+  `ChangePasswordTests`, `ChangeEmailTests`) also register a fresh `...@example.com` user and never
+  touch the demo user; their shared helpers live in `Infrastructure/AccountTestHelpers.cs`
+  (`RegisterAsync`, `LoginAsync`, `SignOutAsync`, `CreateSmtpFactory`, `CreateFactory`, `GetUserAsync`).
+  `TestEmailSink` records each confirmation email's recipient as well as its link. To prove another
+  session is signed out, use a variant factory that sets `SecurityStampValidatorOptions.ValidationInterval`
+  to `TimeSpan.Zero` through `configureTestServices` (the default is 30 minutes). On static SSR pages
+  navigate with `page.GotoAsync` after asserting the link's `href` rather than clicking links
+  (Blazor's enhanced navigation races Playwright's actionability checks there), and wait on a
+  `data-testid` locator - static pages never set `data-app-ready`.
 
 ## End-to-end tests
 
