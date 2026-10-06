@@ -16,7 +16,8 @@ namespace Relio.Data.Identity;
 /// <c>CountRecoveryCodesAsync</c> go through tracking queries (<c>FindAsync</c> returns whatever is
 /// already tracked), so a circuit that had read the status once would keep reporting it after the
 /// static account pages (a different request, a different context) changed it. Plain
-/// <c>AsNoTracking</c> queries always see the database.
+/// <c>AsNoTracking</c> queries always see the database. Like every data service it runs in the
+/// context's <see cref="Concurrency.DatabaseLane"/>, so it can load beside its sibling settings sections.
 /// </para>
 /// <para>
 /// <b>Reading Identity's token rows.</b> Identity's user store keeps the recovery codes as one

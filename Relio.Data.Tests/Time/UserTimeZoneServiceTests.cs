@@ -132,6 +132,39 @@ public class UserTimeZoneServiceTests
         profileForA.TimeZoneId.Should().Be("Pacific/Pago_Pago");
     }
 
+    [Fact]
+    public async Task SetTimeZoneAsync_leaves_nothing_tracked()
+    {
+        await using var dbContext = CreateDbContext();
+        var service = CreateService(dbContext, UserA, new FakeTimeProvider());
+
+        await service.SetTimeZoneAsync("Europe/Rome");
+        dbContext.ChangeTracker.Entries().Should().BeEmpty("creating the profile clears the tracker");
+
+        await service.SetTimeZoneAsync("Pacific/Pago_Pago");
+        dbContext.ChangeTracker.Entries().Should().BeEmpty("updating the profile clears the tracker");
+    }
+
+    [Fact]
+    public async Task A_failed_save_does_not_make_the_next_save_insert_the_profile_again()
+    {
+        var options = new DbContextOptionsBuilder<RelioDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(new FailOnceSaveChangesInterceptor())
+            .Options;
+        await using var dbContext = new RelioDbContext(options, TimeProvider.System);
+        var service = CreateService(dbContext, UserA, new FakeTimeProvider());
+
+        var act = () => service.SetTimeZoneAsync("Europe/Rome");
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*simulated*");
+        dbContext.ChangeTracker.Entries().Should().BeEmpty();
+
+        await service.SetTimeZoneAsync("Pacific/Pago_Pago");
+
+        (await dbContext.UserProfiles.AsNoTracking().Where(p => p.OwnerId == UserA).ToListAsync())
+            .Should().ContainSingle().Which.TimeZoneId.Should().Be("Pacific/Pago_Pago");
+    }
+
     private static RelioDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<RelioDbContext>()

@@ -223,6 +223,20 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Settings (`/settings`), and the administration page when sign-up is invitation-only, failed on SQL
+  Server with EF Core's "A second operation was started on this context instance before a previous
+  operation completed", both when the page was first rendered and again once it became interactive.
+  The page's sections load their data side by side, Blazor starts the next section's load while the
+  previous one is still waiting for the database, and every component on a page shares one
+  `DbContext`. Every Relio data service now runs one database operation at a time per `DbContext`
+  (a "database lane" that `AddRelioData` applies to each service), so loads and saves started close
+  together queue instead of colliding. This also covers the people pages and pages still to come. It
+  went unnoticed because the end-to-end tests use the InMemory provider, whose queries finish
+  synchronously and never overlap. New SQL Server regression tests start several services' reads and
+  saves together on one context, and an end-to-end test loads the settings, administration and
+  add-person pages against SQL Server. Saving a display name or time zone now also clears the change
+  tracker afterwards, like every other write on a circuit's long-lived `DbContext`. See "One
+  database operation at a time" in AGENTS.md.
 - The app bar's appearance (System/Light/Dark) menu never opened when actually clicked in a
   browser: `ThemeModeMenu.razor` wrapped a `MudIconButton` in `MudMenu`'s `ActivatorContent`, and
   that two-element activator (a wrapping `div` plus an independently-interactive button) did not

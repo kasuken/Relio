@@ -44,19 +44,29 @@ public sealed class UserTimeZoneService(RelioDbContext dbContext, ICurrentUser c
         var timeZone = TimeZoneIds.Parse(ianaTimeZoneId);
         var ownerId = currentUser.RequireUserId();
 
-        var profile = await dbContext.UserProfiles
-            .FirstOrDefaultAsync(p => p.OwnerId == ownerId, cancellationToken);
-
-        if (profile is null)
+        // The scoped context lives as long as a Blazor circuit, so a tracked profile (or an Added
+        // one left behind by a failed save, which the next save would insert again and hit the
+        // unique OwnerId index) must never outlive the call - see PeopleService's remarks.
+        try
         {
-            dbContext.UserProfiles.Add(new UserProfile { OwnerId = ownerId, TimeZoneId = timeZone.Id });
-        }
-        else
-        {
-            profile.TimeZoneId = timeZone.Id;
-        }
+            var profile = await dbContext.UserProfiles
+                .FirstOrDefaultAsync(p => p.OwnerId == ownerId, cancellationToken);
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+            if (profile is null)
+            {
+                dbContext.UserProfiles.Add(new UserProfile { OwnerId = ownerId, TimeZoneId = timeZone.Id });
+            }
+            else
+            {
+                profile.TimeZoneId = timeZone.Id;
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        finally
+        {
+            dbContext.ChangeTracker.Clear();
+        }
     }
 
     /// <inheritdoc />

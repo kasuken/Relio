@@ -26,4 +26,11 @@
     <ProjectReference Include="..\Relio.Web\Relio.Web.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- SqlServerPageLoadTests skips itself without a SQL Server instance, exactly like
+         Relio.Data.IntegrationTests (see SqlServerFactAttribute's remarks); linked, not copied. -->
+    <Compile Include="..\Relio.Data.IntegrationTests\Infrastructure\SqlServerFactAttribute.cs" Link="Infrastructure\SqlServerFactAttribute.cs" />
+    <Compile Include="..\Relio.Data.IntegrationTests\Infrastructure\SqlServerTestEnvironment.cs" Link="Infrastructure\SqlServerTestEnvironment.cs" />
+  </ItemGroup>
+
 </Project>

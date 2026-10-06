@@ -6,6 +6,7 @@ using Relio.Application.Accounts;
 using Relio.Application.Administration;
 using Relio.Application.People;
 using Relio.Data.Administration;
+using Relio.Data.Concurrency;
 using Relio.Data.Identity;
 using Relio.Application.Profile;
 using Relio.Application.Time;
@@ -88,19 +89,19 @@ public static class ServiceCollectionExtensions
         // timestamps.
         services.TryAddSingleton(TimeProvider.System);
 
-        services.AddScoped<IPeopleService, PeopleService>();
-        services.AddScoped<IRelationshipTypeService, RelationshipTypeService>();
-        services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
-        services.AddScoped<IUserProfileService, UserProfileService>();
-        services.AddScoped<ITwoFactorStatusService, TwoFactorStatusService>();
+        AddDataService<IPeopleService, PeopleService>(services);
+        AddDataService<IRelationshipTypeService, RelationshipTypeService>(services);
+        AddDataService<IUserTimeZoneService, UserTimeZoneService>(services);
+        AddDataService<IUserProfileService, UserProfileService>(services);
+        AddDataService<ITwoFactorStatusService, TwoFactorStatusService>(services);
 
         // Self-hosted administration (issue #19). RegistrationLock is a singleton on purpose: it
         // serializes registrations process-wide (see AccountRegistrationService's remarks). Both
         // services depend on UserManager<RelioUser>, registered by Relio.Web's AddRelioIdentity, and
         // on IOptions<RegistrationOptions>, which AddRelioIdentity also configures (fail-fast parsing).
         services.AddSingleton<RegistrationLock>();
-        services.AddScoped<IAccountRegistrationService, AccountRegistrationService>();
-        services.AddScoped<IUserAdministrationService, UserAdministrationService>();
+        AddDataService<IAccountRegistrationService, AccountRegistrationService>(services);
+        AddDataService<IUserAdministrationService, UserAdministrationService>(services);
         services.Configure<AdministrationOptions>(configuration.GetSection(AdministrationOptions.SectionName));
         services.AddScoped<AdministratorBootstrapper>();
 
@@ -111,6 +112,25 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DemoDataSeeder>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Registers a data service (anything that uses <see cref="RelioDbContext"/> or Identity's
+    /// <c>UserManager</c>) so every call runs in its context's <see cref="DatabaseLane"/>. Every
+    /// data service goes through this, never a plain <c>AddScoped</c> (<c>DataServiceRegistrationTests</c>
+    /// enforces it). See "One database operation at a time" in AGENTS.md.
+    /// </summary>
+    private static void AddDataService<TService, TImplementation>(IServiceCollection services)
+        where TService : class
+        where TImplementation : class, TService
+    {
+        // Fails at startup, not on first call, if the interface has a member the lane cannot queue.
+        DatabaseLaneProxy<TService>.ThrowIfUnsupported();
+
+        var create = ActivatorUtilities.CreateFactory<TImplementation>(Type.EmptyTypes);
+        services.AddScoped<TService>(provider => DatabaseLaneProxy<TService>.Create(
+            create(provider, null),
+            provider.GetRequiredService<RelioDbContext>().Lane));
     }
 
     private static void AddSqlServerDatabase(IServiceCollection services, IConfiguration configuration)
