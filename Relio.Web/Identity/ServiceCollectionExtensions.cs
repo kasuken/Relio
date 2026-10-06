@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
+using Relio.Application.Administration;
 using Relio.Data;
 using Relio.Data.Identity;
 using Relio.Web.Email;
@@ -21,8 +22,11 @@ namespace Relio.Web.Identity;
 /// instead of sharing email confirmation's "Default" one, so
 /// <see cref="AccountOptions.PasswordReset"/>'s <c>TokenLifespan</c> can be configured
 /// independently.</item>
-/// <item>#19 (first-user admin + <c>Registration:Mode</c>) adds a role and gates registration
-/// without touching password/email policy.</item>
+/// <item>#19 (first-user admin + <c>Registration:Mode</c>) adds the Administrator role
+/// (<c>AddRoles</c>), the <see cref="RelioPolicies.Administrator"/> policy, a custom
+/// <see cref="RelioSignInManager"/> that refuses disabled accounts, the eagerly validated
+/// <see cref="BuildRegistrationOptions"/>, and the configurable session validation interval
+/// (<see cref="AccountSessionOptions"/>) - without touching password/email policy.</item>
 /// <item>#20 (2FA) turns on <c>IdentityOptions.Tokens</c>/<c>SignIn.RequireConfirmedPhoneNumber</c>-style
 /// options and a new login step; <see cref="RelioUser"/> already has the two-factor columns it
 /// needs, from <see cref="IdentityUser"/>.</item>
@@ -61,6 +65,16 @@ public static class ServiceCollectionExtensions
         var accountOptions = BuildAccountOptions(configuration);
         services.Configure<AccountOptions>(configuration.GetSection(AccountOptions.SectionName));
 
+        // Issue #19: parsed eagerly so a typo in Registration:Mode stops the app at startup (like
+        // an unknown Database:Provider) instead of silently leaving sign-up open. Configured from
+        // the already-validated values - not Configure(section), which would re-parse the raw text.
+        var registrationOptions = BuildRegistrationOptions(configuration);
+        services.Configure<RegistrationOptions>(options =>
+        {
+            options.Mode = registrationOptions.Mode;
+            options.InvitationLifetime = registrationOptions.InvitationLifetime;
+        });
+
         services.AddAuthentication(IdentityConstants.ApplicationScheme)
             .AddIdentityCookies();
 
@@ -69,6 +83,12 @@ public static class ServiceCollectionExtensions
             options.FallbackPolicy = new AuthorizationPolicyBuilder()
                 .RequireAuthenticatedUser()
                 .Build();
+
+            // Issue #19. A UI/endpoint gate; IUserAdministrationService re-checks against the
+            // database on every call, since a role claim only refreshes at sign-in.
+            options.AddPolicy(RelioPolicies.Administrator, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireRole(RelioRoles.Administrator));
         });
 
         services.AddIdentityCore<RelioUser>(options =>
@@ -106,9 +126,18 @@ public static class ServiceCollectionExtensions
                     new TokenProviderDescriptor(typeof(PasswordResetTokenProvider<RelioUser>));
                 options.Tokens.PasswordResetTokenProvider = PasswordResetTokenProviderName;
             })
+            // Before AddEntityFrameworkStores: with no roles registered it wires up a user-only
+            // store, and any role call (AddToRoleAsync, IsInRoleAsync) throws NotSupportedException.
+            .AddRoles<IdentityRole>()
             .AddEntityFrameworkStores<RelioDbContext>()
-            .AddSignInManager()
+            .AddSignInManager<RelioSignInManager>()
             .AddDefaultTokenProviders();
+
+        // Issue #19: one knob for how quickly a revoked session (password changed, signed out
+        // everywhere, account disabled) actually ends. The circuit revalidation reads the same
+        // value from AccountOptions.
+        services.Configure<SecurityStampValidatorOptions>(options =>
+            options.ValidationInterval = accountOptions.Session.ValidationInterval);
 
         services.AddTransient<PasswordResetTokenProvider<RelioUser>>();
         services.Configure<PasswordResetTokenProviderOptions>(options =>
@@ -178,4 +207,57 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static AccountOptions BuildAccountOptions(IConfiguration configuration) =>
         configuration.GetSection(AccountOptions.SectionName).Get<AccountOptions>() ?? new AccountOptions();
+
+    /// <summary>
+    /// Reads <c>Registration:Mode</c> and <c>Registration:InvitationLifetime</c> (issue #19) into a
+    /// <see cref="RegistrationOptions"/>. A missing or blank mode is <see cref="RegistrationMode.Open"/>
+    /// (what Relio did before sign-up control existed); names are case-insensitive. Anything else -
+    /// an unknown name, a number, or an undefined value - throws, so a misspelt
+    /// <c>InviteOnyl</c> can never quietly leave the instance open. The invitation lifetime must be
+    /// greater than zero.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The mode or lifetime is not valid.</exception>
+    public static RegistrationOptions BuildRegistrationOptions(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var options = new RegistrationOptions();
+
+        var rawMode = configuration[$"{RegistrationOptions.SectionName}:Mode"];
+        if (!string.IsNullOrWhiteSpace(rawMode))
+        {
+            var candidate = rawMode.Trim();
+
+            // Enum.TryParse accepts numeric strings ("1") and any number for an undefined value
+            // ("99"); only the names are a supported spelling, so reject everything else.
+            if (candidate.All(char.IsLetter) && Enum.TryParse<RegistrationMode>(candidate, ignoreCase: true, out var mode)
+                && Enum.IsDefined(mode))
+            {
+                options.Mode = mode;
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    $"Unknown '{RegistrationOptions.SectionName}:Mode' value '{rawMode}'. Supported values are " +
+                    $"'{nameof(RegistrationMode.Open)}' (the default), '{nameof(RegistrationMode.InviteOnly)}' " +
+                    $"and '{nameof(RegistrationMode.Closed)}'.");
+            }
+        }
+
+        var rawLifetime = configuration[$"{RegistrationOptions.SectionName}:InvitationLifetime"];
+        if (!string.IsNullOrWhiteSpace(rawLifetime))
+        {
+            if (!TimeSpan.TryParse(rawLifetime, System.Globalization.CultureInfo.InvariantCulture, out var lifetime)
+                || lifetime <= TimeSpan.Zero)
+            {
+                throw new InvalidOperationException(
+                    $"Invalid '{RegistrationOptions.SectionName}:InvitationLifetime' value '{rawLifetime}'. " +
+                    "It must be a time span greater than zero, for example '7.00:00:00' for 7 days.");
+            }
+
+            options.InvitationLifetime = lifetime;
+        }
+
+        return options;
+    }
 }

@@ -7,4 +7,11 @@
     <MudNavLink Href="/reminders" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.NotificationsNone">Reminders</MudNavLink>
     <MudNavLink Href="/difficult-moments" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Thunderstorm">Difficult moments</MudNavLink>
     <MudNavLink Href="/settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Settings">Settings</MudNavLink>
+    @* Instance administration (#19): only administrators see it. A UI gate - the page and
+       IUserAdministrationService each enforce the role themselves. *@
+    <AuthorizeView Policy="@RelioPolicies.Administrator">
+        <Authorized>
+            <MudNavLink Href="/admin/users" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.AdminPanelSettings">Administration</MudNavLink>
+        </Authorized>
+    </AuthorizeView>
 </MudNavMenu>

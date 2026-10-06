@@ -1,0 +1,171 @@
+@* The "Invitations" section of /admin/users (issue #19), shown only when Registration:Mode is
+   InviteOnly. Invitations are links the administrator sends themselves: Relio shows a new link
+   exactly once (only its hash is stored) and never puts the invited email address in it. *@
+@using Relio.Application.Time
+@using Relio.Web.Components.Shared
+@using Relio.Web.Time
+
+@inject IUserAdministrationService AdminService
+@inject IUserTimeZoneService TimeZoneService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-4">
+    Invite someone by entering their email address. You get a link to send them yourself - Relio doesn't send it.
+</MudText>
+
+<div class="d-flex flex-wrap align-start gap-3 mb-4">
+    <MudTextField T="string"
+                  @bind-Value="_email"
+                  Label="Email address"
+                  InputType="InputType.Email"
+                  Variant="Variant.Outlined"
+                  Immediate="true"
+                  Error="@(_error is not null)"
+                  ErrorText="@_error"
+                  Class="rl-settings-field" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2"
+               Disabled="_creating" OnClick="CreateAsync"
+               data-testid="admin-invite-submit">Create invitation</MudButton>
+</div>
+
+@if (_created is not null)
+{
+    <MudAlert Severity="Severity.Success" Class="mb-4" data-testid="admin-invite-created">
+        Send this link to @_created.Email. It works once and expires on @FormatDate(_created.ExpiresAtUtc). Relio won't show it again.
+        <code class="rl-invite-link mt-2" data-testid="admin-invite-link">@_link</code>
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" Class="mt-2"
+                   OnClick="CopyAsync" data-testid="admin-invite-copy">Copy link</MudButton>
+    </MudAlert>
+}
+
+@if (_invitations is { Count: > 0 })
+{
+    <MudText Typo="Typo.h4" HtmlTag="h3" Class="mb-1">Waiting to be used</MudText>
+    <ul class="rl-admin-list" data-testid="admin-invitations">
+        @foreach (var invitation in _invitations)
+        {
+            <li>
+                <span>
+                    <span data-testid="admin-invitation-email">@invitation.Email</span>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary" HtmlTag="span">
+                        &nbsp;Expires @FormatDate(invitation.ExpiresAtUtc)
+                    </MudText>
+                </span>
+                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary"
+                           aria-label="@($"Revoke the invitation for {invitation.Email}")"
+                           OnClick="() => RevokeAsync(invitation)"
+                           data-testid="admin-invitation-revoke">Revoke</MudButton>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private string? _email;
+    private string? _error;
+    private bool _creating;
+    private CreatedInvitation? _created;
+    private string? _link;
+    private IReadOnlyList<InvitationSummary>? _invitations;
+    private TimeZoneInfo _timeZone = TimeZoneInfo.Utc;
+    private DateOnly _today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _timeZone = await TimeZoneService.GetTimeZoneAsync();
+            _today = await TimeZoneService.GetTodayAsync();
+            _invitations = await AdminService.ListPendingInvitationsAsync();
+        }
+        catch (AdministratorRequiredException)
+        {
+            Navigation.NavigateTo("/Account/AccessDenied", forceLoad: true);
+        }
+    }
+
+    private string FormatDate(DateTime utc) =>
+        DateDisplay.Format(
+            UserCalendar.ToUserDate(new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)), _timeZone),
+            _today);
+
+    private async Task CreateAsync()
+    {
+        _creating = true;
+        _error = null;
+        _created = null;
+        _link = null;
+
+        try
+        {
+            var result = await AdminService.CreateInvitationAsync(_email ?? string.Empty);
+            switch (result.Status)
+            {
+                case CreateInvitationStatus.Created:
+                    _created = result.Invitation;
+                    _link = Navigation.GetUriWithQueryParameters(
+                        Navigation.ToAbsoluteUri("/Account/Register").ToString(),
+                        new Dictionary<string, object?> { ["invite"] = result.Invitation!.Token });
+                    _email = null;
+                    _invitations = await AdminService.ListPendingInvitationsAsync();
+                    break;
+                case CreateInvitationStatus.AlreadyHasAccount:
+                    _error = "An account with this email address already exists.";
+                    break;
+                case CreateInvitationStatus.InvitationsNotInUse:
+                    _error = "This instance isn't invitation-only, so invitations aren't used.";
+                    break;
+                default:
+                    _error = "Enter a valid email address.";
+                    break;
+            }
+        }
+        catch (AdministratorRequiredException)
+        {
+            Navigation.NavigateTo("/Account/AccessDenied", forceLoad: true);
+        }
+        finally
+        {
+            _creating = false;
+        }
+    }
+
+    private async Task CopyAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _link);
+            Snackbar.Saved("Link copied");
+        }
+        catch (JSException)
+        {
+            Snackbar.Problem("Couldn't copy. Select the link and copy it instead.");
+        }
+    }
+
+    private async Task RevokeAsync(InvitationSummary invitation)
+    {
+        var confirmed = await DialogService.ShowConfirmAsync(
+            "Revoke this invitation?",
+            "The link stops working straight away. You can create a new invitation for the same address later.",
+            confirmLabel: "Revoke invitation");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            await AdminService.RevokeInvitationAsync(invitation.Id);
+            Snackbar.Saved("Invitation revoked");
+            _invitations = await AdminService.ListPendingInvitationsAsync();
+        }
+        catch (AdministratorRequiredException)
+        {
+            Navigation.NavigateTo("/Account/AccessDenied", forceLoad: true);
+        }
+    }
+}

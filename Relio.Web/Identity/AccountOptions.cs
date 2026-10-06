@@ -18,6 +18,26 @@ public sealed class AccountOptions
 
     /// <summary>Password reset token settings (issue #17). See <see cref="AccountPasswordResetOptions"/>.</summary>
     public AccountPasswordResetOptions PasswordReset { get; set; } = new();
+
+    /// <summary>Session validation settings (issue #19). See <see cref="AccountSessionOptions"/>.</summary>
+    public AccountSessionOptions Session { get; set; } = new();
+}
+
+/// <summary>
+/// How often an open session is re-validated against the database (issue #19). Feeds both the
+/// cookie's <c>SecurityStampValidatorOptions.ValidationInterval</c> and the connected circuit's
+/// <c>RelioRevalidatingAuthenticationStateProvider.RevalidationInterval</c>, so "sign out
+/// everywhere", a changed password and a disabled account all take effect within this interval.
+/// </summary>
+public sealed class AccountSessionOptions
+{
+    /// <summary>
+    /// How long a session can keep working after its security stamp changed or its account was
+    /// disabled. Defaults to 30 minutes (Identity's own default for the cookie, and what the
+    /// circuit already used). Must be zero or more; shorter means a revoked session ends sooner at
+    /// the cost of one extra database read per open session per interval.
+    /// </summary>
+    public TimeSpan ValidationInterval { get; set; } = TimeSpan.FromMinutes(30);
 }
 
 /// <summary>

@@ -9,6 +9,7 @@
 @using Relio.Data.Identity
 @using Relio.Web.Security
 
+@inject IAccountRegistrationService RegistrationService
 @inject SignInManager<RelioUser> SignInManager
 @inject UserManager<RelioUser> UserManager
 @inject NavigationManager NavigationManager
@@ -62,12 +63,17 @@
     </MudButton>
 </EditForm>
 
-<MudText Typo="Typo.body2" Class="mud-text-secondary mt-6">
-    @* data-enhance-nav="false": Register.razor fills its hidden time zone field from an inline
-       <script>, and Blazor's enhanced navigation (active now that blazor.web.js loads for signed-out
-       visitors) does not execute scripts in the patched-in content. A full page load does. *@
-    New to Relio? <MudLink Href="/Account/Register" data-enhance-nav="false">Create an account</MudLink>
-</MudText>
+@* Hidden when the instance is closed or invitation-only: a link to a page that only says "no" is
+   noise, and invited people arrive by their invitation link instead. See Register.razor. *@
+@if (_canRegister)
+{
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mt-6">
+        @* data-enhance-nav="false": Register.razor fills its hidden time zone field from an inline
+           <script>, and Blazor's enhanced navigation (active now that blazor.web.js loads for signed-out
+           visitors) does not execute scripts in the patched-in content. A full page load does. *@
+        New to Relio? <MudLink Href="/Account/Register" data-enhance-nav="false" data-testid="login-create-account">Create an account</MudLink>
+    </MudText>
+}
 
 @code {
     [SupplyParameterFromForm]
@@ -77,6 +83,7 @@
     private string? ReturnUrl { get; set; }
 
     private string? _errorMessage;
+    private bool _canRegister;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
@@ -86,7 +93,19 @@
         // Static SSR page reached directly (not via client-side Blazor navigation) - clear any
         // lingering external cookie, matching the standard Identity account pages template.
         await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+
+        // Only offer "Create an account" when someone without an invitation could actually use it
+        // (open sign-up, or the instance's very first account).
+        _canRegister = (await RegistrationService.GetEligibilityAsync(null)).CanRegister;
     }
+
+    /// <summary>
+    /// Shown when the password was correct but an Administrator disabled the account. Only ever
+    /// reachable with the right password (see <see cref="RelioSignInManager"/>), so it reveals
+    /// nothing to someone guessing at accounts.
+    /// </summary>
+    private const string DisabledMessage =
+        "This account has been disabled. If you think that's a mistake, contact the person who runs this Relio instance.";
 
     /// <summary>
     /// Deliberately the same message whether the email does not exist, the password is wrong, or
@@ -133,6 +152,13 @@
         {
             Logger.LogWarning("User {UserId} is locked out after repeated failed sign-in attempts.", user.Id);
             _errorMessage = LockedOutMessage;
+            return;
+        }
+
+        if (result is RelioSignInResult { IsDisabled: true })
+        {
+            Logger.LogInformation("User {UserId} tried to sign in to a disabled account.", user.Id);
+            _errorMessage = DisabledMessage;
             return;
         }
 

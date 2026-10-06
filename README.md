@@ -87,6 +87,34 @@ Changing either asks for your current password. With email configured, a new add
 effect once you follow the confirmation link sent to it; with `Email:Provider=None` there is no way
 to send that link, so the change applies immediately and the page says so.
 
+### Administration and sign-up control
+
+On a new instance the **first account you create becomes the administrator**. The administrator gets
+an "Administration" link in the drawer (`/admin/users`) to see who has an account and to disable or
+re-enable accounts. An administrator never sees anyone's people, notes or moments - only the list of
+accounts and whether they can sign in.
+
+Who may sign up is `Registration:Mode`: `Open` (the default - anyone who can reach the instance),
+`InviteOnly` or `Closed`. Set it as an environment variable, e.g. `Registration__Mode=InviteOnly`.
+**For a self-hosted instance that is reachable from the internet, set `InviteOnly` or `Closed` once
+you have created your own account** - the first account can always be created, whatever the mode. In
+`InviteOnly` mode the administrator enters an email address on the Administration page and gets a
+single-use link (valid for `Registration:InvitationLifetime`, 7 days by default) to send to that person
+themselves; Relio does not email invitations, shows the link once, and the link only works for that
+address. An unknown `Registration:Mode` value stops the app at startup rather than leaving sign-up open.
+
+Disabling an account stops it from signing in and ends its open sessions within
+`Account:Session:ValidationInterval` (30 minutes by default; lower it to end sessions sooner).
+Nothing the account owns is changed, and enabling it again restores access. You can't disable your
+own account.
+
+Upgrading an instance that already had accounts? Nobody is an administrator yet (the first-account
+rule deliberately does not hand the role to whoever registers next). Set
+`Administration__AdministratorEmail` to the email address of the account that should be the
+administrator and restart; sign out and in again to see the Administration link. The same setting
+recovers an instance that has no administrator. With `DemoData:Enabled=true` the demo account is the
+administrator and accounts you register are not.
+
 ### Run locally without SQL Server
 
 For a quick look at the app with no database to set up, run against the EF Core InMemory provider

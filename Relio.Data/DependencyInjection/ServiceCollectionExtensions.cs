@@ -2,7 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Relio.Application.Administration;
 using Relio.Application.People;
+using Relio.Data.Administration;
 using Relio.Application.Profile;
 using Relio.Application.Time;
 using Relio.Data.People;
@@ -87,6 +89,16 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPeopleService, PeopleService>();
         services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
         services.AddScoped<IUserProfileService, UserProfileService>();
+
+        // Self-hosted administration (issue #19). RegistrationLock is a singleton on purpose: it
+        // serializes registrations process-wide (see AccountRegistrationService's remarks). Both
+        // services depend on UserManager<RelioUser>, registered by Relio.Web's AddRelioIdentity, and
+        // on IOptions<RegistrationOptions>, which AddRelioIdentity also configures (fail-fast parsing).
+        services.AddSingleton<RegistrationLock>();
+        services.AddScoped<IAccountRegistrationService, AccountRegistrationService>();
+        services.AddScoped<IUserAdministrationService, UserAdministrationService>();
+        services.Configure<AdministrationOptions>(configuration.GetSection(AdministrationOptions.SectionName));
+        services.AddScoped<AdministratorBootstrapper>();
 
         // DemoDataSeeder depends on UserManager<RelioUser>, registered by Relio.Web's
         // AddRelioIdentity - that's fine, DI only needs it present by the time Program.cs resolves

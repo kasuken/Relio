@@ -166,8 +166,10 @@ login, ever (epic #14's guardrail). Issue #16 hardened the minimal login/logout 
 the real thing (lockout, remember-me, open-redirect protection, circuit revalidation - see its own
 bullet below). Issue #17 added password reset by email (see its own bullet below). Issue #18 added account
 settings (display name, time zone, change email, change password - see "Account settings" below).
-Later issues extend this further without restructuring it: #19 (first-user admin +
-`Registration:Mode`), #20 (2FA - `RelioUser` already has the columns it needs, from `IdentityUser`).
+Issue #19 added self-hosted administration (first-account administrator, `Registration:Mode`,
+invitations, disabling accounts - see "Self-hosted administration" below). Later issues extend this
+further without restructuring it: #20 (2FA - `RelioUser` already has the columns it needs, from
+`IdentityUser`).
 
 - **The user entity** is `Relio.Data.Identity.RelioUser : IdentityUser`, in `Relio.Data` (not
   `Relio.Domain`, which stays free of any framework dependency - see the "User-scoped data
@@ -217,10 +219,16 @@ Later issues extend this further without restructuring it: #19 (first-user admin
     reveal a cached protected page.
   - **Circuit revalidation**: `Relio.Web.Security.RelioRevalidatingAuthenticationStateProvider`
     (registered in `Program.cs` in place of the plain cascading `AuthenticationStateProvider`)
-    re-checks a connected circuit's security stamp every 30 minutes, the standard ASP.NET Core
+    re-checks a connected circuit's security stamp and disabled flag every
+    `Account:Session:ValidationInterval` (30 minutes by default, issue #19 - the same value feeds
+    the cookie's `SecurityStampValidatorOptions.ValidationInterval`), the standard ASP.NET Core
     Identity Blazor template shape adapted to `RelioUser` - without it, a circuit that was already
-    open when a session was revoked (signed out elsewhere, password changed) would stay "signed
-    in" until the circuit itself ended, no matter how long that took.
+    open when a session was revoked (signed out elsewhere, password changed, account disabled) would
+    stay "signed in" until the circuit itself ended, no matter how long that took. `SessionIsValid`
+    is the pure function behind it. Note that it flips the circuit's authentication state, which
+    `AuthorizeView` (the app bar) follows immediately; `AuthorizeRouteView` only enforces pages that
+    carry an `[Authorize]` attribute, so a shell page already on screen stays rendered until the
+    next navigation (any request or service call is refused).
 - **Account pages** live in `Relio.Web/Components/Account/Pages` (`Register.razor`, `Login.razor`,
   `RegisterConfirmation.razor`, `ConfirmEmail.razor`, `AccessDenied.razor`, the reset pages,
   `ConfirmEmailChange.razor`, and the signed-in `Pages/Manage/ChangePassword.razor` and
@@ -380,15 +388,109 @@ Later issues extend this further without restructuring it: #19 (first-user admin
     `SetUserNameAsync`) and the page says so up front; a taken address is rejected plainly, as
     registration already does. Notifying the old address is a follow-up.
   - Log user ids only, never email addresses or links (gdpr-compliant skill).
+- **Self-hosted administration (issue #19)**: who runs an instance and who may join it. All of it is
+  instance administration, not user content, and none of it can reach anyone's people, notes or
+  moments.
+  - **One role, seeded as model data.** ASP.NET Core Identity roles with a single role,
+    `Relio.Application.Administration.RelioRoles.Administrator`. `AddRelioIdentity` calls
+    `.AddRoles<IdentityRole>()` **before** `.AddEntityFrameworkStores<RelioDbContext>()` (the other
+    order wires a user-only store and every role call throws `NotSupportedException`); test helpers
+    that build a `UserManager` (`UserManagerTestFactory`) must do the same. The role row is
+    `HasData` in `AdministratorRoleConfiguration` with a **fixed id and concurrency stamp** - never
+    change them - so it ships in the migration (no runtime "create the role if missing" race) and
+    `EnsureCreated` (InMemory) creates it too. An InMemory `RelioDbContext` used with roles must call
+    `Database.EnsureCreated()`.
+  - **First-account rule.** `Relio.Data.Administration.AccountRegistrationService` (behind
+    `IAccountRegistrationService`; `Register.razor` is now a thin page over it, and the new user's
+    `UserProfile` is written there) makes a new account the Administrator only if it is the
+    **only** account in `AspNetUsers` right after its own insert - not "no Administrator exists yet",
+    which would let a stranger claim an instance that predates #19. Two layers keep it race safe: a
+    process-wide singleton `RegistrationLock` serializes registrations, and the decision is made
+    after the insert (`wasEmpty && CountAsync() == 1`), so two processes sharing a database can never
+    both be promoted (worst case: nobody is, recoverable below). No transactions/`ExecuteUpdate` are
+    used so the logic runs on InMemory.
+  - **`Registration:Mode`** = `Open` (default) | `InviteOnly` | `Closed`, plus
+    `Registration:InvitationLifetime` (7 days, must be > 0), parsed eagerly by
+    `ServiceCollectionExtensions.BuildRegistrationOptions` so a typo (`InviteOnyl`, `1`, `99`) stops the
+    app at startup instead of silently leaving sign-up open; names are case-insensitive. **While the
+    instance has no accounts at all, registration is allowed in every mode** (otherwise a fresh
+    Closed/InviteOnly install could never get an Administrator) and the page says the first account
+    will be the administrator. The service re-checks the mode on every `RegisterAsync`, so a crafted
+    POST creates nothing; the page is only the friendly front. `Closed` answers the page with **HTTP
+    403** and a "Sign-up is closed" panel (not 404: Blazor treats a component-set 404 as not-found and
+    the status code pages middleware replaces the body); the login page hides "Create an account"
+    unless sign-up is possible.
+  - **Invitations** (`RegistrationInvitation`, table `RegistrationInvitations`; Identity-adjacent
+    infrastructure, **not** `IOwnedEntity`): a link `/Account/Register?invite=<token>`, never
+    containing the email. 256-bit CSPRNG token, only its SHA-256 hash is stored
+    (`InvitationTokens`), bound to the invited email (the form pre-fills it read-only; a different
+    address gets `InvitationEmailMismatch` and the invitation stays usable), **single use** (deleted
+    on successful registration; a rejected password consumes nothing), expiring, revocable, and a
+    newer invitation for the same address replaces the older. Only created and honoured in
+    `InviteOnly`. Relio does **not** email invitations: the administrator copies the link from the page
+    (shown once) - `IEmailSender<RelioUser>` needs a `RelioUser` recipient, and emailing is a
+    follow-up. Expired rows are purged on admin operations and at startup (loaded and removed, not
+    `ExecuteDelete`, for InMemory).
+  - **Disabling accounts** uses a dedicated `RelioUser.IsDisabled` flag, **not** Identity lockout:
+    `ResetPassword.razor` clears lockout, so a lockout-based disable could be undone by the user it was
+    applied to. `UserAdministrationService.DisableAccountAsync` sets the flag and rotates the security
+    stamp in one save (set the flag first - `UpdateSecurityStampAsync` saves the whole user), which ends
+    open sessions within `Account:Session:ValidationInterval`. Enabling restores everything exactly.
+    `RelioSignInManager` (registered with `.AddSignInManager<RelioSignInManager>()`) enforces it:
+    `PasswordSignInAsync` verifies the password in a *private* method, so overriding
+    `CheckPasswordSignInAsync` does nothing, and `CanSignInAsync` runs *before* the password is checked
+    (it would reveal which accounts are disabled). The one protected hook reached only after a
+    successful password check (and before two-factor, #20) is `SignInOrTwoFactorAsync`: it returns
+    `RelioSignInResult.Disabled` (still `IsNotAllowed`), so a wrong password gets the usual "Email or
+    password is incorrect." and counts towards lockout, and only the right password sees "This account has
+    been disabled...". `ValidateSecurityStampAsync(ClaimsPrincipal)` rejects disabled users (ending
+    cookie sessions) and `SignInWithClaimsAsync` is a backstop that never issues a cookie to one.
+  - **The administrator can't lock everyone out.** An administrator cannot disable their own account,
+    and a disabled administrator cannot administer, so an active administrator always remains.
+    `UserAdministrationService` re-reads role and `IsDisabled` from the database with **untracked**
+    queries on every call (not from claims, which only refresh at sign-in, and not through the tracked
+    `UserManager.FindByIdAsync`, because a circuit's `DbContext` lives as long as the circuit and would
+    answer from a stale tracked copy); when it loads the target of a change it reloads it first for the
+    same reason.
+  - **`Administration:AdministratorEmail`** (unset by default, never in `appsettings.json` - it names a
+    person) is how an instance that predates #19 gets its first Administrator, and the recovery path if
+    nobody is one: `AdministratorBootstrapper` (run at startup after the demo seeder) promotes that
+    account, idempotently; an unknown address promotes nobody and logs a warning **without** the address;
+    accounts-but-no-Administrator logs a warning telling the operator about this setting. A role is read
+    into the sign-in cookie at sign-in, so a promoted account needs a fresh sign-in before the nav link
+    appears.
+  - **The admin page** `/admin/users` (`Components/Pages/AdminUsers.razor` - not `Administration.razor`, which
+    would clash with the `Relio.Web.Components.Administration` namespace of its components) is gated by the
+    `RelioPolicies.Administrator` policy and shows the account list (`AccountList`: email and status
+    chips - Administrator, You, Disabled, Locked out, Unconfirmed when confirmation is required), the
+    registration mode (read-only: it is configuration), and, in `InviteOnly`, the `InvitationPanel`. The
+    drawer link is an `AuthorizeView` on the same policy (so `NavMenu` needs authorization services in
+    tests). `Routes.razor`'s `NotAuthorized` sends a signed-in user to `/Account/AccessDenied`
+    (`RedirectToAccessDenied`) and only an anonymous one to login - otherwise a non-administrator
+    navigating inside a circuit would be bounced to the login page.
+  - **Administrators never see user content, by construction.** `IUserAdministrationService` and
+    `IAccountRegistrationService` only exchange primitives and the records in
+    `Relio.Application.Administration`; `AdministrationSurfaceTests` reflects over them and fails if any
+    `Relio.Domain` type or `RelioUser` appears. The admin list has no per-row links and never shows
+    `UserProfile.DisplayName` (owned data). **Never add a role-based bypass to an owned-data service**
+    (`IPeopleService` and friends stay strictly `OwnerId == current user`, whatever the caller's role).
+  - Log ids only: never an email, an invitation token or an invitation link (gdpr-compliant skill).
+  - **Upgrade note**: the migration `AddSelfHostedAdministration` adds `AspNetUsers.IsDisabled`, the
+    `RegistrationInvitations` table and inserts the Administrator role row. If an operator had manually
+    created a role named "Administrator" the insert would hit `RoleNameIndex` (the project is
+    unreleased; delete the manual role first). Apply migrations before starting the new version: startup
+    queries the new table.
 - **Demo data**: `Relio.Data.Seeding.DemoDataSeeder` creates a `demo@relio.local` account (test/demo
-  password only, see its XML docs) with realistic sample people (one archived, one with a Feb 29
-  birthday) and a non-UTC time zone, writing directly through `RelioDbContext` rather than through
-  `IPeopleService`/`IUserTimeZoneService` - those require a signed-in `ICurrentUser`, which does not
-  exist at startup (`Relio.Web.Components.Account.Pages.Register` uses the same escape hatch for
-  the one request that creates a brand new user's own `UserProfile`, for the same reason). Runs
-  once at startup, only when `DemoData:Enabled=true` (default `false`) and the environment is not
-  Production (refuses, logging an error, otherwise); idempotent. See the README's "Run locally
-  without SQL Server" section.
+  password only, see its XML docs) - which is also made an **Administrator** (idempotently, on every
+  run, so a demo database that predates #19 gets the role) - with realistic sample people (one
+  archived, one with a Feb 29 birthday) and a non-UTC time zone, writing directly through
+  `RelioDbContext` rather than through `IPeopleService`/`IUserTimeZoneService` - those require a
+  signed-in `ICurrentUser`, which does not exist at startup (`AccountRegistrationService` uses the same
+  escape hatch for the one request that creates a brand new user's own `UserProfile`, for the same
+  reason). Accounts registered while demo data is on are **not** administrators (the demo account is
+  never "first"). Runs once at startup, only when `DemoData:Enabled=true` (default `false`) and the
+  environment is not Production (refuses, logging an error, otherwise); idempotent. See the README's
+  "Run locally without SQL Server" section.
 - **Tests**: `Relio.Web.E2ETests` signs in through the real login page -
   `RelioAppFixture.SignInAsDemoAsync(page)` - before visiting any protected route; every existing
   shell test (`NavigationTests`, `DashboardTests`, etc.) does this first. `RelioWebAppFactory`
@@ -412,6 +514,21 @@ Later issues extend this further without restructuring it: #19 (first-user admin
   navigate with `page.GotoAsync` after asserting the link's `href` rather than clicking links
   (Blazor's enhanced navigation races Playwright's actionability checks there), and wait on a
   `data-testid` locator - static pages never set `data-app-ready`.
+  Administration (#19): the shared fixture app always has exactly one administrator - the demo
+  account - and every account a test registers is an ordinary user, so `AdministrationTests` act on
+  freshly registered users and never disable, demote or change the demo account. Anything that needs a
+  different `Registration:Mode`, an instance with **no** accounts (the first-account rule), or a short
+  `Account:Session:ValidationInterval` runs in a `VariantApp` (`Infrastructure/VariantApp.cs`): a second
+  independent app (own port and InMemory database) created with `VariantApp.Create(fixture, environment,
+  seedDemoData:)`. Settings read while `Program.cs` builds the app are environment variables
+  (`Registration__Mode`, `Account__Session__ValidationInterval`), set before the host is built and reset
+  right after (process-wide, safe only because the collection runs serially); `seedDemoData: false` works
+  through `PostConfigure<DemoDataOptions>` because `RelioWebAppFactory.CreateHost` always sets
+  `DemoData__Enabled=true`. `RegistrationModeTests` covers sign-up control and invitations,
+  `AdministrationTests` the page, disabling and the "never sees other users' people" rule. Unit tests
+  that need roles use `Relio.Data.Tests/Administration/AdministrationTestHarness.cs`.
+  `Relio.Data.IntegrationTests` shares one SQL Server database across tests, so the #19 tests there
+  only assert schema facts (seeded role, unique indexes) and never "there is exactly one account".
 
 ## End-to-end tests
 

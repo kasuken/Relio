@@ -28,6 +28,8 @@ internal static class UserManagerTestFactory
                 options.Password.RequireUppercase = true;
                 options.User.RequireUniqueEmail = true;
             })
+            // Before the stores (like AddRelioIdentity): otherwise role calls throw NotSupportedException.
+            .AddRoles<IdentityRole>()
             .AddEntityFrameworkStores<RelioDbContext>()
             .AddDefaultTokenProviders();
 

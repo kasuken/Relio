@@ -28,6 +28,24 @@ public class RelioRevalidatingAuthenticationStateProviderTests
         RelioRevalidatingAuthenticationStateProvider.SecurityStampsMatch(null, "stamp-1").Should().BeFalse();
     }
 
+    [Fact]
+    public void A_disabled_user_is_never_valid_even_with_matching_stamps()
+    {
+        RelioRevalidatingAuthenticationStateProvider.SessionIsValid(isDisabled: true, "stamp-1", "stamp-1").Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_enabled_user_with_matching_stamps_is_valid()
+    {
+        RelioRevalidatingAuthenticationStateProvider.SessionIsValid(isDisabled: false, "stamp-1", "stamp-1").Should().BeTrue();
+    }
+
+    [Fact]
+    public void An_enabled_user_with_a_changed_stamp_is_not_valid()
+    {
+        RelioRevalidatingAuthenticationStateProvider.SessionIsValid(isDisabled: false, "stamp-1", "stamp-2").Should().BeFalse();
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

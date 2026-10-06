@@ -3,8 +3,11 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor;
 using MudBlazor.Services;
+using Microsoft.Extensions.Options;
+using Relio.Application.Administration;
 using Relio.Application.Security;
 using Relio.Data;
+using Relio.Data.Administration;
 using Relio.Data.DependencyInjection;
 using Relio.Data.Seeding;
 using Relio.Web.Components;
@@ -125,6 +128,18 @@ using (var seedScope = app.Services.CreateScope())
 {
     await seedScope.ServiceProvider.GetRequiredService<DemoDataSeeder>().SeedAsync();
 }
+
+// Issue #19: promote Administration:AdministratorEmail if set, purge expired sign-up invitations,
+// and warn when the instance has accounts but no Administrator. Runs after the demo seeder (which
+// makes the demo account an Administrator) so that warning is accurate. Idempotent.
+using (var administrationScope = app.Services.CreateScope())
+{
+    await administrationScope.ServiceProvider.GetRequiredService<AdministratorBootstrapper>().RunAsync();
+}
+
+app.Logger.LogInformation(
+    "Registration:Mode is {RegistrationMode}.",
+    app.Services.GetRequiredService<IOptions<RegistrationOptions>>().Value.Mode);
 
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();

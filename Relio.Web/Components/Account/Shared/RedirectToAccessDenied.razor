@@ -1,0 +1,10 @@
+@* Used by Routes.razor's AuthorizeRouteView.NotAuthorized for someone who IS signed in but may not see
+   the page (e.g. a non-administrator reaching /admin/users through in-circuit navigation, which
+   skips the HTTP pipeline's own access-denied redirect). Access denied is a static SSR page, so a
+   full page load is needed. Anonymous visitors go to RedirectToLogin instead. *@
+@inject NavigationManager NavigationManager
+
+@code {
+    protected override void OnInitialized() =>
+        NavigationManager.NavigateTo("/Account/AccessDenied", forceLoad: true);
+}

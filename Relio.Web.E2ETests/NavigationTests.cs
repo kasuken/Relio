@@ -12,6 +12,7 @@ public class NavigationTests(RelioAppFixture fixture)
     [InlineData("Reminders", "/reminders", "No reminders yet")]
     [InlineData("Difficult moments", "/difficult-moments", "No difficult moments recorded")]
     [InlineData("Settings", "/settings", "Settings")]
+    [InlineData("Administration", "/admin/users", "Administration")] // the demo account is an Administrator
     public async Task Drawer_link_navigates_to_its_page(string linkText, string expectedPath, string expectedHeading)
     {
         var page = await fixture.NewPageAsync();

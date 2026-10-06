@@ -6,6 +6,31 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Self-hosted administration (issue #19): the first account created on an instance becomes its
+  **Administrator** (an ASP.NET Core Identity role seeded in the migration; only an account that is
+  the *only* one right after its own insert is promoted, guarded by a process-wide lock plus a
+  post-insert count, so concurrent sign-ups can never produce two administrators and an existing
+  instance without an administrator can't be claimed by whoever registers next). `Registration:Mode`
+  (`Open` by default, `InviteOnly`, `Closed`; a misspelt value stops the app at startup) controls who
+  can sign up, and the first account is always allowed so a fresh Closed or invitation-only instance can
+  still get its administrator; the service enforces the mode, not just the page (a closed instance
+  answers `/Account/Register` with 403 and a calm explanation, and the login page hides "Create an
+  account"). In invitation-only mode an administrator creates single-use, email-bound,
+  `Registration:InvitationLifetime` (7 days) invitation links from `/admin/users` - Relio stores only a
+  hash of the token, never puts the email in the link and does not email it. The same page lists
+  accounts and lets an administrator disable and re-enable them: a dedicated `IsDisabled` flag (not
+  lockout, which a password reset clears) that also rotates the security stamp, so open sessions end
+  within the new `Account:Session:ValidationInterval` (30 minutes by default, also used for the circuit
+  revalidation); the sign-in message "This account has been disabled" is only shown after the correct
+  password (no account enumeration) through the new `RelioSignInManager`. An administrator can't
+  disable themselves, a disabled administrator can't administer, and administrators never see any
+  user's people, notes or moments (the administration services can't even express them - a reflection
+  test guards it). `Administration:AdministratorEmail` promotes an existing account at startup for
+  instances that predate this change. The demo account is an Administrator. Adds migration
+  `AddSelfHostedAdministration` (`AspNetUsers.IsDisabled`, `RegistrationInvitations`, the Administrator
+  role row - an operator-created role named "Administrator" must be removed first) and unit, bUnit, SQL
+  Server integration and Playwright end-to-end coverage. See the "Self-hosted administration" bullet in
+  the "Accounts and authentication" section of AGENTS.md.
 - Account settings (issue #18): `/settings` is now the account hub - a display name (optional, up to
   100 characters, stored on `UserProfile.DisplayName` and read/written through the new
   `IUserProfileService`), the time zone (a searchable picker over `TimeZoneIds.GetAvailableIds()`

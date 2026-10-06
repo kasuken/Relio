@@ -7,7 +7,16 @@
     <Found Context="routeData">
         <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
             <NotAuthorized>
-                <RedirectToLogin />
+                @* Signed in but not allowed (e.g. a non-administrator on /admin/users) is "access
+                   denied"; sending them to the login page would be wrong and confusing. *@
+                @if (context.User.Identity?.IsAuthenticated == true)
+                {
+                    <RedirectToAccessDenied />
+                }
+                else
+                {
+                    <RedirectToLogin />
+                }
             </NotAuthorized>
         </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />

@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Relio.Data.Identity;
+using Relio.Web.Identity;
 
 namespace Relio.Web.Security;
 
@@ -30,16 +31,19 @@ namespace Relio.Web.Security;
 public sealed class RelioRevalidatingAuthenticationStateProvider(
     ILoggerFactory loggerFactory,
     IServiceScopeFactory scopeFactory,
-    IOptions<IdentityOptions> identityOptions)
+    IOptions<IdentityOptions> identityOptions,
+    IOptions<AccountOptions> accountOptions)
     : RevalidatingServerAuthenticationStateProvider(loggerFactory)
 {
     /// <summary>
-    /// How often a connected circuit re-checks its user's security stamp. 30 minutes balances
+    /// How often a connected circuit re-checks its user's security stamp and disabled flag:
+    /// <c>Account:Session:ValidationInterval</c> (issue #19), 30 minutes by default. That balances
     /// "notices promptly" against cost - short enough that a revoked session does not linger for
     /// the rest of a long-lived circuit, long enough that it is not a meaningful extra load
-    /// source (one scoped database read per connected circuit per interval).
+    /// source (one scoped database read per connected circuit per interval). The cookie's own
+    /// validation uses the same value.
     /// </summary>
-    protected override TimeSpan RevalidationInterval => TimeSpan.FromMinutes(30);
+    protected override TimeSpan RevalidationInterval => accountOptions.Value.Session.ValidationInterval;
 
     /// <inheritdoc />
     protected override async Task<bool> ValidateAuthenticationStateAsync(
@@ -63,13 +67,20 @@ public sealed class RelioRevalidatingAuthenticationStateProvider(
 
         if (!userManager.SupportsUserSecurityStamp)
         {
-            return true;
+            return !user.IsDisabled;
         }
 
         var principalStamp = principal.FindFirstValue(identityOptions.Value.ClaimsIdentity.SecurityStampClaimType);
         var userStamp = await userManager.GetSecurityStampAsync(user);
-        return SecurityStampsMatch(principalStamp, userStamp);
+        return SessionIsValid(user.IsDisabled, principalStamp, userStamp);
     }
+
+    /// <summary>
+    /// Whether a circuit's session is still valid: the account is not disabled (issue #19) and its
+    /// cached security stamp still matches. Pure, so it is unit testable without a circuit.
+    /// </summary>
+    public static bool SessionIsValid(bool isDisabled, string? principalStamp, string? userStamp) =>
+        !isDisabled && SecurityStampsMatch(principalStamp, userStamp);
 
     /// <summary>
     /// Whether the circuit's cached security stamp claim still matches the user's current one.
