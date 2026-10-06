@@ -7,7 +7,7 @@ using Relio.Web.Time;
 namespace Relio.Web.Tests.Settings;
 
 /// <summary>In-memory <see cref="IUserTimeZoneService"/> that validates ids like the real one and records what was saved.</summary>
-internal sealed class FakeUserTimeZoneService(string initialTimeZoneId = "UTC") : IUserTimeZoneService
+internal sealed class FakeUserTimeZoneService(string initialTimeZoneId = "UTC", DateOnly? today = null) : IUserTimeZoneService
 {
     public string TimeZoneId { get; private set; } = initialTimeZoneId;
 
@@ -17,7 +17,7 @@ internal sealed class FakeUserTimeZoneService(string initialTimeZoneId = "UTC") 
         Task.FromResult(TimeZoneIds.Parse(TimeZoneId));
 
     public Task<DateOnly> GetTodayAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(DateOnly.FromDateTime(DateTime.UnixEpoch));
+        Task.FromResult(today ?? DateOnly.FromDateTime(DateTime.UnixEpoch));
 
     public Task SetTimeZoneAsync(string ianaTimeZoneId, CancellationToken cancellationToken = default)
     {

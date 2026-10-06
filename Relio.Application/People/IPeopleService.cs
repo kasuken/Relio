@@ -21,11 +21,31 @@ public interface IPeopleService
     Task<Person?> GetAsync(Guid personId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Lists the current user's people, ordered by name, as untracked snapshots with their
-    /// <see cref="Person.RelationshipType"/> loaded. Archived people are excluded unless
-    /// <paramref name="includeArchived"/> is <see langword="true"/>.
+    /// Lists <b>every</b> one of the current user's people, ordered by name, as untracked snapshots
+    /// with their <see cref="Person.RelationshipType"/> loaded. Archived people are excluded unless
+    /// <paramref name="includeArchived"/> is <see langword="true"/>. Unpaged and loads whole
+    /// profiles, so it is for callers that need all of them (pickers, exports); the people list
+    /// screen uses <see cref="ListPageAsync"/>.
     /// </summary>
     Task<IReadOnlyList<Person>> ListAsync(bool includeArchived = false, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns one page of the current user's people for the people list, in the order
+    /// <see cref="PeopleListQuery.Sort"/> asks for, together with how many people the user has
+    /// (<see cref="PeopleListResult.ActiveCount"/> and <see cref="PeopleListResult.ArchivedCount"/>
+    /// - the user's own people only, whatever the filter). Archived people are excluded unless
+    /// <see cref="PeopleListQuery.IncludeArchived"/> is set. A page below 1 or past the last page
+    /// is not an error: the nearest page that exists comes back, and
+    /// <see cref="Relio.Application.Paging.PagedResult{T}.Page"/> says which. The page size is
+    /// clamped to 1 through <see cref="PeopleListQuery.MaxPageSize"/>.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="query"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <see cref="PeopleListQuery.Sort"/> is not a defined <see cref="PeopleSort"/>. Thrown before
+    /// anything is read.
+    /// </exception>
+    /// <exception cref="Relio.Application.Security.UnauthenticatedUserException">Nobody is signed in.</exception>
+    Task<PeopleListResult> ListPageAsync(PeopleListQuery query, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Creates a new person owned by the current user. Text is trimmed and blank optional text is

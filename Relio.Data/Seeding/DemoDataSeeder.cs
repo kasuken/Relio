@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Relio.Application.Administration;
+using Relio.Application.Time;
 using Relio.Data.Identity;
 using Relio.Domain;
 
@@ -139,6 +140,13 @@ public sealed class DemoDataSeeder(
 
         RelationshipType? TypeNamed(string name) => relationshipTypes.FirstOrDefault(t => t.Name == name);
 
+        // "Last contacted" is a calendar date in the demo user's own time zone, so it is counted
+        // back from today there. Seed-only: issue #34 will derive it from real interactions. The
+        // sample people share one CreatedAtUtc (they are saved together), so "Recently added"
+        // falls back to the id order for them - fine for a demo.
+        var today = UserCalendar.Today(timeProvider, TimeZoneIds.Parse(DemoTimeZoneId));
+        DateOnly DaysAgo(int days) => today.AddDays(-days);
+
         Tag MakeTag(string name) => new() { OwnerId = ownerId, Name = name };
 
         var family = MakeTag("Family");
@@ -159,6 +167,7 @@ public sealed class DemoDataSeeder(
                 BirthdayDay = 10,
                 HowWeMet = "At a talk about early computing, where she asked the question nobody else had thought of.",
                 Details = "Writes long, thoughtful letters.\nInterested in mathematics and music.\nPrefers a quiet table at the back.",
+                LastContactedOn = DaysAgo(3),
                 Tags = { mentor },
             },
             new()
@@ -180,6 +189,7 @@ public sealed class DemoDataSeeder(
                 BirthdayYear = 1912,
                 BirthdayMonth = 6,
                 BirthdayDay = 23,
+                LastContactedOn = DaysAgo(45),
                 Tags = { friend },
             },
             new()
@@ -194,6 +204,7 @@ public sealed class DemoDataSeeder(
                 BirthdayYear = 1992,
                 BirthdayMonth = 2,
                 BirthdayDay = 29,
+                LastContactedOn = today,
                 Tags = { family },
             },
             new()
@@ -204,6 +215,7 @@ public sealed class DemoDataSeeder(
                 RelationshipType = TypeNamed("Colleague"),
                 HowWeMet = "Her first week on the team; we shared a desk by the window.",
                 Details = "Leads the design reviews.\nAllergic to cats.\nAsk about the allotment she is building.",
+                LastContactedOn = DaysAgo(12),
                 Tags = { work },
             },
             new()
@@ -215,6 +227,7 @@ public sealed class DemoDataSeeder(
                 BirthdayYear = 1988,
                 BirthdayMonth = 7,
                 BirthdayDay = 4,
+                LastContactedOn = DaysAgo(200),
                 Tags = { friend },
                 IsArchived = true,
                 ArchivedAtUtc = timeProvider.GetUtcNow().UtcDateTime,
@@ -228,6 +241,7 @@ public sealed class DemoDataSeeder(
                 BirthdayYear = 1995,
                 BirthdayMonth = 11,
                 BirthdayDay = 2,
+                LastContactedOn = DaysAgo(1),
                 Tags = { family },
             },
             new()

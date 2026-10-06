@@ -1,3 +1,4 @@
+using Relio.Application.Paging;
 using Relio.Application.People;
 using Relio.Domain;
 
@@ -24,6 +25,30 @@ internal sealed class FakePeopleService : IPeopleService
 
     public Task<IReadOnlyList<Person>> ListAsync(bool includeArchived = false, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<Person>>(Known.Where(p => includeArchived || !p.IsArchived).ToList());
+
+    /// <summary>Every query <see cref="ListPageAsync"/> was called with, in order.</summary>
+    public List<PeopleListQuery> ListPageQueries { get; } = [];
+
+    /// <summary>What <see cref="ListPageAsync"/> returns; when unset, a page built from <see cref="Known"/>.</summary>
+    public Func<PeopleListQuery, PeopleListResult>? ListPageResult { get; set; }
+
+    public Task<PeopleListResult> ListPageAsync(PeopleListQuery query, CancellationToken cancellationToken = default)
+    {
+        ListPageQueries.Add(query);
+        if (ListPageResult is { } result)
+        {
+            return Task.FromResult(result(query));
+        }
+
+        var items = Known
+            .Where(p => query.IncludeArchived || !p.IsArchived)
+            .Select(p => new PersonListItem(
+                p.Id, p.FirstName, p.LastName, p.RelationshipType?.Name, p.LastContactedOn, p.IsArchived, p.CreatedAtUtc))
+            .ToList();
+        var page = new PagedResult<PersonListItem>(items, 1, query.PageSize, items.Count);
+        return Task.FromResult(new PeopleListResult(
+            page, Known.Count(p => !p.IsArchived), Known.Count(p => p.IsArchived)));
+    }
 
     public Task<Person> CreateAsync(CreatePersonRequest request, CancellationToken cancellationToken = default)
     {

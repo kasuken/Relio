@@ -22,11 +22,39 @@ internal static class TestDataFactory
     public static RelationshipTypeService CreateRelationshipTypeService(RelioDbContext dbContext, string? ownerId) =>
         new(dbContext, new FakeCurrentUser(ownerId));
 
-    public static async Task<Guid> CreatePersonAsync(RelioDbContext dbContext, string ownerId, string firstName)
+    /// <summary>
+    /// Creates a person. <paramref name="createdAtUtc"/> backdates the profile: the context stamps
+    /// <c>CreatedAtUtc</c> on insert and ignores a value set before it, so the date is assigned
+    /// after the first save and saved again (a modified entity only gets its <c>UpdatedAtUtc</c>
+    /// stamped). Used to give "Recently added" tests distinct, known creation times.
+    /// </summary>
+    public static async Task<Guid> CreatePersonAsync(
+        RelioDbContext dbContext,
+        string ownerId,
+        string firstName,
+        string? lastName = null,
+        DateOnly? lastContactedOn = null,
+        bool isArchived = false,
+        DateTime? createdAtUtc = null)
     {
-        var person = new Person { OwnerId = ownerId, FirstName = firstName };
+        var person = new Person
+        {
+            OwnerId = ownerId,
+            FirstName = firstName,
+            LastName = lastName,
+            LastContactedOn = lastContactedOn,
+            IsArchived = isArchived,
+            ArchivedAtUtc = isArchived ? TimeProvider.System.GetUtcNow().UtcDateTime : null,
+        };
         dbContext.People.Add(person);
         await dbContext.SaveChangesAsync();
+
+        if (createdAtUtc is { } createdAt)
+        {
+            person.CreatedAtUtc = createdAt;
+            await dbContext.SaveChangesAsync();
+        }
+
         return person.Id;
     }
 

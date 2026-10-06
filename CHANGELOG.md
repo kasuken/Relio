@@ -6,6 +6,26 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- People list with sorting and archived view (issue #23), epic #21. `/people` now sorts by **name**,
+  **recently added** or **last contacted** (a "Sort by" select), has a **Show archived** switch that
+  mixes archived people into the list with an "Archived" label, shows a count line ("12 people",
+  "5 people, 2 archived") and pages through 50 people at a time with a pagination control. Each row
+  gets a second line with the relationship type and when you last made contact ("Last contacted 12
+  days ago", "Not contacted yet"). The view lives in the address - `/people?sort=contacted&archived=true&page=2`,
+  defaults left out, anything invalid falling back to the default - so Back restores it and a reload
+  keeps it; only a sort token, `true` and a page number ever go in the address, never a name. When
+  everyone is archived the page says so and offers to show them. `IPeopleService.ListPageAsync`
+  returns one page of lightweight rows (`PersonListItem`: no how-we-met text, details, birthday or
+  nickname) plus the user's active and archived totals; every ordering ends with the id so a paged
+  list never repeats or skips a row, and never-contacted people are explicitly sorted last. New
+  `Person.LastContactedOn` (a calendar date in your time zone): nothing sets it yet - issue #34 will
+  maintain it from your interactions - so for now it is only filled in for the demo data.
+  Migration `AddPeopleListSorting`: adds the nullable `People.LastContactedOn` (`date`) and replaces
+  `IX_People_OwnerId_IsArchived` with three composite indexes (`OwnerId, IsArchived` plus first and
+  last name / `CreatedAtUtc` / `LastContactedOn`); no backfill. `DateDisplay.FormatRelative` is the
+  shared "Today / Yesterday / 12 days ago / 3 March" helper. Unit, bUnit, SQL Server integration
+  (every sort, case-insensitive names, nulls last, tie-stable paging, the indexes and the column) and
+  Playwright end-to-end coverage. See the "People" section of AGENTS.md.
 - Create a person profile (issue #22), the first issue of epic #21. `/people` is now a real list of
   your active people (monogram, name and relationship type, each row a link; an empty state with an
   "Add a person" button when there is no one yet), `/people/new` adds a person and

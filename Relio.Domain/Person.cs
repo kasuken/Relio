@@ -58,6 +58,19 @@ public sealed class Person : OwnedEntity
     public string? Details { get; set; }
 
     /// <summary>
+    /// The calendar date, in the owner's time zone, of the most recent interaction with this person,
+    /// or <see langword="null"/> when there has never been one. A calendar date, never a UTC instant:
+    /// it is not converted to or from UTC (see "Dates and time zones" in AGENTS.md).
+    /// </summary>
+    /// <remarks>
+    /// Read-only for everything in the People feature: <c>CreatePersonRequest</c> and
+    /// <c>UpdatePersonRequest</c> never carry it, so editing a profile cannot change it. Issue #34
+    /// (log an interaction) is the one feature that maintains it, from the interactions it records.
+    /// Until then it is only ever set by seed data.
+    /// </remarks>
+    public DateOnly? LastContactedOn { get; set; }
+
+    /// <summary>
     /// Whether this person is archived. Active views exclude archived people by default.
     /// Archiving is reversible via <see cref="ArchivedAtUtc"/> and <c>IPeopleService.RestoreAsync</c>.
     /// </summary>
@@ -73,7 +86,14 @@ public sealed class Person : OwnedEntity
     public ICollection<Tag> Tags { get; set; } = new List<Tag>();
 
     /// <summary>A display-friendly name composed from <see cref="FirstName"/> and <see cref="LastName"/>.</summary>
-    public string DisplayName => string.IsNullOrWhiteSpace(LastName) ? FirstName : $"{FirstName} {LastName}";
+    public string DisplayName => FormatDisplayName(FirstName, LastName);
+
+    /// <summary>
+    /// Composes a display name from a first and an optional last name. The one place the rule
+    /// lives, shared with list projections that carry the names but not a whole <see cref="Person"/>.
+    /// </summary>
+    public static string FormatDisplayName(string firstName, string? lastName) =>
+        string.IsNullOrWhiteSpace(lastName) ? firstName : $"{firstName} {lastName}";
 
     /// <summary>
     /// The birthday, built from the three stored columns, or <see langword="null"/> when none is

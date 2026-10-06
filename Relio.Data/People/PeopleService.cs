@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Relio.Application.Ownership;
+using Relio.Application.Paging;
 using Relio.Application.People;
 using Relio.Application.Security;
 using Relio.Application.Time;
@@ -61,6 +63,89 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
             .OrderBy(p => p.FirstName)
             .ThenBy(p => p.LastName)
             .ToListAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Two queries: one grouped count of everything the user has (the totals the page needs for its
+    /// empty states and its count line, and the total that decides how many pages there are), then
+    /// the page itself. A person added or archived between the two can make the count and the page
+    /// disagree by a row until the next load, which is harmless. Every ordering ends with
+    /// <c>Id</c> so a tie never reshuffles between pages, and the nulls-last order of
+    /// <see cref="PeopleSort.LastContacted"/> is spelled out rather than left to the database
+    /// (SQL Server happens to sort nulls first when ascending, other providers differ). Names and
+    /// <c>DisplayName</c> are never logged, and <c>DisplayName</c> is not a column, so the queries
+    /// order by the real ones.
+    /// </remarks>
+    public async Task<PeopleListResult> ListPageAsync(PeopleListQuery query, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        if (!Enum.IsDefined(query.Sort))
+        {
+            throw new ArgumentOutOfRangeException(nameof(query), "The sort order is not a known PeopleSort.");
+        }
+
+        var ownerId = currentUser.RequireUserId();
+        var pageSize = Math.Clamp(query.PageSize, 1, PeopleListQuery.MaxPageSize);
+
+        var counts = await dbContext.People
+            .AsNoTracking()
+            .Where(p => p.OwnerId == ownerId)
+            .GroupBy(p => p.IsArchived)
+            .Select(g => new { IsArchived = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+        var activeCount = counts.Where(c => !c.IsArchived).Sum(c => c.Count);
+        var archivedCount = counts.Where(c => c.IsArchived).Sum(c => c.Count);
+
+        var total = query.IncludeArchived ? activeCount + archivedCount : activeCount;
+        if (total == 0)
+        {
+            return new PeopleListResult(new PagedResult<PersonListItem>([], 1, pageSize, 0), activeCount, archivedCount);
+        }
+
+        var pageCount = (total + pageSize - 1) / pageSize;
+        var page = Math.Clamp(query.Page, 1, pageCount);
+
+        var people = dbContext.People
+            .AsNoTracking()
+            .Where(p => p.OwnerId == ownerId);
+        if (!query.IncludeArchived)
+        {
+            people = people.Where(p => !p.IsArchived);
+        }
+
+        var ordered = query.Sort switch
+        {
+            PeopleSort.Name => people
+                .OrderBy(p => p.FirstName)
+                .ThenBy(p => p.LastName)
+                .ThenBy(p => p.Id),
+            PeopleSort.RecentlyAdded => people
+                .OrderByDescending(p => p.CreatedAtUtc)
+                .ThenBy(p => p.Id),
+            PeopleSort.LastContacted => people
+                .OrderBy(p => p.LastContactedOn == null)
+                .ThenByDescending(p => p.LastContactedOn)
+                .ThenBy(p => p.FirstName)
+                .ThenBy(p => p.LastName)
+                .ThenBy(p => p.Id),
+            _ => throw new UnreachableException(),
+        };
+
+        var items = await ordered
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(p => new PersonListItem(
+                p.Id,
+                p.FirstName,
+                p.LastName,
+                p.RelationshipType != null ? p.RelationshipType.Name : null,
+                p.LastContactedOn,
+                p.IsArchived,
+                p.CreatedAtUtc))
+            .ToListAsync(cancellationToken);
+
+        return new PeopleListResult(new PagedResult<PersonListItem>(items, page, pageSize, total), activeCount, archivedCount);
     }
 
     /// <inheritdoc />
