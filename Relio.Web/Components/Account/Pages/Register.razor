@@ -54,13 +54,13 @@ else if (_eligibility.CanRegister)
             <div class="rl-field @(_errorMessage is not null ? "rl-field-invalid" : null)">
                 <label for="register-email">Email</label>
                 <input id="register-email" name="Input.Email" type="email" required
-                       value="@Input.Email" readonly="@(_eligibility.InvitedEmail is not null)"
+                       value="@Input!.Email" readonly="@(_eligibility.InvitedEmail is not null)"
                        data-testid="register-email" />
                 @if (_eligibility.InvitedEmail is not null)
                 {
                     <span class="rl-field-helper">This invitation is for this address.</span>
                 }
-                <ValidationMessage For="@(() => Input.Email)" />
+                <ValidationMessage For="@(() => Input!.Email)" />
             </div>
 
             <div class="rl-field">
@@ -68,14 +68,14 @@ else if (_eligibility.CanRegister)
                 <input id="register-password" name="Input.Password" type="password" required
                        data-testid="register-password" />
                 <span class="rl-field-helper">At least 12 characters, with upper and lower case, a digit and a symbol.</span>
-                <ValidationMessage For="@(() => Input.Password)" />
+                <ValidationMessage For="@(() => Input!.Password)" />
             </div>
 
             <div class="rl-field">
                 <label for="register-confirm-password">Confirm password</label>
                 <input id="register-confirm-password" name="Input.ConfirmPassword" type="password" required
                        data-testid="register-confirm-password" />
-                <ValidationMessage For="@(() => Input.ConfirmPassword)" />
+                <ValidationMessage For="@(() => Input!.ConfirmPassword)" />
             </div>
 
             @* Filled by the self-hosted script below, not Blazor JS interop: this page renders as
@@ -83,7 +83,7 @@ else if (_eligibility.CanRegister)
                be hashed and the sign-in cookie written directly against HttpContext - there is no live
                circuit here for Relio.Web.Time.BrowserTimeZoneReader's JS interop to use. See the "Dates
                and time zones" section of AGENTS.md. *@
-            <input type="hidden" name="Input.TimeZoneId" id="register-timezone-input" value="@Input.TimeZoneId" />
+            <input type="hidden" name="Input.TimeZoneId" id="register-timezone-input" value="@Input!.TimeZoneId" />
 
             @* The invitation token travels in a hidden field (not only the query string) so it
                survives a failed attempt, e.g. a password the policy rejects. It is never an email. *@
@@ -133,7 +133,7 @@ else
 
 @code {
     [SupplyParameterFromForm]
-    private InputModel Input { get; set; } = new();
+    private InputModel? Input { get; set; }
 
     [SupplyParameterFromQuery(Name = "invite")]
     private string? Invite { get; set; }
@@ -145,7 +145,7 @@ else
     private RegistrationEligibility? _eligibility;
 
     /// <summary>The invitation token in play: the posted one (survives a failed attempt), else the link's.</summary>
-    private string? InvitationToken => string.IsNullOrWhiteSpace(Input.InvitationToken) ? Invite : Input.InvitationToken;
+    private string? InvitationToken => string.IsNullOrWhiteSpace(Input!.InvitationToken) ? Invite : Input.InvitationToken;
 
     protected override async Task OnInitializedAsync()
     {
@@ -205,7 +205,7 @@ else
     private async Task RegisterAsync()
     {
         var result = await RegistrationService.RegisterAsync(
-            new RegisterAccountRequest(Input.Email, Input.Password, Input.TimeZoneId, InvitationToken));
+            new RegisterAccountRequest(Input!.Email, Input.Password, Input.TimeZoneId, InvitationToken));
 
         switch (result.Status)
         {

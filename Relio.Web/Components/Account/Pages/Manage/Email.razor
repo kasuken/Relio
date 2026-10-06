@@ -65,8 +65,8 @@ else if (Status == "changed")
     <div class="rl-field">
         <label for="manage-email-new">New email</label>
         <input id="manage-email-new" name="Input.NewEmail" type="email" required autocomplete="email"
-               value="@Input.NewEmail" data-testid="manage-email-new" />
-        <ValidationMessage For="@(() => Input.NewEmail)" />
+             value="@Input!.NewEmail" data-testid="manage-email-new" />
+         <ValidationMessage For="@(() => Input!.NewEmail)" />
     </div>
 
     <div class="rl-field">
@@ -74,7 +74,7 @@ else if (Status == "changed")
         <input id="manage-email-password" name="Input.CurrentPassword" type="password" required
                autocomplete="current-password" data-testid="manage-email-password" />
         <span class="rl-field-helper">We ask for it so nobody else can change your sign-in email from an open session.</span>
-        <ValidationMessage For="@(() => Input.CurrentPassword)" />
+        <ValidationMessage For="@(() => Input!.CurrentPassword)" />
     </div>
 
     <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
@@ -92,7 +92,7 @@ else if (Status == "changed")
     private HttpContext HttpContext { get; set; } = default!;
 
     [SupplyParameterFromForm]
-    private InputModel Input { get; set; } = new();
+    private InputModel? Input { get; set; }
 
     [SupplyParameterFromQuery]
     private string? Status { get; set; }
@@ -102,6 +102,7 @@ else if (Status == "changed")
 
     protected override async Task OnInitializedAsync()
     {
+        Input ??= new();
         _user = await UserManager.GetUserAsync(HttpContext.User);
         if (_user is null)
         {
@@ -127,7 +128,7 @@ else if (Status == "changed")
             return;
         }
 
-        if (!await UserManager.CheckPasswordAsync(_user, Input.CurrentPassword))
+        if (!await UserManager.CheckPasswordAsync(_user, Input!.CurrentPassword))
         {
             Logger.LogInformation(
                 "User {UserId} submitted an incorrect current password when changing their email.", _user.Id);
@@ -161,7 +162,7 @@ else if (Status == "changed")
             // Same outcome as a usable address - no account enumeration. The same token work is
             // done and thrown away, so response time is not an easy oracle either; nothing is sent
             // and nothing is stored.
-            _ = await UserManager.GenerateChangeEmailTokenAsync(user, Input.NewEmail);
+            _ = await UserManager.GenerateChangeEmailTokenAsync(user, Input!.NewEmail);
             Logger.LogInformation("User {UserId} requested an email change to an address already in use.", user.Id);
         }
         else
@@ -170,7 +171,7 @@ else if (Status == "changed")
             // email address (see the gdpr-compliant skill). A newer request overwrites this and so
             // invalidates the older link: change-email tokens are bound to the address they were
             // generated for. UpdateAsync does not rotate the security stamp.
-            user.PendingEmail = Input.NewEmail;
+            user.PendingEmail = Input!.NewEmail;
             var update = await UserManager.UpdateAsync(user);
             if (!update.Succeeded)
             {
@@ -203,7 +204,7 @@ else if (Status == "changed")
 
         var oldEmail = user.Email;
 
-        var result = await UserManager.SetEmailAsync(user, Input.NewEmail);
+        var result = await UserManager.SetEmailAsync(user, Input!.NewEmail);
         if (result.Succeeded && string.Equals(user.UserName, oldEmail, StringComparison.OrdinalIgnoreCase))
         {
             // The user name is the email address (Register.razor), so keep sign-in working with

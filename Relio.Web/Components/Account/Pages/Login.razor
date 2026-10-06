@@ -32,15 +32,15 @@
     <div class="rl-field">
         <label for="login-email">Email</label>
         <input id="login-email" name="Input.Email" type="email" required
-               value="@Input.Email" data-testid="login-email" />
-        <ValidationMessage For="@(() => Input.Email)" />
+             value="@Input!.Email" data-testid="login-email" />
+         <ValidationMessage For="@(() => Input!.Email)" />
     </div>
 
     <div class="rl-field">
         <label for="login-password">Password</label>
         <input id="login-password" name="Input.Password" type="password" required
                data-testid="login-password" />
-        <ValidationMessage For="@(() => Input.Password)" />
+        <ValidationMessage For="@(() => Input!.Password)" />
     </div>
 
     <MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
@@ -77,7 +77,7 @@
 
 @code {
     [SupplyParameterFromForm]
-    private InputModel Input { get; set; } = new();
+    private InputModel? Input { get; set; }
 
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
@@ -90,6 +90,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Input ??= new();
+
         // Static SSR page reached directly (not via client-side Blazor navigation) - clear any
         // lingering external cookie, matching the standard Identity account pages template.
         await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
@@ -129,7 +131,7 @@
         // not-found account still goes through the exact same error message as a wrong password
         // (see InvalidCredentialsMessage) - only the log line differs, and even that never
         // includes the submitted email.
-        var user = await UserManager.FindByEmailAsync(Input.Email);
+        var user = await UserManager.FindByEmailAsync(Input!.Email);
         if (user is null)
         {
             Logger.LogInformation("Sign-in failed: no account matches the submitted email.");
