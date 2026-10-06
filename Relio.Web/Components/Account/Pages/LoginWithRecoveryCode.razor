@@ -1,0 +1,153 @@
+@page "/Account/LoginWithRecoveryCode"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using Relio.Data.Identity
+@using Relio.Web.Security
+
+@inject SignInManager<RelioUser> SignInManager
+@inject UserManager<RelioUser> UserManager
+@inject NavigationManager NavigationManager
+@inject ILogger<LoginWithRecoveryCode> Logger
+
+@* The alternative second step of signing in (issue #20): a recovery code instead of a code from the
+   authenticator app. Same cookie, same static SSR reasoning and same shared lockout budget as
+   LoginWith2fa.razor - RelioSignInManager counts a wrong recovery code like any other wrong guess.
+   A recovery-code sign-in always issues a session cookie (Identity does not take "remember me"
+   here), whatever the password step's checkbox said. *@
+
+<PageTitle>Sign in with a recovery code - Relio</PageTitle>
+
+@if (_ended)
+{
+    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-4">Sign in again</MudText>
+    @if (_expired)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4" data-testid="login-recovery-code-expired">
+            Your sign-in timed out. Sign in again to continue.
+        </MudAlert>
+    }
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="login-recovery-code-error">@_errorMessage</MudAlert>
+    }
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+        <MudLink Href="/Account/Login" data-testid="login-recovery-code-restart">Sign in</MudLink>
+    </MudText>
+}
+
+@* Always rendered, hidden once this step has ended - see LoginWith2fa.razor. *@
+<div hidden="@_ended">
+    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">Sign in with a recovery code</MudText>
+    <MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+        Enter one of the recovery codes you saved when you turned on two-factor authentication. Each code works once.
+    </MudText>
+
+    <EditForm Model="Input" FormName="login-recovery-code" OnValidSubmit="SignInAsync" method="post">
+        <DataAnnotationsValidator />
+
+        @if (!_ended && !string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="login-recovery-code-error">@_errorMessage</MudAlert>
+        }
+
+        @* Plain HTML input, not MudTextField - see Register.razor's matching comment. *@
+        <div class="rl-field">
+            <label for="login-recovery-code">Recovery code</label>
+            <input id="login-recovery-code" name="Input.RecoveryCode" type="text" required
+                   autocomplete="off" autocapitalize="characters" spellcheck="false"
+                   data-testid="login-recovery-code" />
+            <ValidationMessage For="@(() => Input!.RecoveryCode)" />
+        </div>
+
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                   FullWidth="true" data-testid="login-recovery-code-submit" Class="mt-2">
+            Sign in
+        </MudButton>
+    </EditForm>
+
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mt-6">
+        <MudLink Href="@AuthenticatorUrl" data-enhance-nav="false" data-testid="login-recovery-code-use-authenticator">
+            Use a code from your authenticator app instead
+        </MudLink>
+    </MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mt-4">
+        Lost your authenticator app and your recovery codes? Contact the person who runs this Relio instance.
+    </MudText>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private InputModel? Input { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    /// <summary>Carried through only so the link back to the authenticator step keeps the choice.</summary>
+    [SupplyParameterFromQuery]
+    private bool RememberMe { get; set; }
+
+    private RelioUser? _user;
+    private bool _ended;
+    private bool _expired;
+    private string? _errorMessage;
+
+    private string SafeReturnUrl => ReturnUrlValidator.GetSafeReturnUrl(ReturnUrl, NavigationManager.BaseUri);
+
+    private string AuthenticatorUrl =>
+        $"/Account/LoginWith2fa?returnUrl={Uri.EscapeDataString(SafeReturnUrl)}&rememberMe={(RememberMe ? "true" : "false")}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        _user = await SignInManager.GetTwoFactorAuthenticationUserAsync();
+        _expired = _ended = _user is null;
+    }
+
+    private async Task SignInAsync()
+    {
+        if (_user is null)
+        {
+            _expired = _ended = true;
+            return;
+        }
+
+        var result = await SignInManager.TwoFactorRecoveryCodeSignInAsync(TwoFactorCodes.NormalizeRecoveryCode(Input!.RecoveryCode));
+
+        if (result.Succeeded)
+        {
+            var left = await UserManager.CountRecoveryCodesAsync(_user);
+            Logger.LogInformation("User {UserId} signed in with a recovery code; {RecoveryCodesLeft} left.", _user.Id, left);
+            NavigationManager.NavigateTo(SafeReturnUrl, forceLoad: true);
+            return;
+        }
+
+        // Before anything keyed on IsNotAllowed: RelioSignInResult.Disabled is also "not allowed".
+        if (result is RelioSignInResult { IsDisabled: true })
+        {
+            Logger.LogInformation("User {UserId} tried to sign in to a disabled account.", _user.Id);
+            _errorMessage = SignInMessages.Disabled;
+            _ended = true;
+            return;
+        }
+
+        if (result.IsLockedOut)
+        {
+            Logger.LogWarning("User {UserId} is locked out after repeated failed sign-in attempts.", _user.Id);
+            _errorMessage = SignInMessages.LockedOut;
+            return;
+        }
+
+        Logger.LogInformation("User {UserId} submitted an incorrect recovery code.", _user.Id);
+        _errorMessage = "That recovery code is incorrect or has already been used.";
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "Enter a recovery code.")]
+        public string RecoveryCode { get; set; } = string.Empty;
+    }
+}

@@ -27,6 +27,36 @@ namespace Relio.Web.Identity;
 /// the next validation (<c>Account:Session:ValidationInterval</c>). <see cref="SignInWithClaimsAsync(RelioUser, AuthenticationProperties?, IEnumerable{Claim})"/>
 /// is a backstop: whatever path leads to it, a disabled account never receives a cookie.
 /// </para>
+/// <para>
+/// <b>Two-factor sign-in (issue #20).</b> Identity's two-factor methods work from the
+/// <c>Identity.TwoFactorUserId</c> cookie, which is valid for five minutes after the password check.
+/// Two gaps in the base class are closed here:
+/// </para>
+/// <list type="bullet">
+/// <item>
+/// <b>Disabled during the code step.</b> <see cref="SignInOrTwoFactorAsync"/> above stops a disabled
+/// account before that cookie is issued, but an Administrator can disable an account <i>between</i>
+/// the password and the code. The base two-factor methods only ask <c>CanSignInAsync</c>
+/// (confirmed email), which this class deliberately does not override (that hook runs before the
+/// password check and would turn the form into an account-existence oracle), so each two-factor method
+/// re-checks <see cref="RelioUser.IsDisabled"/>, clears the cookie and answers
+/// <see cref="RelioSignInResult.Disabled"/>. (The final <see cref="SignInWithClaimsAsync(RelioUser, AuthenticationProperties?, IEnumerable{Claim})"/>
+/// backstop would also refuse the cookie, but would report a plain success.)
+/// </item>
+/// <item>
+/// <b>Recovery codes had no lockout.</b> <c>TwoFactorRecoveryCodeSignInAsync</c> skips
+/// <c>PreSignInCheck</c> (so a locked-out account could still sign in with a valid code) and never
+/// counts a wrong code, because Identity assumes codes are random enough not to guess. They are
+/// (about 50 bits), but "an attacker with the password gets unlimited guesses" is a poor property
+/// when the fix is five lines: the override runs <c>PreSignInCheck</c> first and counts a wrong code
+/// against the same <c>Account:Lockout</c> budget as a wrong password or authenticator code.
+/// </item>
+/// </list>
+/// <para>
+/// A correct password does not reset the failed-attempt counter for an account with two-factor
+/// authentication (Identity resets it only once the whole sign-in completes), so password, code and
+/// recovery-code failures all add up towards one lockout.
+/// </para>
 /// </remarks>
 public sealed class RelioSignInManager(
     UserManager<RelioUser> userManager,
@@ -48,6 +78,82 @@ public sealed class RelioSignInManager(
         }
 
         return await base.SignInOrTwoFactorAsync(user, isPersistent, loginProvider, bypassTwoFactor);
+    }
+
+    /// <inheritdoc />
+    public override async Task<SignInResult> TwoFactorAuthenticatorSignInAsync(
+        string code, bool isPersistent, bool rememberClient)
+    {
+        return await RefuseDisabledTwoFactorUserAsync()
+            ?? await base.TwoFactorAuthenticatorSignInAsync(code, isPersistent, rememberClient);
+    }
+
+    /// <inheritdoc />
+    public override async Task<SignInResult> TwoFactorSignInAsync(
+        string provider, string code, bool isPersistent, bool rememberClient)
+    {
+        return await RefuseDisabledTwoFactorUserAsync()
+            ?? await base.TwoFactorSignInAsync(provider, code, isPersistent, rememberClient);
+    }
+
+    /// <inheritdoc />
+    public override async Task<SignInResult> TwoFactorRecoveryCodeSignInAsync(string recoveryCode)
+    {
+        var user = await GetTwoFactorAuthenticationUserAsync();
+        if (user is null)
+        {
+            return SignInResult.Failed;
+        }
+
+        if (await RefuseDisabledTwoFactorUserAsync() is { } disabled)
+        {
+            return disabled;
+        }
+
+        // What the base method skips: not-confirmed and locked-out accounts are refused before a
+        // code is even looked at.
+        var error = await PreSignInCheck(user);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        var result = await base.TwoFactorRecoveryCodeSignInAsync(recoveryCode);
+        if (result.Succeeded)
+        {
+            return result;
+        }
+
+        // Count the wrong code like a wrong password or authenticator code, so one budget covers
+        // every guess an attacker who knows the password can make.
+        if (UserManager.SupportsUserLockout)
+        {
+            var increment = await UserManager.AccessFailedAsync(user) ?? IdentityResult.Success;
+            if (increment.Succeeded && await UserManager.IsLockedOutAsync(user))
+            {
+                return await LockedOut(user);
+            }
+        }
+
+        return SignInResult.Failed;
+    }
+
+    /// <summary>
+    /// When the account waiting at the two-factor step has been disabled since its password was
+    /// checked, ends that step (clears the two-factor cookie) and answers
+    /// <see cref="RelioSignInResult.Disabled"/>; otherwise <see langword="null"/>.
+    /// </summary>
+    private async Task<SignInResult?> RefuseDisabledTwoFactorUserAsync()
+    {
+        var user = await GetTwoFactorAuthenticationUserAsync();
+        if (user is not { IsDisabled: true })
+        {
+            return null;
+        }
+
+        Logger.LogWarning("Refused the two-factor step for disabled account {UserId}.", user.Id);
+        await Context.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
+        return RelioSignInResult.Disabled;
     }
 
     /// <inheritdoc />

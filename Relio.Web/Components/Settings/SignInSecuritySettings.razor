@@ -1,11 +1,27 @@
-@* The "Sign-in and security" section of /settings (issue #18). Shows the signed-in email and links
-   to the static SSR pages under /Account/Manage: changing the email or password has to write the
-   auth cookie to the HTTP response, which an interactive circuit cannot do - see "Accounts and
-   authentication" in AGENTS.md. Those targets are [ExcludeFromInteractiveRouting], so the interactive
-   router answers a click on these links with a full page load, which is what they need. *@
+@* The "Sign-in and security" section of /settings (issues #18, #20). Shows the signed-in email and the
+   two-factor state, and links to the static SSR pages under /Account/Manage: changing the email, the
+   password or two-factor authentication has to write the auth cookie to the HTTP response, which an
+   interactive circuit cannot do - see "Accounts and authentication" in AGENTS.md. Those targets are
+   [ExcludeFromInteractiveRouting], so the interactive router answers a click on these links with a
+   full page load, which is what they need. *@
+
+@using Relio.Application.Accounts
+
+@inject ITwoFactorStatusService TwoFactorStatusService
 
 <MudText Typo="Typo.body2" Class="mud-text-secondary">Email</MudText>
 <MudText Typo="Typo.body1" Class="mb-3" data-testid="settings-current-email">@_email</MudText>
+
+<MudText Typo="Typo.body2" Class="mud-text-secondary">Two-factor authentication</MudText>
+<MudText Typo="Typo.body1" Class="mb-3" data-testid="settings-2fa-state">@(_twoFactor.IsEnabled ? "On" : "Off")</MudText>
+
+@if (_twoFactor.RecoveryCodesLow)
+{
+    <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3" data-testid="settings-2fa-recovery-codes-low">
+        You have @_twoFactor.RecoveryCodesLeft recovery @(_twoFactor.RecoveryCodesLeft == 1 ? "code" : "codes") left.
+        Generate new ones from the two-factor page.
+    </MudAlert>
+}
 
 <div class="d-flex flex-wrap gap-2">
     <MudButton Href="/Account/Manage/Email"
@@ -20,6 +36,13 @@
                data-testid="settings-change-password">
         Change password
     </MudButton>
+    <MudButton Href="/Account/Manage/TwoFactorAuthentication"
+               Variant="Variant.Outlined"
+               Color="Color.Primary"
+               data-enhance-nav="false"
+               data-testid="settings-2fa-manage">
+        @(_twoFactor.IsEnabled ? "Manage two-factor authentication" : "Set up two-factor authentication")
+    </MudButton>
 </div>
 
 @code {
@@ -27,6 +50,7 @@
     private Task<AuthenticationState>? AuthenticationState { get; set; }
 
     private string? _email;
+    private TwoFactorStatus _twoFactor = new(IsEnabled: false, RecoveryCodesLeft: 0);
 
     protected override async Task OnInitializedAsync()
     {
@@ -34,5 +58,8 @@
         {
             _email = (await AuthenticationState).User.Identity?.Name;
         }
+
+        // Read fresh from the database on every load (see ITwoFactorStatusService's remarks).
+        _twoFactor = await TwoFactorStatusService.GetStatusAsync();
     }
 }

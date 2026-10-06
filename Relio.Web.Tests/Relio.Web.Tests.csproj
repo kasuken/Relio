@@ -25,4 +25,9 @@
     <ProjectReference Include="..\Relio.Web\Relio.Web.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The same TOTP calculator the Playwright tests use (see its remarks); linked rather than copied. -->
+    <Compile Include="..\Relio.Web.E2ETests\Infrastructure\Totp.cs" Link="Identity\Totp.cs" />
+  </ItemGroup>
+
 </Project>

@@ -1,0 +1,132 @@
+@page "/Account/Manage/GenerateRecoveryCodes"
+@attribute [Authorize]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using Relio.Data.Identity
+
+@inject UserManager<RelioUser> UserManager
+@inject SignInManager<RelioUser> SignInManager
+@inject NavigationManager NavigationManager
+@inject ILogger<GenerateRecoveryCodes> Logger
+
+@* Replaces the recovery codes with ten new ones (issue #20), after confirming the current password.
+   The new codes are shown once, in this response. Replacing codes does not rotate the security
+   stamp, so no other session is affected and no cookie needs re-issuing. *@
+
+<PageTitle>Generate new recovery codes - Relio</PageTitle>
+
+@if (_recoveryCodes is not null)
+{
+    <MudAlert Severity="Severity.Success" Class="mb-6" data-testid="manage-2fa-status">
+        New recovery codes created. Your old ones no longer work.
+    </MudAlert>
+
+    <RecoveryCodesPanel Codes="_recoveryCodes" />
+
+    <MudButton Href="/Account/Manage/TwoFactorAuthentication" Variant="Variant.Filled" Color="Color.Primary"
+               data-testid="manage-2fa-done">
+        I've saved my recovery codes
+    </MudButton>
+}
+else if (_user is not null)
+{
+    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">Generate new recovery codes</MudText>
+    <MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+        Your current recovery codes stop working and you get 10 new ones. Your authenticator app keeps working as it is.
+    </MudText>
+
+    <EditForm Model="Input" FormName="generate-recovery-codes" OnValidSubmit="GenerateAsync" method="post">
+        <DataAnnotationsValidator />
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="manage-2fa-error">@_errorMessage</MudAlert>
+        }
+
+        @* Plain HTML input, not MudTextField - see Register.razor's matching comment. *@
+        <div class="rl-field">
+            <label for="manage-2fa-codes-password">Current password</label>
+            <input id="manage-2fa-codes-password" name="Input.CurrentPassword" type="password" required
+                   autocomplete="current-password" data-testid="manage-2fa-codes-password" />
+            <ValidationMessage For="@(() => Input!.CurrentPassword)" />
+        </div>
+
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                   FullWidth="true" data-testid="manage-2fa-codes-submit" Class="mt-2">
+            Generate new recovery codes
+        </MudButton>
+    </EditForm>
+
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mt-6">
+        <MudLink Href="/Account/Manage/TwoFactorAuthentication" data-testid="manage-2fa-back">Back to two-factor authentication</MudLink>
+    </MudText>
+}
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel? Input { get; set; }
+
+    private RelioUser? _user;
+    private string? _errorMessage;
+    private IReadOnlyList<string>? _recoveryCodes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        _user = await UserManager.GetUserAsync(HttpContext.User);
+        if (_user is null)
+        {
+            // A valid cookie for an account that no longer exists: end the session instead of
+            // rendering a form that could never succeed.
+            await SignInManager.SignOutAsync();
+            NavigationManager.NavigateTo("/Account/Login", forceLoad: true);
+            return;
+        }
+
+        if (!await UserManager.GetTwoFactorEnabledAsync(_user))
+        {
+            // Nothing to regenerate: recovery codes only exist while two-factor authentication is on.
+            _user = null;
+            NavigationManager.NavigateTo("/Account/Manage/TwoFactorAuthentication", forceLoad: true);
+        }
+    }
+
+    private async Task GenerateAsync()
+    {
+        if (_user is null)
+        {
+            return;
+        }
+
+        if (!await UserManager.CheckPasswordAsync(_user, Input!.CurrentPassword))
+        {
+            Logger.LogInformation(
+                "User {UserId} submitted an incorrect current password when changing two-factor settings.", _user.Id);
+            _errorMessage = "Your current password is incorrect.";
+            return;
+        }
+
+        var codes = await UserManager.GenerateNewTwoFactorRecoveryCodesAsync(_user, TwoFactorAccountExtensions.RecoveryCodeCount);
+        if (codes is null)
+        {
+            Logger.LogError("New recovery codes could not be generated for user {UserId}.", _user.Id);
+            _errorMessage = "New recovery codes couldn't be created. Try again.";
+            return;
+        }
+
+        Logger.LogInformation("User {UserId} generated new recovery codes.", _user.Id);
+        _recoveryCodes = codes.ToList();
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "Enter your current password.")]
+        public string CurrentPassword { get; set; } = string.Empty;
+    }
+}

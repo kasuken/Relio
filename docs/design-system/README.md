@@ -39,6 +39,7 @@ Relio is a private notebook about the people in your life. The design borrows fr
 - Entry types own their colours: interactions `pen`, notes `pencil` (marker fill `pencil-mark`), difficult moments `plum`. Their `*-soft` tints are backgrounds behind `text` or the matching colour.
 - `plum` is not an error colour. Errors are `error`, confirmations `success`, overdue items `warning`, and each always comes with a word or icon.
 - Body text is `text`; dates and metadata are `text-muted`. Both pass 4.5:1 on every ground in both themes.
+- QR codes (two-factor setup) are always `qr-ink` on `qr-ground`, dark on light in both themes: scanners cannot read an inverted code. They keep a four-module quiet zone, a hairline `line` border and no other decoration.
 - Dark theme is the "night desk": the same roles with lighter inks on a blue-black ground. It is a first-class theme. Follow the system setting by default.
 
 ## Typography

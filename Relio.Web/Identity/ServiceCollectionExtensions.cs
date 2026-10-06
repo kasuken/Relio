@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -27,9 +28,11 @@ namespace Relio.Web.Identity;
 /// <see cref="RelioSignInManager"/> that refuses disabled accounts, the eagerly validated
 /// <see cref="BuildRegistrationOptions"/>, and the configurable session validation interval
 /// (<see cref="AccountSessionOptions"/>) - without touching password/email policy.</item>
-/// <item>#20 (2FA) turns on <c>IdentityOptions.Tokens</c>/<c>SignIn.RequireConfirmedPhoneNumber</c>-style
-/// options and a new login step; <see cref="RelioUser"/> already has the two-factor columns it
-/// needs, from <see cref="IdentityUser"/>.</item>
+/// <item>#20 (optional two-factor authentication with an authenticator app) needed no new Identity
+/// options - <c>AddDefaultTokenProviders</c> already registers the authenticator token provider and
+/// <see cref="RelioUser"/> already has the two-factor columns, from <see cref="IdentityUser"/> -
+/// only the cookie hardening (<see cref="ApplyCookieSecurity"/> also covers the short-lived
+/// two-factor cookies) and the <see cref="RelioSignInManager"/> overrides.</item>
 /// </list>
 /// </summary>
 public static class ServiceCollectionExtensions
@@ -159,20 +162,18 @@ public static class ServiceCollectionExtensions
             options.SlidingExpiration = true;
             options.ExpireTimeSpan = accountOptions.Cookie.ExpireTimeSpan;
 
-            // Never readable from JavaScript (defence in depth against XSS exfiltrating the
-            // session) and never sent cross-site (SameSite=Lax still allows top-level navigation
-            // links, e.g. following an emailed link, unlike Strict). Secure is relaxed to
-            // SameAsRequest only in Development, where Relio.Web.E2ETests and local `dotnet run`
-            // serve plain HTTP on loopback with no HTTPS endpoint configured - requiring Secure
-            // there would mean the browser never sends the cookie back at all. Every other
-            // environment requires HTTPS (see Program.cs's UseHsts/UseHttpsRedirection), so Secure
-            // is always enforced there.
-            options.Cookie.HttpOnly = true;
-            options.Cookie.SameSite = SameSiteMode.Lax;
-            options.Cookie.SecurePolicy = environment.IsDevelopment()
-                ? CookieSecurePolicy.SameAsRequest
-                : CookieSecurePolicy.Always;
+            ApplyCookieSecurity(options.Cookie, environment);
         });
+
+        // Issue #20: the two cookies of the two-factor sign-in step get the same attributes as the
+        // application cookie. "Identity.TwoFactorUserId" (5 minutes, Identity's default, kept) holds
+        // the id of someone who passed the password check and is waiting to enter a code;
+        // "Identity.TwoFactorRememberMe" is never issued (Relio has no "remember this device" - see
+        // AGENTS.md) but is hardened anyway, so enabling it later cannot start from a weaker default.
+        services.Configure<CookieAuthenticationOptions>(
+            IdentityConstants.TwoFactorUserIdScheme, options => ApplyCookieSecurity(options.Cookie, environment));
+        services.Configure<CookieAuthenticationOptions>(
+            IdentityConstants.TwoFactorRememberMeScheme, options => ApplyCookieSecurity(options.Cookie, environment));
 
         services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
 
@@ -186,6 +187,24 @@ public static class ServiceCollectionExtensions
         }
 
         return services;
+    }
+
+    /// <summary>
+    /// Never readable from JavaScript (defence in depth against XSS exfiltrating the session) and
+    /// never sent cross-site (SameSite=Lax still allows top-level navigation links, e.g. following
+    /// an emailed link, unlike Strict). Secure is relaxed to SameAsRequest only in Development,
+    /// where Relio.Web.E2ETests and local <c>dotnet run</c> serve plain HTTP on loopback with no
+    /// HTTPS endpoint configured - requiring Secure there would mean the browser never sends the
+    /// cookie back at all. Every other environment requires HTTPS (see Program.cs's
+    /// UseHsts/UseHttpsRedirection), so Secure is always enforced there.
+    /// </summary>
+    private static void ApplyCookieSecurity(CookieBuilder cookie, IHostEnvironment environment)
+    {
+        cookie.HttpOnly = true;
+        cookie.SameSite = SameSiteMode.Lax;
+        cookie.SecurePolicy = environment.IsDevelopment()
+            ? CookieSecurePolicy.SameAsRequest
+            : CookieSecurePolicy.Always;
     }
 
     /// <summary>

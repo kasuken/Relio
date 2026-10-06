@@ -1,0 +1,122 @@
+@page "/Account/Manage/Disable2fa"
+@attribute [Authorize]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using Relio.Data.Identity
+
+@inject UserManager<RelioUser> UserManager
+@inject SignInManager<RelioUser> SignInManager
+@inject NavigationManager NavigationManager
+@inject ILogger<Disable2fa> Logger
+
+@* Turning two-factor authentication off (issue #20), after confirming the current password. The key
+   is replaced and the recovery codes cleared (TwoFactorAccountExtensions.TurnOffTwoFactorAsync), so
+   nothing from the old setup survives to work again if it is ever turned back on. *@
+
+<PageTitle>Turn off two-factor authentication - Relio</PageTitle>
+
+@if (_user is not null)
+{
+    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">Turn off two-factor authentication</MudText>
+    <MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+        Signing in will only ask for your password. Codes from your authenticator app and your recovery
+        codes stop working. Other devices signed in to your account are signed out.
+    </MudText>
+
+    <EditForm Model="Input" FormName="disable-2fa" OnValidSubmit="DisableAsync" method="post">
+        <DataAnnotationsValidator />
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="manage-2fa-error">@_errorMessage</MudAlert>
+        }
+
+        @* Plain HTML input, not MudTextField - see Register.razor's matching comment. *@
+        <div class="rl-field">
+            <label for="manage-2fa-disable-password">Current password</label>
+            <input id="manage-2fa-disable-password" name="Input.CurrentPassword" type="password" required
+                   autocomplete="current-password" data-testid="manage-2fa-disable-password" />
+            <ValidationMessage For="@(() => Input!.CurrentPassword)" />
+        </div>
+
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Error"
+                   FullWidth="true" data-testid="manage-2fa-disable-submit" Class="mt-2">
+            Turn off two-factor authentication
+        </MudButton>
+    </EditForm>
+
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mt-6">
+        <MudLink Href="/Account/Manage/TwoFactorAuthentication" data-testid="manage-2fa-back">Back to two-factor authentication</MudLink>
+    </MudText>
+}
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel? Input { get; set; }
+
+    private RelioUser? _user;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        _user = await UserManager.GetUserAsync(HttpContext.User);
+        if (_user is null)
+        {
+            // A valid cookie for an account that no longer exists: end the session instead of
+            // rendering a form that could never succeed.
+            await SignInManager.SignOutAsync();
+            NavigationManager.NavigateTo("/Account/Login", forceLoad: true);
+            return;
+        }
+
+        if (!await UserManager.GetTwoFactorEnabledAsync(_user))
+        {
+            _user = null;
+            NavigationManager.NavigateTo("/Account/Manage/TwoFactorAuthentication", forceLoad: true);
+        }
+    }
+
+    private async Task DisableAsync()
+    {
+        if (_user is null)
+        {
+            return;
+        }
+
+        if (!await UserManager.CheckPasswordAsync(_user, Input!.CurrentPassword))
+        {
+            Logger.LogInformation(
+                "User {UserId} submitted an incorrect current password when changing two-factor settings.", _user.Id);
+            _errorMessage = "Your current password is incorrect.";
+            return;
+        }
+
+        var result = await UserManager.TurnOffTwoFactorAsync(_user);
+        if (!result.Succeeded)
+        {
+            Logger.LogError("Two-factor authentication could not be turned off for user {UserId}.", _user.Id);
+            _errorMessage = "Two-factor authentication couldn't be turned off. Try again.";
+            return;
+        }
+
+        // The security stamp rotated: re-issue this session's cookie so the person who just turned
+        // it off stays signed in; every other session ends at its next validation.
+        await SignInManager.RefreshSignInAsync(_user);
+
+        Logger.LogInformation("User {UserId} turned off two-factor authentication.", _user.Id);
+        NavigationManager.NavigateTo("/Account/Manage/TwoFactorAuthentication?status=disabled", forceLoad: true);
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "Enter your current password.")]
+        public string CurrentPassword { get; set; } = string.Empty;
+    }
+}

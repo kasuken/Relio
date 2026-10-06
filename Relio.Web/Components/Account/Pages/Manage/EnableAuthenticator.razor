@@ -1,0 +1,211 @@
+@page "/Account/Manage/EnableAuthenticator"
+@attribute [Authorize]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using Relio.Data.Identity
+
+@inject UserManager<RelioUser> UserManager
+@inject SignInManager<RelioUser> SignInManager
+@inject NavigationManager NavigationManager
+@inject ILogger<EnableAuthenticator> Logger
+
+@* Turning two-factor authentication on (issue #20): scan a QR code (or type the key), prove the app
+   works by entering a code, confirm with the current password, and get ten recovery codes - shown
+   once, in this very response (see RecoveryCodesPanel). Nothing is on until the code verifies, so a
+   mistake here can never lock someone out. Static SSR: turning it on rotates the security stamp,
+   and the sign-in cookie has to be re-issued in this request's response. *@
+
+<PageTitle>Set up an authenticator app - Relio</PageTitle>
+
+@if (_recoveryCodes is not null)
+{
+    <MudAlert Severity="Severity.Success" Class="mb-6" data-testid="manage-2fa-status">
+        Two-factor authentication is on. Other devices signed in to your account are signed out.
+    </MudAlert>
+
+    <RecoveryCodesPanel Codes="_recoveryCodes" />
+
+    <MudButton Href="/Account/Manage/TwoFactorAuthentication" Variant="Variant.Filled" Color="Color.Primary"
+               data-testid="manage-2fa-done">
+        I've saved my recovery codes
+    </MudButton>
+}
+else if (_user is not null)
+{
+    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">Set up an authenticator app</MudText>
+    <MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+        Relio will ask for a code from this app each time you sign in.
+    </MudText>
+
+    @if (Status == "reset")
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4" data-testid="manage-2fa-reset-status">
+            Codes from your old app no longer work. Set up the new app to turn two-factor authentication back on.
+        </MudAlert>
+    }
+
+    <ol class="rl-steps">
+        <li>
+            Install an authenticator app on your phone, if you don't have one yet. Any app that supports
+            time-based one-time codes works.
+        </li>
+        <li>
+            <p>Scan this QR code with the app.</p>
+            <QrCodeImage Code="_qr!" Label="QR code for adding Relio to your authenticator app" data-testid="manage-2fa-qr" />
+            <p class="mt-4">Can't scan it? Enter this key instead:</p>
+            <code class="rl-shared-key" data-testid="manage-2fa-shared-key">@_sharedKey</code>
+            <MudText Typo="Typo.body2" Class="mt-2">
+                <MudLink Href="@_uri" data-enhance-nav="false" data-testid="manage-2fa-otpauth-link">Open in an authenticator app on this device</MudLink>
+            </MudText>
+        </li>
+        <li>Enter the 6-digit code the app shows, and your current password.</li>
+    </ol>
+
+    <EditForm Model="Input" FormName="enable-authenticator" OnValidSubmit="TurnOnAsync" method="post">
+        <DataAnnotationsValidator />
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="manage-2fa-error">@_errorMessage</MudAlert>
+        }
+
+        @* Plain HTML inputs, not MudTextField - see Register.razor's matching comment: MudBlazor's
+           inputs need a live circuit to post their value, which this static SSR page does not have. *@
+        <div class="rl-field">
+            <label for="manage-2fa-code">Code from the app</label>
+            <input id="manage-2fa-code" name="Input.Code" type="text" required
+                   inputmode="numeric" autocomplete="one-time-code" autocapitalize="off" spellcheck="false"
+                   data-testid="manage-2fa-code" />
+            <ValidationMessage For="@(() => Input!.Code)" />
+        </div>
+
+        <div class="rl-field">
+            <label for="manage-2fa-password">Current password</label>
+            <input id="manage-2fa-password" name="Input.CurrentPassword" type="password" required
+                   autocomplete="current-password" data-testid="manage-2fa-password" />
+            <ValidationMessage For="@(() => Input!.CurrentPassword)" />
+        </div>
+
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                   FullWidth="true" data-testid="manage-2fa-verify" Class="mt-2">
+            Turn on two-factor authentication
+        </MudButton>
+    </EditForm>
+
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mt-6">
+        <MudLink Href="/Account/Manage/TwoFactorAuthentication" data-testid="manage-2fa-back">Back to two-factor authentication</MudLink>
+    </MudText>
+}
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel? Input { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? Status { get; set; }
+
+    private RelioUser? _user;
+    private string? _sharedKey;
+    private string? _uri;
+    private QrCodeSvg? _qr;
+    private string? _errorMessage;
+    private IReadOnlyList<string>? _recoveryCodes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        _user = await UserManager.GetUserAsync(HttpContext.User);
+        if (_user is null)
+        {
+            // A valid cookie for an account that no longer exists: end the session instead of
+            // rendering a form that could never succeed.
+            await SignInManager.SignOutAsync();
+            NavigationManager.NavigateTo("/Account/Login", forceLoad: true);
+            return;
+        }
+
+        if (await UserManager.GetTwoFactorEnabledAsync(_user))
+        {
+            // Already on: a second setup would silently replace the key. Changing the app goes
+            // through ResetAuthenticator, which asks for the password first.
+            _user = null;
+            NavigationManager.NavigateTo("/Account/Manage/TwoFactorAuthentication", forceLoad: true);
+            return;
+        }
+
+        var key = await UserManager.GetAuthenticatorKeyAsync(_user);
+        if (string.IsNullOrEmpty(key))
+        {
+            // First visit: create the key. ResetAuthenticatorKeyAsync rotates the security stamp, so
+            // re-issue this session's cookie or the person looking at their own setup page would be
+            // signed out at the next validation.
+            await UserManager.ResetAuthenticatorKeyAsync(_user);
+            await SignInManager.RefreshSignInAsync(_user);
+            key = await UserManager.GetAuthenticatorKeyAsync(_user);
+        }
+
+        if (string.IsNullOrEmpty(key))
+        {
+            throw new InvalidOperationException("The authenticator key could not be created.");
+        }
+
+        // Neither the key nor the URI is ever logged: both are the shared secret.
+        _sharedKey = AuthenticatorUri.FormatKey(key);
+        _uri = AuthenticatorUri.Build(_user.Email ?? _user.UserName ?? _user.Id, key);
+        _qr = QrCodeSvg.Create(_uri);
+    }
+
+    private async Task TurnOnAsync()
+    {
+        if (_user is null)
+        {
+            return;
+        }
+
+        if (!await UserManager.CheckPasswordAsync(_user, Input!.CurrentPassword))
+        {
+            Logger.LogInformation(
+                "User {UserId} submitted an incorrect current password when changing two-factor settings.", _user.Id);
+            _errorMessage = "Your current password is incorrect.";
+            return;
+        }
+
+        if (!TwoFactorCodes.TryNormalizeAuthenticatorCode(Input.Code, out var code)
+            || !await UserManager.VerifyTwoFactorTokenAsync(_user, UserManager.Options.Tokens.AuthenticatorTokenProvider, code))
+        {
+            Logger.LogInformation("User {UserId} submitted an incorrect authenticator code during setup.", _user.Id);
+            _errorMessage = "That code is incorrect or has expired. Enter the current code from your authenticator app.";
+            return;
+        }
+
+        var codes = await UserManager.TurnOnTwoFactorAsync(_user);
+        if (codes is null)
+        {
+            Logger.LogError("Two-factor authentication could not be turned on for user {UserId}.", _user.Id);
+            _errorMessage = "Two-factor authentication couldn't be turned on. Try again.";
+            return;
+        }
+
+        // Turning it on rotated the security stamp: re-issue this session's cookie (other sessions
+        // end at their next validation, which is what the success message promises).
+        await SignInManager.RefreshSignInAsync(_user);
+
+        Logger.LogInformation("User {UserId} turned on two-factor authentication.", _user.Id);
+        _recoveryCodes = codes;
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "Enter the code from your authenticator app.")]
+        public string Code { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter your current password.")]
+        public string CurrentPassword { get; set; } = string.Empty;
+    }
+}

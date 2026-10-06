@@ -167,9 +167,9 @@ the real thing (lockout, remember-me, open-redirect protection, circuit revalida
 bullet below). Issue #17 added password reset by email (see its own bullet below). Issue #18 added account
 settings (display name, time zone, change email, change password - see "Account settings" below).
 Issue #19 added self-hosted administration (first-account administrator, `Registration:Mode`,
-invitations, disabling accounts - see "Self-hosted administration" below). Later issues extend this
-further without restructuring it: #20 (2FA - `RelioUser` already has the columns it needs, from
-`IdentityUser`).
+invitations, disabling accounts - see "Self-hosted administration" below). Issue #20 added optional
+two-factor authentication with an authenticator app (see "Two-factor authentication" below),
+completing epic #14.
 
 - **The user entity** is `Relio.Data.Identity.RelioUser : IdentityUser`, in `Relio.Data` (not
   `Relio.Domain`, which stays free of any framework dependency - see the "User-scoped data
@@ -232,11 +232,14 @@ further without restructuring it: #20 (2FA - `RelioUser` already has the columns
 - **Account pages** live in `Relio.Web/Components/Account/Pages` (`Register.razor`, `Login.razor`,
   `RegisterConfirmation.razor`, `ConfirmEmail.razor`, `AccessDenied.razor`, the reset pages,
   `ConfirmEmailChange.razor`, and the signed-in `Pages/Manage/ChangePassword.razor` and
-  `Pages/Manage/Email.razor` - the Manage pages are `[Authorize]`, not `[AllowAnonymous]`), with shared
+  `Pages/Manage/Email.razor` - the Manage pages are `[Authorize]`, not `[AllowAnonymous]` - and
+  the two-factor pages: `LoginWith2fa.razor`, `LoginWithRecoveryCode.razor`,
+  `Pages/Manage/TwoFactorAuthentication.razor`, `EnableAuthenticator.razor`,
+  `GenerateRecoveryCodes.razor`, `Disable2fa.razor`, `ResetAuthenticator.razor`), with shared
   infrastructure in `Relio.Web/Components/Account` (`IdentityComponentsEndpointRouteBuilderExtensions`
   maps the `POST /Account/Logout` minimal API endpoint - logout, like register/login, must write
   directly to the HTTP response to clear the auth cookie) and `Components/Account/Shared`
-  (`AccountLayout`, `RedirectToLogin`). Add new account pages to this same folder
+  (`AccountLayout`, `RedirectToLogin`, `QrCodeImage`, `RecoveryCodesPanel`). Add new account pages to this same folder
   (`Pages/Manage` for ones that need a signed-in user).
 - **Why static SSR**: `SignInManager`/`UserManager` need to write the auth cookie directly to the
   HTTP response of the request that is actually submitting the form - something an interactive
@@ -370,7 +373,8 @@ further without restructuring it: #20 (2FA - `RelioUser` already has the columns
     revalidation above). The session that changed it would be signed out too, so the page calls
     `SignInManager.RefreshSignInAsync(user)` right after - always do this after any call that rotates
     the stamp for the signed-in user (`ChangePasswordAsync`, `SetEmailAsync`, `SetUserNameAsync`,
-    `ChangeEmailAsync`). A wrong current password and a policy failure are reported separately and
+    `ChangeEmailAsync`, and for #20 `SetTwoFactorEnabledAsync` and `ResetAuthenticatorKeyAsync` -
+    including the setup page's first-key creation on a plain GET). A wrong current password and a policy failure are reported separately and
     never reveal anything about other accounts.
   - **Change email** always requires the current password. `Email:Provider=Smtp`
     (`EmailOptions.CanSendEmail`): the new address is stored as `RelioUser.PendingEmail` (so the link
@@ -480,6 +484,89 @@ further without restructuring it: #20 (2FA - `RelioUser` already has the columns
     created a role named "Administrator" the insert would hit `RoleNameIndex` (the project is
     unreleased; delete the manual role first). Apply migrations before starting the new version: startup
     queries the new table.
+- **Two-factor authentication (issue #20)**: optional, per account, authenticator app (TOTP) only - no
+  SMS, no email codes, no passkeys. It needed **no migration**: `AspNetUsers.TwoFactorEnabled` and
+  `AspNetUserTokens` (Identity keeps the authenticator key and the recovery codes there, under the
+  `[AspNetUserStore]` provider) already exist from `AddIdentity`. Identity's authenticator token
+  provider is registered by `AddDefaultTokenProviders` already.
+  - **Pages** (all static SSR: `[ExcludeFromInteractiveRouting]`, `AccountLayout`, plain HTML inputs).
+    Sign-in: `LoginWith2fa` (`/Account/LoginWith2fa`) and `LoginWithRecoveryCode`, both
+    `[AllowAnonymous]`. Management, `[Authorize]`: `Manage/TwoFactorAuthentication` (status hub, links
+    only), `EnableAuthenticator` (key + QR + verify), `GenerateRecoveryCodes`, `Disable2fa`,
+    `ResetAuthenticator`. `/settings` shows the state through `Application.Accounts.ITwoFactorStatusService`
+    (implemented in `Relio.Data.Identity.TwoFactorStatusService`) and links to the hub. The settings
+    hub is interactive and its `DbContext` lives as long as the circuit, so the service reads
+    **untracked** (it queries `AspNetUsers`/`AspNetUserTokens` directly; a test proves its recovery-code
+    count always equals `UserManager.CountRecoveryCodesAsync`, which guards the private token names it
+    mirrors). Do the same for any status read in an interactive component.
+  - **Sign-in flow.** `Login.razor`'s `PasswordSignInAsync` returns `RequiresTwoFactor` (Identity has
+    written the 5-minute `Identity.TwoFactorUserId` cookie holding only the user id); `Login` hands
+    `returnUrl` (already reduced by `ReturnUrlValidator`) and `rememberMe` to `/Account/LoginWith2fa` as
+    query parameters, and **both** two-factor pages run `ReturnUrlValidator.GetSafeReturnUrl` again
+    (a query string is editable). `EditForm` has no `action`, so the POST keeps the query string. With no
+    pending sign-in (no cookie, or it ran out) both pages show a calm "your sign-in timed out" message
+    and keep a hidden form so a late POST still finds it. `Login` checks branches in this order:
+    succeeded, `RequiresTwoFactor`, `RelioSignInResult.Disabled`, locked out, not allowed, wrong
+    password - **`Disabled` is also `IsNotAllowed`, so it must come before it**. A malformed code
+    (not exactly six digits after removing spaces/hyphens, `TwoFactorCodes`) never reaches Identity, so a
+    typo is not a failed attempt. Messages shared by the sign-in pages live in `Identity/SignInMessages`.
+  - **No "remember this device".** Always `rememberClient: false`; `RememberTwoFactorClientAsync` is
+    never called, so every sign-in asks for a code. A remembered-device cookie is a long-lived
+    bearer token that skips the second factor and would need its own revocation and "forget this
+    device" story; revisit as a follow-up if people ask. The two-factor
+    cookies are still hardened (`HttpOnly`, `SameSite=Lax`, `Secure` outside Development) by the shared
+    `ApplyCookieSecurity` in `AddRelioIdentity`. A recovery-code sign-in always issues a *session*
+    cookie, whatever "Remember me" said (Identity's `TwoFactorRecoveryCodeSignInAsync` has no such
+    parameter); the authenticator-code sign-in honours it.
+  - **One lockout budget, and recovery-code hardening.** With two-factor authentication on, a correct
+    password no longer resets the failed-attempt counter (Identity resets it only when the whole
+    sign-in completes), and a wrong authenticator code is counted by Identity itself, so password and
+    code failures add up towards `Account:Lockout:MaxFailedAccessAttempts`. Identity's
+    `TwoFactorRecoveryCodeSignInAsync` has **no `PreSignInCheck` (a locked-out account could use a
+    valid code) and counts nothing**, so `RelioSignInManager` overrides it: refuse disabled, run
+    `PreSignInCheck`, then count a wrong code like any other guess. Do not "fix" that by overriding
+    `CanSignInAsync` (it runs before the password check; see the class remarks). Locked-out and
+    disabled messages are the same as the password step's.
+  - **Disabled accounts (#19) at the code step.** `SignInOrTwoFactorAsync` already stops a disabled
+    user before the cookie is issued; `RelioSignInManager` also overrides
+    `TwoFactorAuthenticatorSignInAsync`/`TwoFactorSignInAsync`/`TwoFactorRecoveryCodeSignInAsync` so an
+    account disabled *during* the five-minute window is refused with `RelioSignInResult.Disabled` and
+    the two-factor cookie is cleared.
+  - **Every change needs the current password** (`UserManager.CheckPasswordAsync`): turning on (together
+    with a valid code from the app), turning off, switching apps, regenerating codes. Turning on =
+    `TwoFactorAccountExtensions.TurnOnTwoFactorAsync` (`SetTwoFactorEnabledAsync(true)` + always 10
+    fresh codes); turning off = `TurnOffTwoFactorAsync` (disable + **rotate the key** + clear the
+    codes, so nothing from the old setup ever works again); "set up a different app" = turn off, then
+    the setup page with the new key (two-factor authentication stays off until the new app proves it
+    works, so a half-finished switch can never lock anyone out). The setup page creates the key on
+    first visit (`ResetAuthenticatorKeyAsync` rotates the stamp, so it calls `RefreshSignInAsync`
+    even on that GET); both turn-on and turn-off rotate the stamp too, so every other session ends
+    at its next validation and the page says so. The setup page redirects away when it is already on
+    (it must never silently replace a working key); the three change pages redirect when it is off.
+  - **Recovery codes are shown once, in the response to the POST that created them**
+    (`RecoveryCodesPanel`) - never in a redirect, query string, TempData or cookie. They are
+    `XXXXX-XXXXX`, ten per batch, stored by Identity as one `;`-joined string and matched exactly (the
+    login page upper-cases and strips spaces first). Authenticated responses already carry
+    `Cache-Control: no-store`. The status page shows only a count and warns calmly at 3 or fewer
+    (`TwoFactorStatus.LowRecoveryCodeThreshold`).
+  - **QR code**: generated server-side by `Net.Codecrete.QrCodeGenerator` (MIT, no dependencies) into
+    an inline SVG (`Identity/QrCodeSvg`, `Components/Account/Shared/QrCodeImage.razor`): one rect and
+    one path, no script, no `<image>`, no request - the secret never leaves the response. Colours come
+    from the `qr-ink`/`qr-ground` tokens through CSS classes (dark on light in **both** themes:
+    scanners cannot read an inverted code; never use `fill="..."` attributes). The `otpauth://` URI
+    (`Identity/AuthenticatorUri`) uses the constant issuer `Relio`; the key is also shown grouped in
+    fours for manual entry. **Never log the key, the URI, a code or a recovery code** - ids and counts only.
+  - **Secrets at rest**: Identity's built-in token storage keeps the authenticator key and the recovery
+    codes in plain text in `AspNetUserTokens` (the default; `IProtectedUserStore`/personal-data
+    protection is not enabled). Relio does not configure a persisted Data Protection key ring, so
+    encrypting them would risk making every account's key unreadable after a restart; instead the
+    database must be protected like the password hashes' database. Follow-up: protect two-factor
+    secrets at rest once a persisted key ring is a supported configuration.
+  - **Password reset (#17) does not turn two-factor authentication off** (a test locks it in): the
+    reset link proves control of the mailbox, not of the phone. Someone who loses their phone *and*
+    every recovery code cannot recover in-app; the pages tell them to contact the person who runs the
+    instance, and the README documents the operator's SQL fix. An administrator action to turn it off
+    is a follow-up.
 - **Demo data**: `Relio.Data.Seeding.DemoDataSeeder` creates a `demo@relio.local` account (test/demo
   password only, see its XML docs) - which is also made an **Administrator** (idempotently, on every
   run, so a demo database that predates #19 gets the role) - with realistic sample people (one
@@ -529,6 +616,18 @@ further without restructuring it: #20 (2FA - `RelioUser` already has the columns
   that need roles use `Relio.Data.Tests/Administration/AdministrationTestHarness.cs`.
   `Relio.Data.IntegrationTests` shares one SQL Server database across tests, so the #19 tests there
   only assert schema facts (seeded role, unique indexes) and never "there is exactly one account".
+  Two-factor authentication (#20): Identity's authenticator provider can only *verify* a code -
+  `GenerateTwoFactorTokenAsync` returns an empty string for it - so tests compute codes themselves with
+  `Relio.Web.E2ETests/Infrastructure/Totp.cs` (RFC 6238; `TotpTests` pins it to the RFC vector; it is
+  also compiled into `Relio.Web.Tests` as a linked file). `Infrastructure/TwoFactorTestHelpers.cs`
+  creates a fresh user with two-factor authentication on (`CreateTwoFactorUserAsync`: registers through
+  the real page, then turns it on through the app's services) and drives the two sign-in steps. **Never
+  turn two-factor authentication on for the shared demo user** - every other test signs in as it.
+  `Relio.Web.Tests` drives `RelioSignInManager` across several scopes with `FakeAuthenticationService`
+  (holds the two-factor cookie in memory); the sign-in manager tests are the contract for the shared
+  lockout budget. `Relio.Data.IntegrationTests` references the ASP.NET Core shared framework (it builds a
+  real `UserManager`), and can be run locally without Docker against LocalDB:
+  `ConnectionStrings__Relio='Server=(localdb)\MSSQLLocalDB;Integrated Security=true;Encrypt=False;TrustServerCertificate=True;'`.
 
 ## End-to-end tests
 

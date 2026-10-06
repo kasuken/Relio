@@ -14,8 +14,11 @@ namespace Relio.Data.Identity;
 /// <remarks>
 /// Email + password only (#15), plus <see cref="PendingEmail"/> for account settings (#18) and
 /// <see cref="IsDisabled"/> for self-hosted administration (#19).
-/// Two-factor fields already exist on <see cref="IdentityUser"/> itself, so #20 needs no model
-/// change here. Product-facing profile data (display name, time zone) lives on
+/// Two-factor authentication (#20) needed no model change here: <c>TwoFactorEnabled</c> is a column
+/// of <see cref="IdentityUser"/> itself, and the authenticator key and recovery codes are rows of
+/// Identity's own <c>AspNetUserTokens</c> table (see <see cref="TwoFactorStatusService"/> for how they
+/// are stored, and the "Two-factor authentication" bullet of AGENTS.md for why they are not
+/// encrypted at rest). Product-facing profile data (display name, time zone) lives on
 /// <c>Relio.Domain.UserProfile</c> instead, not here.
 /// </remarks>
 public sealed class RelioUser : IdentityUser

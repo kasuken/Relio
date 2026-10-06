@@ -16,7 +16,10 @@ namespace Relio.Web.Tests.Identity;
 /// </summary>
 internal static class IdentityServicesFactory
 {
-    public static ServiceProvider Build(IReadOnlyDictionary<string, string?>? configuration = null)
+    public static ServiceProvider Build(
+        IReadOnlyDictionary<string, string?>? configuration = null,
+        Action<IServiceCollection>? configureServices = null,
+        string environmentName = "Development")
     {
         var values = new Dictionary<string, string?> { [DataServiceCollectionExtensions.ProviderConfigurationKey] = "InMemory" };
         foreach (var (key, value) in configuration ?? new Dictionary<string, string?>())
@@ -25,7 +28,7 @@ internal static class IdentityServicesFactory
         }
 
         var config = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
-        var environment = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" }).Environment;
+        var environment = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = environmentName }).Environment;
 
         var services = new ServiceCollection();
         services.AddLogging();
@@ -35,6 +38,7 @@ internal static class IdentityServicesFactory
         services.AddSingleton<IHttpContextAccessor, PlainHttpContextAccessor>();
         services.AddRelioData(config);
         IdentityServiceCollectionExtensions.AddRelioIdentity(services, config, environment);
+        configureServices?.Invoke(services);
         return services.BuildServiceProvider();
     }
 

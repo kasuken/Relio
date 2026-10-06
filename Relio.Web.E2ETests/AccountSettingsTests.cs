@@ -153,6 +153,8 @@ public class AccountSettingsTests(RelioAppFixture fixture)
         await Expect(page.Locator("[data-testid='settings-change-email']")).ToHaveAttributeAsync("href", "/Account/Manage/Email");
         await Expect(page.Locator("[data-testid='settings-change-password']"))
             .ToHaveAttributeAsync("href", "/Account/Manage/ChangePassword");
+        await Expect(page.Locator("[data-testid='settings-2fa-manage']"))
+            .ToHaveAttributeAsync("href", "/Account/Manage/TwoFactorAuthentication");
 
         // From the interactive hub into a static SSR page: must be a real page load, since these
         // pages are excluded from interactive routing.

@@ -8,6 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- TwoFactorSqlServerTests builds a real UserManager<RelioUser> (AddIdentityCore/AddDefaultTokenProviders,
+         which sit in the ASP.NET Core shared framework) - see Relio.Data.Tests.csproj. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="AwesomeAssertions" Version="9.6.0" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
