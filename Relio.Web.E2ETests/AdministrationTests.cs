@@ -169,7 +169,10 @@ public class AdministrationTests(RelioAppFixture fixture)
         await Expect(RowFor(admin, email).Locator("a")).ToHaveCountAsync(0);
 
         // Nor does the administrator's own people list contain it.
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(admin, "/people");
+        // The list loads after the circuit connects, so wait for it (the count line) before asserting
+        // that a name is absent; archived people are included so nothing hides in the other view.
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(admin, "/people?archived=true");
+        await Expect(admin.Locator("[data-testid='people-count']")).ToBeVisibleAsync();
         (await admin.ContentAsync()).Should().NotContain(personName);
 
         await RelioAppFixture.ClosePageAsync(admin);

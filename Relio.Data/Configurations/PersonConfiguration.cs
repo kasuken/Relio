@@ -61,9 +61,18 @@ public sealed class PersonConfiguration : IEntityTypeConfiguration<Person>
                 "OR ([BirthdayMonth] IS NOT NULL AND [BirthdayDay] IS NOT NULL)");
         });
 
-        // Supports the active-people list (default view) and the archived view, both scoped to
-        // the owner - the two query shapes every list screen in Relio needs.
-        builder.HasIndex(p => new { p.OwnerId, p.IsArchived });
+        builder.Property(p => p.LastContactedOn)
+            .HasColumnType("date"); // a calendar date, no time part: never converted to or from UTC.
+
+        // One index per ordering of the people list (issue #23), each led by the owner and the
+        // archived flag so the default view (active people) and the archived view both seek
+        // straight to the owner's rows already in order. The first also serves the counts, which
+        // group by IsArchived. The clustered primary key (Id) rides along in every index, so the
+        // Id tie-break needs no column of its own. FirstName + LastName (100 characters each,
+        // nvarchar) is the widest key and stays well under SQL Server's 1,700-byte limit.
+        builder.HasIndex(p => new { p.OwnerId, p.IsArchived, p.FirstName, p.LastName });
+        builder.HasIndex(p => new { p.OwnerId, p.IsArchived, p.CreatedAtUtc });
+        builder.HasIndex(p => new { p.OwnerId, p.IsArchived, p.LastContactedOn });
 
         builder.HasMany(p => p.Tags)
             .WithMany(t => t.People)

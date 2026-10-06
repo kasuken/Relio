@@ -78,6 +78,26 @@ public class DemoDataSeederTests
     }
 
     [Fact]
+    public async Task SeedAsync_gives_some_people_a_last_contacted_date_and_leaves_others_never_contacted()
+    {
+        await using var dbContext = CreateDbContext();
+        var userManager = UserManagerTestFactory.Create(dbContext);
+        var seeder = CreateSeeder(dbContext, userManager, enabled: true, environmentName: Environments.Development);
+
+        await seeder.SeedAsync();
+
+        var people = await dbContext.People.ToListAsync();
+        people.Should().Contain(p => p.LastContactedOn != null).And.Contain(p => p.LastContactedOn == null);
+        people.Where(p => p.LastContactedOn != null).Select(p => p.LastContactedOn!.Value)
+            .Distinct().Should().HaveCountGreaterThan(2, "the demo exercises more than one way of reading the date");
+
+        // Counted back from today in the demo user's own zone, so nothing is in the future there.
+        var today = Relio.Application.Time.UserCalendar.Today(
+            TimeProvider.System, Relio.Application.Time.TimeZoneIds.Parse(DemoDataSeeder.DemoTimeZoneId));
+        people.Where(p => p.LastContactedOn != null).Should().OnlyContain(p => p.LastContactedOn <= today.AddDays(1));
+    }
+
+    [Fact]
     public async Task SeedAsync_refuses_and_logs_an_error_in_production()
     {
         await using var dbContext = CreateDbContext();

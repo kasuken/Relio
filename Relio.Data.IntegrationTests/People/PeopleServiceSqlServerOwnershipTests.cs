@@ -32,6 +32,26 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     }
 
     [SqlServerFact]
+    public async Task ListPageAsync_only_lists_and_counts_the_current_users_people()
+    {
+        await using var dbContext = fixture.CreateDbContext();
+        var ownerA = TestDataFactory.NewOwnerId();
+        var ownerB = TestDataFactory.NewOwnerId();
+        await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
+        await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Ann", isArchived: true);
+        await TestDataFactory.CreatePersonAsync(dbContext, ownerB, "Bob");
+        await TestDataFactory.CreatePersonAsync(dbContext, ownerB, "Bea", isArchived: true);
+
+        var result = await TestDataFactory.CreateService(dbContext, ownerA)
+            .ListPageAsync(new PeopleListQuery { IncludeArchived = true });
+
+        result.People.Items.Select(p => p.FirstName).Should().Equal("Alice", "Ann");
+        result.People.TotalCount.Should().Be(2);
+        result.ActiveCount.Should().Be(1);
+        result.ArchivedCount.Should().Be(1);
+    }
+
+    [SqlServerFact]
     public async Task GetAsync_for_a_nonexistent_person_also_returns_null()
     {
         await using var dbContext = fixture.CreateDbContext();

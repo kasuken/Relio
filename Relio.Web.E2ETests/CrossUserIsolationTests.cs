@@ -62,6 +62,15 @@ public class CrossUserIsolationTests(RelioAppFixture fixture)
         demoPeopleAfter.Should().NotContain(p => p.Id == newUsersPerson.Id);
         newUsersPeople.Should().ContainSingle(p => p.Id == newUsersPerson.Id);
 
+        // The paged list and its counts are scoped the same way, whatever the filter.
+        var demoPage = await demoPeopleService.ListPageAsync(new PeopleListQuery { IncludeArchived = true });
+        var newUsersPage = await newUserPeopleService.ListPageAsync(new PeopleListQuery { IncludeArchived = true });
+        demoPage.People.Items.Should().NotContain(p => p.Id == newUsersPerson.Id);
+        demoPage.ActiveCount.Should().Be(demoPeopleBefore.Count);
+        newUsersPage.People.Items.Should().ContainSingle(p => p.Id == newUsersPerson.Id);
+        newUsersPage.ActiveCount.Should().Be(1);
+        newUsersPage.ArchivedCount.Should().Be(0);
+
         var demoReadingNewUsersPerson = await demoPeopleService.GetAsync(newUsersPerson.Id);
         demoReadingNewUsersPerson.Should().BeNull("GetAsync must not resolve another user's person");
 

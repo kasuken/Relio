@@ -93,7 +93,11 @@ for every new owned entity and service; do not invent new plumbing per feature.
   scoped context (easy to forget to set it, easy to bypass with `IgnoreQueryFilters`) and harder to
   unit test in isolation. Explicit filtering keeps the ownership check visible at every call site.
 - Add an index on `(OwnerId, <column>)` for every column a list, timeline or lookup filters or
-  sorts by (see `PersonConfiguration`, `TagConfiguration`).
+  sorts by (see `PersonConfiguration`, `TagConfiguration`). A list screen that hides archived rows
+  and sorts uses **composite** `(OwnerId, IsArchived, <sort columns>)` indexes, one per ordering:
+  the people list's three (`FirstName, LastName` / `CreatedAtUtc` / `LastContactedOn`, issue #23)
+  replaced the bare `(OwnerId, IsArchived)`, which they cover. SQL Server's 1,700-byte key limit is
+  the budget to watch (the widest key, owner + flag + two 100-character names, is about 1.3 KB).
 - Audit timestamps are stamped once, centrally, in `RelioDbContext.SaveChangesAsync`/`SaveChanges`
   from an injected `TimeProvider` - entities and services never set `CreatedAtUtc`/`UpdatedAtUtc`
   themselves. Inject `TimeProvider` (not `DateTime.UtcNow`) anywhere else a timestamp is needed
@@ -184,6 +188,12 @@ time zone. Never call `DateTime.Now`/`DateTime.UtcNow`/`DateTime.Today` anywhere
   `RelioDbContext`, like `PeopleService`) and registered in `AddRelioData`. Sign-up (#15) and
   account settings (#18) are the only features that should call `SetTimeZoneAsync` directly; every
   other feature only reads.
+- `Person.LastContactedOn` (`DateOnly?`, column `date`, issue #23) is the user-calendar date of the
+  most recent interaction, `null` for "never". Create/Update requests never carry it; issue #34 is the
+  one feature that maintains it, from the interactions it records. Until then only seed data sets it.
+  `Relio.Web.Time.DateDisplay.FormatRelative(date, today)` is the shared "Today / Yesterday / 12 days
+  ago, then 3 March / 3 March 2025" phrase (future dates fall back to the plain date); "today" always
+  comes from `IUserTimeZoneService.GetTodayAsync()`, never a clock in a component.
 - A reminder or interaction date is a `DateOnly` - never convert it to/from UTC. A `Person`'s
   birthday is not, because its year is optional (issue #22): it is stored as three nullable int
   columns, `BirthdayYear`/`BirthdayMonth`/`BirthdayDay` (check constraints: month 1-12, day 1-31, year
@@ -620,7 +630,10 @@ completing epic #14.
   password only, see its XML docs) - which is also made an **Administrator** (idempotently, on every
   run, so a demo database that predates #19 gets the role) - with realistic sample people (one
   archived, one with a Feb 29 birthday, one with a birthday without a year, most with a relationship
-  type from the default list the seeder also creates, two with "how we met" and multi-line details)
+  type from the default list the seeder also creates, two with "how we met" and multi-line details,
+  most with a different `LastContactedOn` counted back from today in the demo zone - today, yesterday,
+  3, 12, 45 and 200 days ago, two never - so the list's "last contacted" sort and wording have
+  something to show; a demo database that was seeded earlier is not backfilled)
   and a non-UTC time zone, writing directly through
   `RelioDbContext` rather than through `IPeopleService`/`IUserTimeZoneService` - those require a
   signed-in `ICurrentUser`, which does not exist at startup (`AccountRegistrationService` uses the same
@@ -700,6 +713,39 @@ Established by issue #22 under epic #21. The routes are pages, not dialogs: `/pe
 - User-written text (names, nickname, how you met, details) is set in the serif (`rl-serif` in
   inputs, `rl-entry-text` on the profile) and rendered as text, never as markup; line breaks are kept
   with `rl-multiline`. Never log it.
+- **The list (issue #23).** `/people` reads through `IPeopleService.ListPageAsync(PeopleListQuery)`
+  -> `PeopleListResult` (a `PagedResult<PersonListItem>` plus `ActiveCount`/`ArchivedCount`, which
+  describe the whole account, not the filter). `PersonListItem` is a projection: only what a row shows
+  (no nickname, how-we-met, details or birthday - data minimisation). Offset paging, `PageSize` 50
+  (`PeopleListQuery.DefaultPageSize`, clamped 1 to `MaxPageSize` 100); a page below 1 or past the end
+  is clamped by the service and `PagedResult.Page` says which page came back; an undefined `Sort`
+  throws before any query. `ListAsync` stays for callers that need everyone (pickers, exports) - the
+  list screen no longer uses it. **Every ordering ends with `Id`** so a tie never reshuffles between
+  pages: Name = first, last name; RecentlyAdded = `CreatedAtUtc` descending; LastContacted =
+  `LastContactedOn` descending with **nulls last spelled out** (`OrderBy(p => p.LastContactedOn == null)`
+  first), then name. Order by the real columns - `DisplayName` is not one.
+- **The view lives in the address, and only there.** `/people?sort=name|added|contacted&archived=true&page=N`,
+  parsed and written by the pure `Components/People/PeopleListQueryString` (defaults left out, fixed
+  parameter order, anything invalid falls back to the default, never an error). Only those three values
+  ever go in an address - never a name, search text or id (history, proxy logs, referrers). The query
+  parameters are `string?` on purpose: a `bool?`/`int?` parameter throws on a value it cannot read. The
+  drawer link `/people` resets to the defaults. `People.razor` loads in **`OnParametersSetAsync`**, not
+  `OnInitializedAsync` (a query-only navigation re-uses the component), skips a query it already asked
+  for, and runs loads **one at a time behind a `SemaphoreSlim` with a version counter** because the
+  circuit's `DbContext` refuses two concurrent queries. Handlers (`Sort`, `Show archived`, pager) only
+  `NavigateTo` a new address - a push, so Back restores the view - and a new sort or filter returns to
+  page 1; nothing navigates from a lifecycle method. Words for the list (sort labels, "Last contacted 12
+  days ago", "Not contacted yet", the count line) live in `PeopleListText`. Archived rows are mixed in,
+  labelled "Archived" with the `Inventory2` icon; there is no "archived only" view. After a page change
+  the scroll position is not reset yet (follow-up; no JS for it so far).
+- **Testing the list.** Guid order differs between SQL Server and .NET, so tie-break tests assert
+  distinct ids and a stable order, never a particular one; InMemory sorts strings case-sensitively and
+  SQL Server (the CI collation) does not, so the case-insensitive test lives in `Relio.Data.IntegrationTests`.
+  To backdate `CreatedAtUtc` in a test, save, assign, save again (a modified row only gets `UpdatedAtUtc`
+  stamped): `TestDataFactory.CreatePersonAsync` and the E2E `PeopleTestHelpers.SeedPeopleAsync` do it.
+  The list loads after the circuit connects, so an E2E test waits for `people-count` (or
+  `people-all-archived`) **before** asserting that something is absent. Never assert relative-date
+  wording ("12 days ago") against demo data - it moves every day; use bUnit with a fixed "today".
 
 ## End-to-end tests
 

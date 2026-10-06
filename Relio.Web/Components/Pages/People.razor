@@ -1,22 +1,26 @@
 @page "/people"
 @using Relio.Application.People
-@using Relio.Domain
+@using Relio.Application.Time
 @inject IPeopleService PeopleService
+@inject IUserTimeZoneService TimeZoneService
 @inject NavigationManager Navigation
 
 <PageTitle>People - Relio</PageTitle>
 
-@* Nothing is rendered until the list has loaded: a flash of "No one here yet" for someone who has
-   people would be wrong, and the load is quick. A minimal list - sorting, paging and the archived
-   view arrive with issue #23. *@
-@if (_people is not null)
+@* Nothing is rendered until the first load has finished: a flash of "No one here yet" for someone
+   who has people would be wrong, and the load is quick. The view (sort, archived, page) lives in the
+   address - see PeopleListQueryString - so every control below only navigates, and the list reloads
+   because the address changed. *@
+@if (_result is not null)
 {
-    @if (_people.Count == 0)
+    @if (!_result.HasAnyone)
     {
-        <EmptyState Title="No one here yet"
-                    Message="Add the first person you want to keep in touch with."
-                    ActionLabel="Add a person"
-                    OnAction="AddPerson" />
+        <div data-testid="people-empty">
+            <EmptyState Title="No one here yet"
+                        Message="Add the first person you want to keep in touch with."
+                        ActionLabel="Add a person"
+                        OnAction="AddPerson" />
+        </div>
     }
     else
     {
@@ -32,35 +36,180 @@
             </MudButton>
         </div>
 
-        <ul class="rl-person-list" data-testid="people-list">
-            @foreach (var person in _people)
+        <div class="rl-people-toolbar" data-testid="people-toolbar">
+            <div class="rl-people-sort" data-testid="people-sort">
+                <MudSelect T="PeopleSort"
+                           Value="_shown.Sort"
+                           ValueChanged="OnSortChanged"
+                           Label="Sort by"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           ToStringFunc="PeopleListText.SortLabel">
+                    @foreach (var sort in SortOptions)
+                    {
+                        <MudSelectItem T="PeopleSort" Value="sort">@PeopleListText.SortLabel(sort)</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+            <div data-testid="people-show-archived">
+                <MudSwitch T="bool"
+                           Value="_shown.IncludeArchived"
+                           ValueChanged="OnArchivedChanged"
+                           Label="Show archived"
+                           Color="Color.Primary" />
+            </div>
+        </div>
+
+        @if (_result.People.Items.Count == 0 && !_shown.IncludeArchived)
+        {
+            @* Everyone is archived: the default view has no one in it, and the way out is the switch. *@
+            <div data-testid="people-all-archived">
+                <EmptyState HeadingTag="h2"
+                            Title="Everyone is archived"
+                            Message="Show archived people to see them, or add someone new."
+                            ActionLabel="Show archived"
+                            OnAction="ShowArchived" />
+            </div>
+        }
+        else
+        {
+            <p class="rl-meta" role="status" data-testid="people-count">@PeopleListText.Count(_result, _shown.IncludeArchived)</p>
+
+            <ul class="rl-person-list" data-testid="people-list">
+                @foreach (var person in _result.People.Items)
+                {
+                    <li>
+                        <a class="rl-person-row" href="/people/@person.Id" data-testid="people-list-item">
+                            <MudAvatar Class="@(person.IsArchived ? "rl-avatar rl-avatar-archived" : "rl-avatar")" Size="Size.Medium" aria-hidden="true">@PersonInitials.For(person.FirstName, person.LastName)</MudAvatar>
+                            <span class="rl-person-row-text">
+                                <span class="rl-person-row-title">
+                                    <MudText Typo="Typo.h4" HtmlTag="span" data-testid="people-list-item-name">@person.DisplayName</MudText>
+                                    @if (person.IsArchived)
+                                    {
+                                        <span class="rl-archived-label" data-testid="people-list-item-archived">
+                                            <MudIcon Icon="@Icons.Material.Outlined.Inventory2" Size="Size.Small" aria-hidden="true" />Archived
+                                        </span>
+                                    }
+                                </span>
+                                <span class="rl-meta rl-person-row-meta">
+                                    @if (person.RelationshipTypeName is not null)
+                                    {
+                                        <span data-testid="people-list-item-relationship">@person.RelationshipTypeName</span>
+                                        <span class="rl-sep" aria-hidden="true">·</span>
+                                    }
+                                    <span data-testid="people-list-item-last-contacted">@PeopleListText.LastContacted(person.LastContactedOn, _today)</span>
+                                </span>
+                            </span>
+                        </a>
+                    </li>
+                }
+            </ul>
+
+            @if (_result.People.PageCount > 1)
             {
-                <li>
-                    <a class="rl-person-row" href="/people/@person.Id" data-testid="people-list-item">
-                        <MudAvatar Class="rl-avatar" Size="Size.Medium" aria-hidden="true">@PersonInitials.For(person.FirstName, person.LastName)</MudAvatar>
-                        <span class="rl-person-row-text">
-                            <MudText Typo="Typo.h4" HtmlTag="span" data-testid="people-list-item-name">@person.DisplayName</MudText>
-                            @if (person.RelationshipType is not null)
-                            {
-                                <span class="rl-meta" data-testid="people-list-item-relationship">@person.RelationshipType.Name</span>
-                            }
-                        </span>
-                    </a>
-                </li>
+                <nav class="rl-people-pagination" aria-label="People pages" data-testid="people-pagination">
+                    <MudPagination Count="_result.People.PageCount"
+                                   Selected="_result.People.Page"
+                                   SelectedChanged="OnPageChanged"
+                                   Color="Color.Primary"
+                                   Variant="Variant.Text"
+                                   DropShadow="false"
+                                   BoundaryCount="1"
+                                   MiddleCount="1"
+                                   ShowFirstButton="false"
+                                   ShowLastButton="false" />
+                </nav>
             }
-        </ul>
+        }
     }
 }
 
 @code {
-    private IReadOnlyList<Person>? _people;
+    private static readonly PeopleSort[] SortOptions = [PeopleSort.Name, PeopleSort.RecentlyAdded, PeopleSort.LastContacted];
 
-    protected override async Task OnInitializedAsync()
+    // The raw query string, as strings on purpose: a bool? or int? parameter throws on a value it
+    // cannot read, and an address is editable by anyone. PeopleListQueryString makes sense of them.
+    [SupplyParameterFromQuery(Name = PeopleListQueryString.SortParameter)]
+    private string? SortValue { get; set; }
+
+    [SupplyParameterFromQuery(Name = PeopleListQueryString.ArchivedParameter)]
+    private string? ArchivedValue { get; set; }
+
+    [SupplyParameterFromQuery(Name = PeopleListQueryString.PageParameter)]
+    private string? PageValue { get; set; }
+
+    private PeopleListResult? _result;
+    private DateOnly _today;
+
+    // The query the list on screen was loaded for; the controls show it too, so they never run
+    // ahead of the list. _requestedQuery is the latest one the address asked for (loaded or still
+    // loading): a parameter change that asks for the same thing again - a re-render - is ignored,
+    // while going Q1 -> Q2 -> Q1 quickly asks again and overtakes the Q2 load.
+    private PeopleListQuery _shown = new();
+    private PeopleListQuery? _requestedQuery;
+
+    // The scoped DbContext lives as long as the circuit and refuses two queries at once, and a
+    // query-only navigation can arrive while the previous load is still running. The gate makes
+    // loads take turns; the version lets a load that has been overtaken throw its result away.
+    // Not disposed on purpose: it never exposes a wait handle, so there is nothing to release,
+    // and disposing it under a load that is still waiting would only make that load throw.
+    private readonly SemaphoreSlim _loadGate = new(1, 1);
+    private int _loadVersion;
+
+    // OnParametersSetAsync, not OnInitializedAsync: a change of the query string alone re-uses
+    // this component instance, so OnInitializedAsync would not run again. It also runs twice
+    // when prerendering, which is fine for a read-only load.
+    protected override async Task OnParametersSetAsync()
     {
-        // Read-only on purpose: prerendering runs this once for the server-rendered HTML and again
-        // when the circuit connects.
-        _people = await PeopleService.ListAsync();
+        var query = PeopleListQueryString.Parse(SortValue, ArchivedValue, PageValue);
+        if (query == _requestedQuery)
+        {
+            return;
+        }
+
+        _requestedQuery = query;
+        var version = ++_loadVersion;
+        await _loadGate.WaitAsync();
+        try
+        {
+            if (version != _loadVersion)
+            {
+                return;
+            }
+
+            var today = await TimeZoneService.GetTodayAsync();
+            var result = await PeopleService.ListPageAsync(query);
+            if (version != _loadVersion)
+            {
+                return;
+            }
+
+            (_today, _result, _shown) = (today, result, query);
+        }
+        finally
+        {
+            _loadGate.Release();
+        }
     }
+
+    // Handlers only navigate. The list reloads because the address changed, never from here, and
+    // every change is a new history entry so Back restores the previous view. A new sort or filter
+    // starts again at the first page.
+    private void OnSortChanged(PeopleSort sort) =>
+        GoTo(CurrentQuery with { Sort = sort, Page = 1 });
+
+    private void OnArchivedChanged(bool includeArchived) =>
+        GoTo(CurrentQuery with { IncludeArchived = includeArchived, Page = 1 });
+
+    private void OnPageChanged(int page) =>
+        GoTo(CurrentQuery with { Page = page });
+
+    private void ShowArchived() => OnArchivedChanged(true);
+
+    private PeopleListQuery CurrentQuery => PeopleListQueryString.Parse(SortValue, ArchivedValue, PageValue);
+
+    private void GoTo(PeopleListQuery query) =>
+        Navigation.NavigateTo(PeopleListQueryString.ToRelativeUri(query));
 
     private void AddPerson() => Navigation.NavigateTo("/people/new");
 }

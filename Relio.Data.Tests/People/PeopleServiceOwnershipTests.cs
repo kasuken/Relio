@@ -62,6 +62,42 @@ public class PeopleServiceOwnershipTests
     }
 
     [Fact]
+    public async Task ListPageAsync_only_lists_and_counts_the_current_users_people()
+    {
+        await using var dbContext = CreateDbContext();
+        await CreatePersonAsync(dbContext, UserA, "Alice");
+        var annId = await CreatePersonAsync(dbContext, UserA, "Ann");
+        await CreatePersonAsync(dbContext, UserB, "Bob");
+        var beaId = await CreatePersonAsync(dbContext, UserB, "Bea");
+        await CreateService(dbContext, UserA).ArchiveAsync(annId);
+        await CreateService(dbContext, UserB).ArchiveAsync(beaId);
+
+        var forUserA = await CreateService(dbContext, UserA).ListPageAsync(new PeopleListQuery { IncludeArchived = true });
+
+        forUserA.People.Items.Select(p => p.DisplayName).Should().Equal("Alice", "Ann");
+        forUserA.People.TotalCount.Should().Be(2);
+        forUserA.ActiveCount.Should().Be(1);
+        forUserA.ArchivedCount.Should().Be(1, "the counts never include another user's people");
+
+        var forUserB = await CreateService(dbContext, UserB).ListPageAsync(new PeopleListQuery());
+        forUserB.People.Items.Select(p => p.DisplayName).Should().Equal("Bob");
+        forUserB.ActiveCount.Should().Be(1);
+        forUserB.ArchivedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ListPageAsync_for_a_user_with_no_people_says_so_even_when_others_have_some()
+    {
+        await using var dbContext = CreateDbContext();
+        await CreatePersonAsync(dbContext, UserA, "Alice");
+
+        var result = await CreateService(dbContext, UserB).ListPageAsync(new PeopleListQuery { IncludeArchived = true });
+
+        result.HasAnyone.Should().BeFalse();
+        result.People.Items.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task ListAsync_excludes_archived_people_by_default()
     {
         await using var dbContext = CreateDbContext();
@@ -254,6 +290,17 @@ public class PeopleServiceOwnershipTests
         var service = CreateService(dbContext, userId: null);
 
         var act = () => service.ListAsync();
+
+        await act.Should().ThrowAsync<UnauthenticatedUserException>();
+    }
+
+    [Fact]
+    public async Task ListPageAsync_without_an_authenticated_user_throws()
+    {
+        await using var dbContext = CreateDbContext();
+        var service = CreateService(dbContext, userId: null);
+
+        var act = () => service.ListPageAsync(new PeopleListQuery());
 
         await act.Should().ThrowAsync<UnauthenticatedUserException>();
     }
