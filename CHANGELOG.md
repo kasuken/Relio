@@ -132,3 +132,11 @@ All notable changes to this project are documented in this file.
   trigger the menu's open state. Switched to `MudMenu`'s own `Icon`/`AriaLabel` parameters, which
   render and wire up a single activator button. Found by `Relio.Web.E2ETests.ThemeTests` - the
   first time this app had been driven in an actual browser.
+- Signed-out visitors got no CSS or JavaScript: `app.MapStaticAssets()` fell under the fallback
+  authorization policy, so every asset request (app.css, MudBlazor, `_framework/blazor.web.js`,
+  fonts, `js/timezone.js`, favicon) was redirected to `/Account/Login` and the sign-in, register and
+  password-reset pages rendered unstyled. Static assets are now `AllowAnonymous`. Because
+  `blazor.web.js` now loads on those pages, enhanced navigation applies between them; the
+  "Create an account" link opts out (`data-enhance-nav="false"`) so `Register.razor`'s inline
+  time-zone script still runs. Covered by `AnonymousAssetsTests` and
+  `AnonymousEnhancedNavigationTests`.

@@ -63,7 +63,10 @@
 </EditForm>
 
 <MudText Typo="Typo.body2" Class="mud-text-secondary mt-6">
-    New to Relio? <MudLink Href="/Account/Register">Create an account</MudLink>
+    @* data-enhance-nav="false": Register.razor fills its hidden time zone field from an inline
+       <script>, and Blazor's enhanced navigation (active now that blazor.web.js loads for signed-out
+       visitors) does not execute scripts in the patched-in content. A full page load does. *@
+    New to Relio? <MudLink Href="/Account/Register" data-enhance-nav="false">Create an account</MudLink>
 </MudText>
 
 @code {

@@ -240,11 +240,19 @@ Later issues extend this further without restructuring it: #19 (first-user admin
   unconditional `InteractiveServer` mode the circuit that starts after an excluded page loads cannot
   find it in the interactive route table and replaces it with the Not Found page (issue #18 hit
   this on the first signed-in static page; earlier account pages were only spared because their
-  scripts never loaded for anonymous visitors - see "Static assets" below).
-- **Static assets and anonymous pages**: `MapStaticAssets()` is currently subject to the fallback
-  authorization policy, so an anonymous visitor's requests for the CSS/JS bundles are redirected to
-  the login page. Signed-in pages are unaffected; do not rely on `blazor.web.js` being present on
-  `/Account/Login` or `/Account/Register`.
+  scripts never loaded for anonymous visitors, which was itself a bug - see the next bullet).
+- **Static assets and anonymous pages**: `app.MapStaticAssets().AllowAnonymous()` in `Program.cs` -
+  without it the fallback authorization policy redirects every asset request (app.css, MudBlazor,
+  `_framework/blazor.web.js`, fonts, `js/*.js`, favicon) from a signed-out visitor to the login page,
+  leaving the account pages unstyled and script-less. So `blazor.web.js` *does* load on the static
+  SSR account pages, and **enhanced navigation** is active there: a link between two account pages
+  is a fetch + DOM patch, not a full page load. Consequences: (1) every form already ends its
+  success path in `NavigateTo(..., forceLoad: true)` and none opts into `data-enhance`, so form
+  posts and cookie-writing redirects stay plain full requests - keep it that way; (2) scripts inside
+  patched-in content do not run, so a page that depends on an inline `<script>` (`Register.razor`'s
+  time zone field) must be reached with `data-enhance-nav="false"` on every link to it (see
+  `Login.razor`). `AnonymousAssetsTests` guards the first, `AnonymousEnhancedNavigationTests` the
+  second.
 - **MudBlazor in static SSR forms**: MudBlazor's input components (`MudTextField`, etc.) only post
   their value back to the server when a *live circuit* is driving their two-way binding - on a
   static SSR page they render with no `name` attribute at all, so a real form post arrives with the
@@ -268,7 +276,8 @@ Later issues extend this further without restructuring it: #19 (first-user admin
 - **Protecting pages**: `Relio.Web.Identity.ServiceCollectionExtensions.AddRelioIdentity` sets a
   fallback authorization policy (`RequireAuthenticatedUser`), so every page requires sign-in unless
   it opts out with `[AllowAnonymous]` (the account pages) or `.AllowAnonymous()` (the `/health/*`
-  endpoints). The cookie's `LoginPath` means an anonymous request to a protected page redirects to
+  endpoints, the `POST /Account/Logout` endpoint and `MapStaticAssets()` - static assets must be
+  anonymous or signed-out visitors get no CSS/JS). The cookie's `LoginPath` means an anonymous request to a protected page redirects to
   `/Account/Login` automatically, before Blazor even renders anything. `Routes.razor`'s
   `AuthorizeRouteView` (`NotAuthorized` → `RedirectToLogin`) is defence in depth for a circuit whose
   session stops being valid while it is already open (a client-side navigation inside an existing

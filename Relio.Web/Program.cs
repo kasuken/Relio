@@ -162,7 +162,11 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 
 app.MapRelioIdentityEndpoints();
 
-app.MapStaticAssets();
+// Static assets (app.css, MudBlazor, _framework/blazor.web.js, fonts, favicon) must be anonymous:
+// the fallback authorization policy (AddRelioIdentity) would otherwise redirect every asset request
+// from a signed-out visitor to /Account/Login, leaving the login/register pages unstyled and
+// without scripts.
+app.MapStaticAssets().AllowAnonymous();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
