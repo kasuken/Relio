@@ -1,0 +1,239 @@
+@* The form for a person's profile (issue #22): add a person now, edit one in issue #24. Interactive
+   (MudBlazor inputs bind live over the circuit, which is why the people pages are not static SSR
+   like the account pages). Only the first name is required. The service is the authority on what
+   is valid - this component only words the codes it reports (PersonFormMessages) - and it never
+   reads the clock itself: a birthday in the future is rejected by the service, in the user's own
+   time zone. *@
+@using System.Globalization
+@using Relio.Application.Ownership
+@using Relio.Application.People
+@using Relio.Domain
+
+@inject IPeopleService PeopleService
+@inject IRelationshipTypeService RelationshipTypeService
+@inject ISnackbar Snackbar
+
+<form class="rl-form" data-testid="person-form" novalidate @onsubmit="SaveAsync" @onsubmit:preventDefault>
+    <div data-testid="person-first-name-field">
+        <MudTextField T="string"
+                      @bind-Value="_model.FirstName"
+                      Label="First name"
+                      HelperText="The only thing Relio needs."
+                      Required="true"
+                      MaxLength="Person.FirstNameMaxLength"
+                      Counter="Person.FirstNameMaxLength"
+                      Immediate="true"
+                      Variant="Variant.Outlined"
+                      Error="@HasError(PersonFormField.FirstName)"
+                      ErrorText="@ErrorFor(PersonFormField.FirstName)"
+                      Class="rl-serif" />
+    </div>
+
+    <div data-testid="person-last-name-field">
+        <MudTextField T="string"
+                      @bind-Value="_model.LastName"
+                      Label="Last name"
+                      MaxLength="Person.LastNameMaxLength"
+                      Counter="Person.LastNameMaxLength"
+                      Immediate="true"
+                      Variant="Variant.Outlined"
+                      Error="@HasError(PersonFormField.LastName)"
+                      ErrorText="@ErrorFor(PersonFormField.LastName)"
+                      Class="rl-serif" />
+    </div>
+
+    <div data-testid="person-nickname-field">
+        <MudTextField T="string"
+                      @bind-Value="_model.Nickname"
+                      Label="Nickname"
+                      HelperText="What you call them, if it isn't their first name."
+                      MaxLength="Person.NicknameMaxLength"
+                      Counter="Person.NicknameMaxLength"
+                      Immediate="true"
+                      Variant="Variant.Outlined"
+                      Error="@HasError(PersonFormField.Nickname)"
+                      ErrorText="@ErrorFor(PersonFormField.Nickname)"
+                      Class="rl-serif" />
+    </div>
+
+    <div data-testid="person-relationship-field">
+        <MudSelect T="Guid?"
+                   @bind-Value="_model.RelationshipTypeId"
+                   Label="Relationship"
+                   Clearable="true"
+                   Variant="Variant.Outlined"
+                   ToStringFunc="@TypeName">
+            @foreach (var type in _types)
+            {
+                <MudSelectItem T="Guid?" Value="@((Guid?)type.Id)">@type.Name</MudSelectItem>
+            }
+        </MudSelect>
+    </div>
+
+    <fieldset class="rl-fieldset" data-testid="person-birthday">
+        <legend>Birthday</legend>
+        <MudGrid Spacing="2">
+            <MudItem xs="3">
+                <div data-testid="person-birthday-day-field">
+                    <MudNumericField T="int?"
+                                     @bind-Value="_model.BirthdayDay"
+                                     Label="Day"
+                                     HideSpinButtons="true"
+                                     Immediate="true"
+                                     Variant="Variant.Outlined"
+                                     Error="@HasError(PersonFormField.Birthday)" />
+                </div>
+            </MudItem>
+            <MudItem xs="5">
+                <div data-testid="person-birthday-month-field">
+                    <MudSelect T="int?"
+                               @bind-Value="_model.BirthdayMonth"
+                               Label="Month"
+                               Clearable="true"
+                               Variant="Variant.Outlined"
+                               ToStringFunc="@MonthName"
+                               Error="@HasError(PersonFormField.Birthday)">
+                        @foreach (var month in Months)
+                        {
+                            <MudSelectItem T="int?" Value="@((int?)month)">@MonthName(month)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </div>
+            </MudItem>
+            <MudItem xs="4">
+                <div data-testid="person-birthday-year-field">
+                    <MudNumericField T="int?"
+                                     @bind-Value="_model.BirthdayYear"
+                                     Label="Year"
+                                     HideSpinButtons="true"
+                                     Immediate="true"
+                                     Variant="Variant.Outlined"
+                                     Error="@HasError(PersonFormField.Birthday)" />
+                </div>
+            </MudItem>
+        </MudGrid>
+        <MudText Typo="Typo.caption" HtmlTag="div" Class="mud-text-secondary">Leave the year empty if you don't know it.</MudText>
+        @if (HasError(PersonFormField.Birthday))
+        {
+            <MudText Typo="Typo.caption" HtmlTag="div" Color="Color.Error" role="alert" data-testid="person-birthday-error">
+                @ErrorFor(PersonFormField.Birthday)
+            </MudText>
+        }
+    </fieldset>
+
+    <div data-testid="person-how-we-met-field">
+        <MudTextField T="string"
+                      @bind-Value="_model.HowWeMet"
+                      Label="How you met"
+                      HelperText="A place, a moment, who introduced you."
+                      Lines="3"
+                      Sizing="InputSizing.Auto"
+                      MaxLength="Person.HowWeMetMaxLength"
+                      Counter="Person.HowWeMetMaxLength"
+                      Immediate="true"
+                      Variant="Variant.Outlined"
+                      Error="@HasError(PersonFormField.HowWeMet)"
+                      ErrorText="@ErrorFor(PersonFormField.HowWeMet)"
+                      Class="rl-serif" />
+    </div>
+
+    <div data-testid="person-details-field">
+        <MudTextField T="string"
+                      @bind-Value="_model.Details"
+                      Label="Details"
+                      HelperText="Anything that helps you remember them."
+                      Lines="5"
+                      Sizing="InputSizing.Auto"
+                      MaxLength="Person.DetailsMaxLength"
+                      Counter="Person.DetailsMaxLength"
+                      Immediate="true"
+                      Variant="Variant.Outlined"
+                      Error="@HasError(PersonFormField.Details)"
+                      ErrorText="@ErrorFor(PersonFormField.Details)"
+                      Class="rl-serif" />
+    </div>
+
+    <div class="rl-form-actions">
+        <MudButton ButtonType="ButtonType.Submit"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   DropShadow="false"
+                   Disabled="_saving"
+                   data-testid="person-form-save">
+            Add person
+        </MudButton>
+        <MudButton Variant="Variant.Text"
+                   Href="/people"
+                   data-testid="person-form-cancel">
+            Cancel
+        </MudButton>
+    </div>
+</form>
+
+@code {
+    private readonly PersonFormModel _model = new();
+    private readonly Dictionary<PersonFormField, string> _errors = [];
+    private IReadOnlyList<RelationshipType> _types = [];
+    private bool _saving;
+
+    // A foreach, not a for: the item content is rendered later, and a for loop variable would be 13 by then.
+    private static readonly int[] Months = Enumerable.Range(1, 12).ToArray();
+
+    /// <summary>Raised with the new person's id after a successful save, so the page can open the profile.</summary>
+    [Parameter]
+    public EventCallback<Guid> OnSaved { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Read-only on purpose: prerendering runs this once for the server-rendered HTML and again
+        // when the circuit connects.
+        _types = await RelationshipTypeService.ListAsync();
+    }
+
+    private bool HasError(PersonFormField field) => _errors.ContainsKey(field);
+
+    private string? ErrorFor(PersonFormField field) => _errors.GetValueOrDefault(field);
+
+    private string TypeName(Guid? id) =>
+        _types.FirstOrDefault(t => id is Guid value && t.Id == value)?.Name ?? string.Empty;
+
+    private static string MonthName(int? month) =>
+        month is int value ? CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(value) : string.Empty;
+
+    private async Task SaveAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _saving = true;
+        _errors.Clear();
+
+        try
+        {
+            var person = await PeopleService.CreateAsync(_model.ToCreateRequest());
+            Snackbar.Saved("Person added");
+            await OnSaved.InvokeAsync(person.Id);
+        }
+        catch (PersonValidationException exception)
+        {
+            foreach (var error in exception.Errors)
+            {
+                var (field, message) = PersonFormMessages.For(error);
+                _errors.TryAdd(field, message);
+            }
+        }
+        catch (ForeignEntityNotOwnedException)
+        {
+            // The chosen type is gone (removed in another tab, once issue #25 lets people remove them).
+            Snackbar.Problem("That relationship type is no longer available. Choose another one.");
+            _model.RelationshipTypeId = null;
+            _types = await RelationshipTypeService.ListAsync();
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

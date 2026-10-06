@@ -328,4 +328,35 @@ public class AccountRegistrationServiceTests
         invalid.Access.Should().Be(RegistrationAccess.InvitationInvalid);
         invalid.InvitedEmail.Should().BeNull();
     }
+
+    [Fact]
+    public async Task Registering_seeds_the_default_relationship_types_for_the_new_account()
+    {
+        await using var dbContext = CreateDbContext(NewDatabase());
+        var service = CreateRegistrationService(dbContext, RegistrationMode.Open);
+        await service.RegisterAsync(new("first@example.com", StrongPassword, null, null));
+
+        var second = await service.RegisterAsync(new("second@example.com", StrongPassword, null, null));
+
+        // Every account gets its own six - the first one and every later one - owned by that account.
+        var types = await dbContext.RelationshipTypes.AsNoTracking()
+            .Where(t => t.OwnerId == second.UserId)
+            .OrderBy(t => t.SortOrder)
+            .ToListAsync();
+        types.Select(t => t.Name).Should().Equal("Family", "Partner", "Friend", "Colleague", "Acquaintance", "Other");
+        (await dbContext.RelationshipTypes.CountAsync()).Should().Be(12);
+    }
+
+    [Fact]
+    public async Task A_refused_registration_seeds_no_relationship_types()
+    {
+        await using var dbContext = CreateDbContext(NewDatabase());
+        await CreateUserAsync(dbContext, "owner@example.com", administrator: true);
+        var service = CreateRegistrationService(dbContext, RegistrationMode.Closed);
+
+        await service.RegisterAsync(new("late@example.com", StrongPassword, null, null));
+        await CreateRegistrationService(dbContext, RegistrationMode.Open).RegisterAsync(new("weak@example.com", "short", null, null));
+
+        (await dbContext.RelationshipTypes.CountAsync()).Should().Be(0);
+    }
 }

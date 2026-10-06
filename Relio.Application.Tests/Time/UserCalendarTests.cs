@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Extensions.Time.Testing;
 using Relio.Application.Time;
+using Relio.Domain;
 
 namespace Relio.Application.Tests.Time;
 
@@ -113,5 +114,52 @@ public class UserCalendarTests
         var today = new DateOnly(2024, 6, 1);
 
         UserCalendar.NextOccurrence(birthday, today).Should().Be(today);
+    }
+
+    [Fact]
+    public void NextOccurrence_of_a_yearless_Feb29_birthday_in_a_non_leap_year_is_Feb28()
+    {
+        var birthday = Birthday.Create(2, 29);
+        var today = new DateOnly(2025, 1, 1); // 2025 is not a leap year.
+
+        UserCalendar.NextOccurrence(birthday, today).Should().Be(new DateOnly(2025, 2, 28));
+    }
+
+    [Fact]
+    public void NextOccurrence_of_a_yearless_Feb29_birthday_in_a_leap_year_is_Feb29()
+    {
+        var birthday = Birthday.Create(2, 29);
+        var today = new DateOnly(2028, 1, 1); // 2028 is a leap year.
+
+        UserCalendar.NextOccurrence(birthday, today).Should().Be(new DateOnly(2028, 2, 29));
+    }
+
+    [Fact]
+    public void NextOccurrence_of_a_yearless_birthday_wraps_to_next_year()
+    {
+        var birthday = Birthday.Create(3, 14);
+        var today = new DateOnly(2026, 10, 6);
+
+        UserCalendar.NextOccurrence(birthday, today).Should().Be(new DateOnly(2027, 3, 14));
+    }
+
+    [Fact]
+    public void NextOccurrence_ignores_the_year_of_birth()
+    {
+        var withYear = Birthday.Create(3, 14, 1990);
+        var withoutYear = Birthday.Create(3, 14);
+        var today = new DateOnly(2026, 10, 6);
+
+        UserCalendar.NextOccurrence(withYear, today).Should().Be(UserCalendar.NextOccurrence(withoutYear, today));
+    }
+
+    [Fact]
+    public void NextOccurrence_of_a_Feb29_birthday_wraps_to_Feb28_of_a_non_leap_year()
+    {
+        // After 29 February 2028 has passed, the next one the calendar has is 2029's, observed on the 28th.
+        var birthday = Birthday.Create(2, 29);
+        var today = new DateOnly(2028, 3, 1);
+
+        UserCalendar.NextOccurrence(birthday, today).Should().Be(new DateOnly(2029, 2, 28));
     }
 }

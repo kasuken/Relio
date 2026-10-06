@@ -158,7 +158,7 @@ public class AdministrationTests(RelioAppFixture fixture)
                 scope.ServiceProvider.GetRequiredService<RelioDbContext>(),
                 new FixedCurrentUser(user.Id),
                 scope.ServiceProvider.GetRequiredService<TimeProvider>());
-            await people.CreateAsync(new CreatePersonRequest(personName, "Test", null));
+            await people.CreateAsync(new CreatePersonRequest { FirstName = personName, LastName = "Test" });
         }
 
         var admin = await fixture.NewPageAsync();

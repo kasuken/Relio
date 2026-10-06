@@ -16,13 +16,15 @@ namespace Relio.Data.Seeding;
 /// <see cref="SeedAsync"/>.
 /// </summary>
 /// <remarks>
-/// Writes <see cref="Person"/>/<see cref="Tag"/>/<see cref="UserProfile"/> rows directly through
-/// <see cref="RelioDbContext"/> rather than through <c>IPeopleService</c>/<c>IUserTimeZoneService</c>:
-/// those services require a signed-in <c>ICurrentUser</c> (see the "User-scoped data pattern"
-/// section of AGENTS.md), which does not exist at startup. Ownership is still enforced the same
-/// way every other owned entity enforces it - <see cref="IOwnedEntity.OwnerId"/> is set explicitly
-/// on every row, to the demo user's id - this class just plays the role the service layer
-/// normally plays, for seed data only.
+/// Writes <see cref="Person"/>/<see cref="Tag"/>/<see cref="RelationshipType"/>/<see cref="UserProfile"/>
+/// rows directly through <see cref="RelioDbContext"/> rather than through
+/// <c>IPeopleService</c>/<c>IUserTimeZoneService</c>: those services require a signed-in
+/// <c>ICurrentUser</c> (see the "User-scoped data pattern" section of AGENTS.md), which does not
+/// exist at startup. Ownership is still enforced the same way every other owned entity enforces
+/// it - <see cref="IOwnedEntity.OwnerId"/> is set explicitly on every row, to the demo user's id -
+/// this class just plays the role the service layer normally plays, for seed data only. The
+/// demo user gets the default relationship types here (issue #22), as every new account does at
+/// registration; the sample people use most of them. All the sample text is invented.
 /// </remarks>
 public sealed class DemoDataSeeder(
     RelioDbContext dbContext,
@@ -124,6 +126,19 @@ public sealed class DemoDataSeeder(
             dbContext.UserProfiles.Add(new UserProfile { OwnerId = ownerId, TimeZoneId = DemoTimeZoneId });
         }
 
+        // Reuse the demo user's relationship types when they exist (the AddPersonProfile migration
+        // adds them for accounts that predate #22), so running twice never duplicates a type.
+        var relationshipTypes = await dbContext.RelationshipTypes
+            .Where(t => t.OwnerId == ownerId)
+            .ToListAsync(cancellationToken);
+        if (relationshipTypes.Count == 0)
+        {
+            relationshipTypes = [.. RelationshipType.CreateDefaults(ownerId)];
+            dbContext.RelationshipTypes.AddRange(relationshipTypes);
+        }
+
+        RelationshipType? TypeNamed(string name) => relationshipTypes.FirstOrDefault(t => t.Name == name);
+
         Tag MakeTag(string name) => new() { OwnerId = ownerId, Name = name };
 
         var family = MakeTag("Family");
@@ -138,7 +153,12 @@ public sealed class DemoDataSeeder(
                 OwnerId = ownerId,
                 FirstName = "Ada",
                 LastName = "Lovelace",
-                Birthday = new DateOnly(1815, 12, 10),
+                RelationshipType = TypeNamed("Acquaintance"),
+                BirthdayYear = 1815,
+                BirthdayMonth = 12,
+                BirthdayDay = 10,
+                HowWeMet = "At a talk about early computing, where she asked the question nobody else had thought of.",
+                Details = "Writes long, thoughtful letters.\nInterested in mathematics and music.\nPrefers a quiet table at the back.",
                 Tags = { mentor },
             },
             new()
@@ -146,7 +166,9 @@ public sealed class DemoDataSeeder(
                 OwnerId = ownerId,
                 FirstName = "Grace",
                 LastName = "Hopper",
-                Birthday = new DateOnly(1906, 12, 9),
+                BirthdayYear = 1906,
+                BirthdayMonth = 12,
+                BirthdayDay = 9,
                 Tags = { mentor },
             },
             new()
@@ -154,7 +176,10 @@ public sealed class DemoDataSeeder(
                 OwnerId = ownerId,
                 FirstName = "Alan",
                 LastName = "Turing",
-                Birthday = new DateOnly(1912, 6, 23),
+                RelationshipType = TypeNamed("Friend"),
+                BirthdayYear = 1912,
+                BirthdayMonth = 6,
+                BirthdayDay = 23,
                 Tags = { friend },
             },
             new()
@@ -164,7 +189,11 @@ public sealed class DemoDataSeeder(
                 OwnerId = ownerId,
                 FirstName = "Marco",
                 LastName = "Rossi",
-                Birthday = new DateOnly(1992, 2, 29),
+                Nickname = "Marchino",
+                RelationshipType = TypeNamed("Family"),
+                BirthdayYear = 1992,
+                BirthdayMonth = 2,
+                BirthdayDay = 29,
                 Tags = { family },
             },
             new()
@@ -172,7 +201,9 @@ public sealed class DemoDataSeeder(
                 OwnerId = ownerId,
                 FirstName = "Elena",
                 LastName = "Conti",
-                Birthday = null,
+                RelationshipType = TypeNamed("Colleague"),
+                HowWeMet = "Her first week on the team; we shared a desk by the window.",
+                Details = "Leads the design reviews.\nAllergic to cats.\nAsk about the allotment she is building.",
                 Tags = { work },
             },
             new()
@@ -180,7 +211,10 @@ public sealed class DemoDataSeeder(
                 OwnerId = ownerId,
                 FirstName = "Sam",
                 LastName = "Okafor",
-                Birthday = new DateOnly(1988, 7, 4),
+                RelationshipType = TypeNamed("Friend"),
+                BirthdayYear = 1988,
+                BirthdayMonth = 7,
+                BirthdayDay = 4,
                 Tags = { friend },
                 IsArchived = true,
                 ArchivedAtUtc = timeProvider.GetUtcNow().UtcDateTime,
@@ -190,15 +224,21 @@ public sealed class DemoDataSeeder(
                 OwnerId = ownerId,
                 FirstName = "Priya",
                 LastName = "Nair",
-                Birthday = new DateOnly(1995, 11, 2),
+                RelationshipType = TypeNamed("Family"),
+                BirthdayYear = 1995,
+                BirthdayMonth = 11,
+                BirthdayDay = 2,
                 Tags = { family },
             },
             new()
             {
+                // A birthday without a year: the day and month are known, the age is not.
                 OwnerId = ownerId,
                 FirstName = "Liam",
                 LastName = "Chen",
-                Birthday = null,
+                RelationshipType = TypeNamed("Colleague"),
+                BirthdayMonth = 3,
+                BirthdayDay = 14,
                 Tags = { work },
             },
         };

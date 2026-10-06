@@ -53,7 +53,7 @@ public class CrossUserIsolationTests(RelioAppFixture fixture)
         demoPeopleBefore.Should().NotBeEmpty("DemoDataSeeder seeds sample people for the demo account");
 
         var newUsersPerson = await newUserPeopleService.CreateAsync(
-            new CreatePersonRequest("Isolation", "Test", null));
+            new CreatePersonRequest { FirstName = "Isolation", LastName = "Test" });
 
         var demoPeopleAfter = await demoPeopleService.ListAsync();
         var newUsersPeople = await newUserPeopleService.ListAsync();
@@ -64,6 +64,13 @@ public class CrossUserIsolationTests(RelioAppFixture fixture)
 
         var demoReadingNewUsersPerson = await demoPeopleService.GetAsync(newUsersPerson.Id);
         demoReadingNewUsersPerson.Should().BeNull("GetAsync must not resolve another user's person");
+
+        // Relationship types are per user too: registering seeded the new account its own six,
+        // and they are not the demo account's rows.
+        var demoTypes = await new RelationshipTypeService(dbContext, new FixedCurrentUser(demoUser.Id)).ListAsync();
+        var newUserTypes = await new RelationshipTypeService(dbContext, new FixedCurrentUser(newUser.Id)).ListAsync();
+        newUserTypes.Select(t => t.Name).Should().Equal("Family", "Partner", "Friend", "Colleague", "Acquaintance", "Other");
+        demoTypes.Select(t => t.Id).Should().NotIntersectWith(newUserTypes.Select(t => t.Id));
     }
 
     private sealed class FixedCurrentUser(string userId) : ICurrentUser

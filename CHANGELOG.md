@@ -6,6 +6,32 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Create a person profile (issue #22), the first issue of epic #21. `/people` is now a real list of
+  your active people (monogram, name and relationship type, each row a link; an empty state with an
+  "Add a person" button when there is no one yet), `/people/new` adds a person and
+  `/people/{id}` shows their profile. Only the first name is required; a profile can also hold a last
+  name, a nickname, a relationship type, a birthday whose **year is optional** ("14 March"), how you
+  met and free-form details. Text is trimmed, blank optional text is stored as nothing, and what is
+  rejected (over-long text, a birthday without a day or month, one that does not exist such as 31
+  April, one with a year after today in *your* time zone) comes back from the service as error codes
+  (`PersonValidationException`) that the form words next to the field. Relationship types are a
+  per-user list (`RelationshipType`, unique per user, six defaults: Family, Partner, Friend,
+  Colleague, Acquaintance, Other) seeded when an account is created and by the migration for accounts
+  that already exist; a person may only point at one of its owner's types (a foreign id, so another
+  user's id is refused with the same message as an unknown one). A profile that does not exist and one
+  that belongs to someone else look identical, and browser tab titles never contain a name.
+  Migration `AddPersonProfile`: adds `RelationshipTypes` and the new `People` columns, **splits
+  `People.Birthday` into `BirthdayYear`/`BirthdayMonth`/`BirthdayDay`** (existing birthdays are
+  copied), gives every existing account the default relationship types and adds check constraints on
+  the birthday columns. Downgrading restores birthdays that have a year and **drops those that do not**
+  (a `date` column cannot hold them). The people service now reads untracked and clears the change
+  tracker after every write, because the scoped `DbContext` of an interactive page lives as long as
+  the circuit. `IPeopleService`'s request records are now property records with the new fields, and
+  `UserCalendar.NextOccurrence` gained a `Birthday` overload (29 February without a year is observed on
+  28 February in non-leap years too). Unit, bUnit, SQL Server integration (check constraints, unique
+  names, delete rule, and the migration run against a database holding real rows) and Playwright
+  end-to-end coverage. See the "People" section and the "User-scoped data pattern" section of
+  AGENTS.md.
 - Optional two-factor authentication with an authenticator app (issue #20), completing epic #14.
   Turn it on under *Sign-in and security* in settings: `/Account/Manage/EnableAuthenticator` shows a
   QR code (generated on the server as an inline SVG with the new `Net.Codecrete.QrCodeGenerator`

@@ -173,13 +173,17 @@ public sealed class AccountRegistrationService(
         }
 
         // No ICurrentUser yet: the new user is not signed in during the request that creates them,
-        // so this is the one place a user's own profile row is written without one - the same
-        // escape hatch DemoDataSeeder uses at startup. It lives here (not in Register.razor) so
-        // the rule is in one tested place.
+        // so this is the one place a user's own profile row and starting data are written without
+        // one - the same escape hatch DemoDataSeeder uses at startup. It lives here (not in
+        // Register.razor) so the rule is in one tested place. The default relationship types are
+        // seeded here, in the same save as the profile, and nowhere lazily: a default the user
+        // later deletes (issue #25) must not come back. Every path that creates a RelioUser does
+        // the same (see the "User-scoped data pattern" section of AGENTS.md).
         var timeZoneId = TimeZoneIds.TryParse(request.TimeZoneId, out var parsedTimeZone)
             ? parsedTimeZone.Id
             : TimeZoneIds.Default;
         dbContext.UserProfiles.Add(new UserProfile { OwnerId = user.Id, TimeZoneId = timeZoneId });
+        dbContext.RelationshipTypes.AddRange(RelationshipType.CreateDefaults(user.Id));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         if (wasEmpty && isAdministrator)

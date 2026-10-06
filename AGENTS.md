@@ -43,6 +43,21 @@ for every new owned entity and service; do not invent new plumbing per feature.
   Identity user id (epic #14); it is set once by the service that creates the entity, never by a
   caller or the database.
 - Archivable entities add their own `IsArchived`/`ArchivedAtUtc`, following `Person`.
+- Per-user lookup lists are owned entities, not enums or global tables: `RelationshipType` (issue
+  #22) is one, and a `Person` references it by `RelationshipTypeId`, which is a **foreign id** in the
+  sense below. Its defaults (`RelationshipType.DefaultNames`, `CreateDefaults(ownerId)`) are seeded
+  in exactly three places and never lazily (a lazy "ensure the defaults exist" would resurrect a
+  default the user deleted in #25): `AccountRegistrationService.RegisterAsync` (new accounts, in the
+  same save as the new `UserProfile`), the `AddPersonProfile` migration (accounts that already
+  existed), and `DemoDataSeeder`. **Every code path that creates a `RelioUser` must add
+  `RelationshipType.CreateDefaults(user.Id)` in the same save.** The migration keeps its own literal
+  copy of the names on purpose.
+- Every child of a person (contact methods, interactions, notes, reminders, difficult moments, ...)
+  has a `PersonId` foreign key to `People` with `OnDelete(Cascade)` **and** its own `OwnerId`,
+  filtered explicitly like everything else, with an index on `(OwnerId, PersonId)`. When delete
+  arrives (#26), `PeopleService` gets one private `RemoveDependentsAsync(ownerId, personId)` and every
+  new child adds one `RemoveRange(...)` line to it: the InMemory provider only cascades *tracked*
+  dependents, and the database cascade is the SQL Server backstop.
 
 **Application (`Relio.Application`).**
 - Read the signed-in user only through `ICurrentUser` (`Security/ICurrentUser.cs`) - never
@@ -58,6 +73,14 @@ for every new owned entity and service; do not invent new plumbing per feature.
   returns `null`, `UpdateAsync`/`ArchiveAsync`/`RestoreAsync` return `false`. Never throw a
   not-found exception for the primary entity - it would leak existence through a different code
   path than the foreign-id case.
+- **Validation errors are codes in Application and messages in Web.** Rules that depend only on the
+  input are pure functions (`People/PersonProfileRules.Validate(input, today)` - "today" is a
+  parameter, so tests need no clock); the service trims with the same class, validates, and throws
+  `PersonValidationException` carrying `PersonValidationError` codes (its message lists the codes,
+  never the submitted values). `Relio.Web` words each code next to the field it belongs to
+  (`PersonFormMessages`, with a test that every code has a message). The service is the authority:
+  the UI never duplicates a rule, and never reads the clock (the future-birthday rule runs in the
+  user's own time zone inside the service). A request that fails validation saves nothing.
 
 **Data (`Relio.Data`) - where the EF-dependent implementation lives.**
 - Service *interfaces* live in `Relio.Application`; service *implementations* live in
@@ -75,8 +98,27 @@ for every new owned entity and service; do not invent new plumbing per feature.
   from an injected `TimeProvider` - entities and services never set `CreatedAtUtc`/`UpdatedAtUtc`
   themselves. Inject `TimeProvider` (not `DateTime.UtcNow`) anywhere else a timestamp is needed
   (e.g. `ArchivedAtUtc`), so tests can supply a fake.
+- **The scoped `RelioDbContext` lives as long as a Blazor circuit** - minutes or hours, not a request
+  - because the people pages are interactive. So in every owned-data service: reads use
+  `AsNoTracking()` (a tracked entity would answer later reads from memory and hide changes made
+  elsewhere), and every mutation loads what it changes tracked, saves once, and calls
+  `dbContext.ChangeTracker.Clear()` in a `finally` block (it also covers a failed `SaveChanges`
+  leaving an *Added* entity that the next save would insert again). Not an `IDbContextFactory`:
+  Identity's stores need the scoped context, and tests build `new PeopleService(dbContext,
+  currentUser, timeProvider)` directly, so a service constructor must not gain parameters lightly.
+  Read-only loads belong in `OnInitializedAsync`/`OnParametersSetAsync`, which prerendering runs
+  twice.
+- A multi-step write is **one** tracked `SaveChangesAsync` (a transaction on SQL Server). The InMemory
+  provider used by `Relio.Data.Tests` ignores check constraints, unique indexes and case-insensitive
+  collation, throws on `BeginTransaction`, and has no `ExecuteUpdate`/`ExecuteDelete`: prove
+  constraints and indexes in `Relio.Data.IntegrationTests`, and do not reach for those APIs in a
+  service.
 - After changing the model, add a migration:
-  `dotnet ef migrations add <Name> --project Relio.Data --startup-project Relio.Web`.
+  `dotnet ef migrations add <Name> --project Relio.Data --startup-project Relio.Web`. A migration
+  that reads columns it adds earlier in the same migration puts that SQL in `EXEC(N'...')` (SQL
+  Server compiles a whole batch before running it, and `dotnet ef migrations script --idempotent`
+  puts a migration in one batch); `AddPersonProfile` is the worked example, and it has a test that
+  migrates a database holding real rows (`AddPersonProfileMigrationSqlServerTests`).
 
 **Web (`Relio.Web`).**
 - The real `ICurrentUser` is `Relio.Web.Security.AuthenticationStateCurrentUser` (epic #14, issue
@@ -142,9 +184,16 @@ time zone. Never call `DateTime.Now`/`DateTime.UtcNow`/`DateTime.Today` anywhere
   `RelioDbContext`, like `PeopleService`) and registered in `AddRelioData`. Sign-up (#15) and
   account settings (#18) are the only features that should call `SetTimeZoneAsync` directly; every
   other feature only reads.
-- A `Person`'s `Birthday` (and any future reminder/interaction date) is a `DateOnly` - never
-  convert it to/from UTC. Feb 29 birthdays observe **Feb 28** in non-leap years (not Mar 1) - see
-  `UserCalendar.NextOccurrence`.
+- A reminder or interaction date is a `DateOnly` - never convert it to/from UTC. A `Person`'s
+  birthday is not, because its year is optional (issue #22): it is stored as three nullable int
+  columns, `BirthdayYear`/`BirthdayMonth`/`BirthdayDay` (check constraints: month 1-12, day 1-31, year
+  1-9999, and day and month come together), and read through the computed, EF-ignored
+  `Person.Birthday` (`Relio.Domain.Birthday`, a value type with `TryCreate`/`IsValid`; year-less 29
+  February is valid). Never use `Person.Birthday` inside a LINQ query - filter on the columns. Feb 29
+  birthdays observe **Feb 28** in non-leap years (not Mar 1), with or without a year - see
+  `UserCalendar.NextOccurrence(Birthday, today)`; the `DateOnly` overload delegates to it. A
+  birthday with a year may not be after today **in the user's time zone** (enforced in
+  `PersonProfileRules`, tested for Kiritimati and Pago Pago).
 - `Relio.Web.Time.IBrowserTimeZoneReader`/`BrowserTimeZoneReader` read the browser's IANA time zone
   id via a self-hosted JS module (`wwwroot/js/timezone.js`, `Intl.DateTimeFormat().resolvedOptions().timeZone` -
   no third-party script), for interactive components. `Settings/TimeZoneSettings.razor` (#18) uses
@@ -570,7 +619,9 @@ completing epic #14.
 - **Demo data**: `Relio.Data.Seeding.DemoDataSeeder` creates a `demo@relio.local` account (test/demo
   password only, see its XML docs) - which is also made an **Administrator** (idempotently, on every
   run, so a demo database that predates #19 gets the role) - with realistic sample people (one
-  archived, one with a Feb 29 birthday) and a non-UTC time zone, writing directly through
+  archived, one with a Feb 29 birthday, one with a birthday without a year, most with a relationship
+  type from the default list the seeder also creates, two with "how we met" and multi-line details)
+  and a non-UTC time zone, writing directly through
   `RelioDbContext` rather than through `IPeopleService`/`IUserTimeZoneService` - those require a
   signed-in `ICurrentUser`, which does not exist at startup (`AccountRegistrationService` uses the same
   escape hatch for the one request that creates a brand new user's own `UserProfile`, for the same
@@ -629,6 +680,27 @@ completing epic #14.
   real `UserManager`), and can be run locally without Docker against LocalDB:
   `ConnectionStrings__Relio='Server=(localdb)\MSSQLLocalDB;Integrated Security=true;Encrypt=False;TrustServerCertificate=True;'`.
 
+## People
+
+Established by issue #22 under epic #21. The routes are pages, not dialogs: `/people` (the list),
+`/people/new`, `/people/{PersonId:guid}` (the profile) and, in later issues, `/people/{id}/edit`,
+`/people/{id}/merge` and `/people/import`. Dialogs (`ConfirmDialog`) are for short confirmations only.
+
+- **All of them are interactive** (MudBlazor inputs only bind over a circuit - see the static SSR note
+  under "Accounts and authentication"); never add `[ExcludeFromInteractiveRouting]` to a people page.
+  Each page has exactly one `h1` (`FocusOnNavigate` targets it) and sets no `AutoFocus`.
+- **`Components/People/PersonForm.razor`** is the one form for a person: add (#22) and, later, edit
+  (#24) and the duplicate warning (#27) plug into it. It binds to `PersonFormModel`, shows one message
+  per field from `PersonFormMessages`, and is a real `<form novalidate>` (so Enter submits and the
+  browser's own "fill out this field" bubble never pre-empts Relio's message). Loop `MudSelectItem`s
+  with `foreach`, never `for`: the item content renders after the loop has finished.
+- **Browser tab titles stay generic** (`Person - Relio`, `Add a person - Relio`): titles land in
+  browser history and tab lists, and a person's name is private. A person that does not exist and
+  one that belongs to someone else show the identical "This person isn't in your list" panel.
+- User-written text (names, nickname, how you met, details) is set in the serif (`rl-serif` in
+  inputs, `rl-entry-text` on the profile) and rendered as text, never as markup; line breaks are kept
+  with `rl-multiline`. Never log it.
+
 ## End-to-end tests
 
 `Relio.Web.E2ETests` drives the real Relio.Web app (the `Program` entry point, via its trailing
@@ -666,6 +738,10 @@ or an actual SignalR circuit.
   path) to launch that instead of Playwright's bundled browser. Left unset (CI's default), it uses
   the bundled build installed by `playwright.ps1 install --with-deps chromium` (see
   `.github/workflows/ci.yml`).
+- **Asserting a page heading**: use `page.GetByRole(AriaRole.Heading, new() { Name = "...", Exact = true })`,
+  not `GetByText`: the drawer link and the page title carry the same words (`NavigationTests`).
+  Tests that add people register a fresh `NewEmail(...)` user and use unique names
+  (`PeopleTests`); the shared demo user's people are never edited.
 - **Writing a new test**: add a class under `Relio.Web.E2ETests`, tag it
   `[Collection(RelioAppCollection.Name)]`, take `RelioAppFixture` by constructor injection, open a
   page with `fixture.NewPageAsync(...)`, navigate with `GotoAndWaitForInteractiveAsync`, assert

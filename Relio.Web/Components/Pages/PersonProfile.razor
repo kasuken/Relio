@@ -1,0 +1,90 @@
+@page "/people/{PersonId:guid}"
+@using Relio.Application.People
+@using Relio.Domain
+@using Relio.Web.Time
+@inject IPeopleService PeopleService
+@inject NavigationManager Navigation
+
+@* The page title is generic on purpose: titles land in browser history and tab lists, and a
+   person's name is private (see the gdpr-compliant skill). *@
+<PageTitle>Person - Relio</PageTitle>
+
+@if (_loaded)
+{
+    @if (_person is null)
+    {
+        @* A person that does not exist and one that belongs to someone else look exactly the same. *@
+        <div data-testid="person-not-found">
+            <EmptyState Title="This person isn't in your list"
+                        Message="The link may be wrong, or they were removed."
+                        ActionLabel="Back to people"
+                        OnAction="BackToPeople" />
+        </div>
+    }
+    else
+    {
+        <MudLink Href="/people" Class="mb-4 d-inline-block" data-testid="person-back">People</MudLink>
+
+        <header class="rl-person-header">
+            <MudAvatar Class="rl-avatar" Size="Size.Large" aria-hidden="true">@PersonInitials.For(_person.FirstName, _person.LastName)</MudAvatar>
+            <div class="rl-person-header-text">
+                <MudText Typo="Typo.h1" HtmlTag="h1" data-testid="person-name">@_person.DisplayName</MudText>
+                @if (_person.RelationshipType is not null)
+                {
+                    <span class="rl-meta" data-testid="person-relationship">@_person.RelationshipType.Name</span>
+                }
+            </div>
+        </header>
+
+        <dl class="rl-facts">
+            @if (_person.Nickname is not null)
+            {
+                <div>
+                    <dt>Nickname</dt>
+                    <dd class="rl-entry-text" data-testid="person-nickname">@_person.Nickname</dd>
+                </div>
+            }
+            @if (_person.Birthday is { } birthday)
+            {
+                <div>
+                    <dt><MudIcon Icon="@Icons.Material.Outlined.Cake" Size="Size.Small" />Birthday</dt>
+                    <dd data-testid="person-birthday">@BirthdayDisplay.Format(birthday)</dd>
+                </div>
+            }
+            @if (_person.HowWeMet is not null)
+            {
+                <div>
+                    <dt>How you met</dt>
+                    <dd class="rl-entry-text rl-multiline" data-testid="person-how-we-met">@_person.HowWeMet</dd>
+                </div>
+            }
+            @if (_person.Details is not null)
+            {
+                <div>
+                    <dt>Details</dt>
+                    <dd class="rl-entry-text rl-multiline" data-testid="person-details">@_person.Details</dd>
+                </div>
+            }
+        </dl>
+    }
+}
+
+@code {
+    private Person? _person;
+    private bool _loaded;
+
+    [Parameter]
+    public Guid PersonId { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // OnParametersSet, not OnInitialized: the route parameter can change while the circuit
+        // keeps this component (a link from one profile to another). Read-only on purpose -
+        // prerendering runs it twice.
+        _loaded = false;
+        _person = await PeopleService.GetAsync(PersonId);
+        _loaded = true;
+    }
+
+    private void BackToPeople() => Navigation.NavigateTo("/people");
+}

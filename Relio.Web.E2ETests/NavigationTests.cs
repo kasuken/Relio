@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Microsoft.Playwright;
 using static Microsoft.Playwright.Assertions;
 using Relio.Web.E2ETests.Infrastructure;
 
@@ -8,7 +9,7 @@ namespace Relio.Web.E2ETests;
 public class NavigationTests(RelioAppFixture fixture)
 {
     [Theory]
-    [InlineData("People", "/people", "No one here yet")]
+    [InlineData("People", "/people", "People")] // the demo account has people, so the list - not the empty state
     [InlineData("Reminders", "/reminders", "No reminders yet")]
     [InlineData("Difficult moments", "/difficult-moments", "No difficult moments recorded")]
     [InlineData("Settings", "/settings", "Settings")]
@@ -23,7 +24,8 @@ public class NavigationTests(RelioAppFixture fixture)
         await page.Locator("nav[aria-label='Primary']").GetByText(linkText, new() { Exact = true }).ClickAsync();
 
         await Expect(page).ToHaveURLAsync(new Regex($"{Regex.Escape(expectedPath)}$"));
-        await Expect(page.GetByText(expectedHeading).First).ToBeVisibleAsync();
+        // By heading role, not by text: the drawer link carries the same words as the page title.
+        await Expect(page.GetByRole(AriaRole.Heading, new() { Name = expectedHeading, Exact = true })).ToBeVisibleAsync();
 
         await RelioAppFixture.ClosePageAsync(page);
     }
