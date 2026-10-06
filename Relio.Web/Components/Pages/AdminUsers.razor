@@ -1,0 +1,36 @@
+@page "/admin/users"
+@attribute [Authorize(Policy = RelioPolicies.Administrator)]
+
+@using Microsoft.Extensions.Options
+@using Relio.Web.Components.Administration
+
+@inject IOptions<RegistrationOptions> RegistrationSettings
+
+<PageTitle>Administration - Relio</PageTitle>
+
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">Administration</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+    Manage who can use this Relio instance. You see account details here, never anyone's people, notes or moments.
+</MudText>
+
+<MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-2">Accounts</MudText>
+<AccountList />
+
+<MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-8 mb-2">Registration</MudText>
+<MudText Typo="Typo.body1" Class="mb-1" data-testid="admin-registration-mode">@ModeDescription</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">Change it with the Registration:Mode setting.</MudText>
+
+@if (RegistrationSettings.Value.Mode == RegistrationMode.InviteOnly)
+{
+    <MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-8 mb-2">Invitations</MudText>
+    <InvitationPanel />
+}
+
+@code {
+    private string ModeDescription => RegistrationSettings.Value.Mode switch
+    {
+        RegistrationMode.InviteOnly => "Sign-up is by invitation only. Nobody can create an account without a link from you.",
+        RegistrationMode.Closed => "Sign-up is closed. Nobody can create an account.",
+        _ => "Sign-up is open. Anyone who can reach this instance can create an account.",
+    };
+}

@@ -38,6 +38,12 @@ public sealed class RelioDbContext(DbContextOptions<RelioDbContext> options, Tim
     /// <summary>User profiles (currently just the user's time zone, see epic #12), one per user.</summary>
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
 
+    /// <summary>
+    /// Pending sign-up invitations for an invitation-only instance (issue #19). Instance
+    /// administration data, not user-owned: see <see cref="Administration.RegistrationInvitation"/>.
+    /// </summary>
+    public DbSet<Administration.RegistrationInvitation> RegistrationInvitations => Set<Administration.RegistrationInvitation>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

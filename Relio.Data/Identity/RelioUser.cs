@@ -12,7 +12,8 @@ namespace Relio.Data.Identity;
 /// it, so Domain/Application never need to know Identity exists.
 /// </summary>
 /// <remarks>
-/// Email + password only (#15), plus <see cref="PendingEmail"/> for account settings (#18).
+/// Email + password only (#15), plus <see cref="PendingEmail"/> for account settings (#18) and
+/// <see cref="IsDisabled"/> for self-hosted administration (#19).
 /// Two-factor fields already exist on <see cref="IdentityUser"/> itself, so #20 needs no model
 /// change here. Product-facing profile data (display name, time zone) lives on
 /// <c>Relio.Domain.UserProfile</c> instead, not here.
@@ -29,4 +30,18 @@ public sealed class RelioUser : IdentityUser
     /// </summary>
     [PersonalData]
     public string? PendingEmail { get; set; }
+
+    /// <summary>
+    /// Whether an Administrator disabled this account (self-hosted administration, #19). A disabled
+    /// account can not sign in and its open sessions end at their next validation
+    /// (<c>Account:Session:ValidationInterval</c>); everything it owns is left untouched, and
+    /// enabling it again restores access exactly as it was.
+    /// </summary>
+    /// <remarks>
+    /// A dedicated flag, deliberately not Identity's lockout: lockout is also cleared by a
+    /// successful password reset (<c>ResetPassword.razor</c> sets the lockout end date to
+    /// <see langword="null"/> so a user who regained access by email is not still locked out), so a
+    /// lockout-based disable could be undone by the very person it was applied to.
+    /// </remarks>
+    public bool IsDisabled { get; set; }
 }

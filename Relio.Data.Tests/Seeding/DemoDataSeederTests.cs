@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Relio.Application.Administration;
 using Relio.Data.Identity;
 using Relio.Data.Seeding;
 
@@ -45,6 +46,8 @@ public class DemoDataSeederTests
         demoUser!.EmailConfirmed.Should().BeTrue("the demo account must be able to sign in regardless of Email:Provider");
 
         (await userManager.CheckPasswordAsync(demoUser, DemoDataSeeder.DemoPassword)).Should().BeTrue();
+        (await userManager.IsInRoleAsync(demoUser, RelioRoles.Administrator)).Should().BeTrue(
+            "the demo account is the instance's Administrator");
 
         var people = await dbContext.People.Where(p => p.OwnerId == demoUser.Id).ToListAsync();
         people.Should().HaveCountGreaterThanOrEqualTo(6).And.HaveCountLessThanOrEqualTo(8);
@@ -88,6 +91,25 @@ public class DemoDataSeederTests
 
         (await dbContext.People.CountAsync()).Should().Be(peopleCountAfterFirstRun);
         (await dbContext.Users.CountAsync()).Should().Be(userCountAfterFirstRun);
+        (await userManager.GetUsersInRoleAsync(RelioRoles.Administrator)).Should().ContainSingle(
+            "the demo user is made an Administrator exactly once");
+        (await dbContext.UserRoles.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task SeedAsync_makes_an_existing_demo_user_without_the_role_an_Administrator()
+    {
+        await using var dbContext = CreateDbContext();
+        var userManager = UserManagerTestFactory.Create(dbContext);
+        var seeder = CreateSeeder(dbContext, userManager, enabled: true, environmentName: Environments.Development);
+        await seeder.SeedAsync();
+        var demoUser = (await userManager.FindByEmailAsync(DemoDataSeeder.DemoEmail))!;
+        await userManager.RemoveFromRoleAsync(demoUser, RelioRoles.Administrator);
+
+        // A demo database created before issue #19: the user and its people exist, the role does not.
+        await seeder.SeedAsync();
+
+        (await userManager.IsInRoleAsync(demoUser, RelioRoles.Administrator)).Should().BeTrue();
     }
 
     private static RelioDbContext CreateDbContext()
@@ -96,7 +118,11 @@ public class DemoDataSeederTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
 
-        return new RelioDbContext(options, TimeProvider.System);
+        var dbContext = new RelioDbContext(options, TimeProvider.System);
+
+        // Applies the seeded Administrator role (HasData), which AddToRoleAsync needs - InMemory has no migrations.
+        dbContext.Database.EnsureCreated();
+        return dbContext;
     }
 
     private static DemoDataSeeder CreateSeeder(

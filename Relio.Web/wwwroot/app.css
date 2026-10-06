@@ -437,3 +437,37 @@ a {
         animation-duration: 0.01ms !important;
     }
 }
+
+/* Administration (issue #19): the invited address on the sign-up form is shown, not editable. */
+.rl-field input[readonly] {
+    background: var(--surface-sunken);
+}
+
+/* An invitation link is shown once as plain text; long tokens must wrap instead of widening the page. */
+.rl-invite-link {
+    display: block;
+    word-break: break-all;
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    color: var(--text);
+    background: var(--surface-sunken);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
+}
+
+/* Pending invitations: hairline-separated rows, not cards. */
+.rl-admin-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.rl-admin-list > li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--line);
+}

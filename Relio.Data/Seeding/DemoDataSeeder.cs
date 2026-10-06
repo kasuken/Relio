@@ -3,14 +3,15 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Relio.Application.Administration;
 using Relio.Data.Identity;
 using Relio.Domain;
 
 namespace Relio.Data.Seeding;
 
 /// <summary>
-/// Creates a demo account with realistic sample data, so Relio can be explored without manually
-/// registering and populating an account first. Runs once at startup (see
+/// Creates a demo account (an Administrator, issue #19) with realistic sample data, so Relio can
+/// be explored without manually registering and populating an account first. Runs once at startup (see
 /// <c>Relio.Web.Program</c>), never from a request, and is safe to call repeatedly - see
 /// <see cref="SeedAsync"/>.
 /// </summary>
@@ -87,6 +88,21 @@ public sealed class DemoDataSeeder(
             }
 
             logger.LogInformation("Created the demo user.");
+        }
+
+        // The demo account is the instance's Administrator (issue #19), so the demo shows the
+        // administration page. Checked on every run, not only when the user is created, so a demo
+        // database that predates #19 gets the role too. Accounts registered while demo data is on
+        // are not Administrators: the demo account already exists, so none of them is "first".
+        if (!await userManager.IsInRoleAsync(demoUser, RelioRoles.Administrator))
+        {
+            var roleResult = await userManager.AddToRoleAsync(demoUser, RelioRoles.Administrator);
+            if (!roleResult.Succeeded)
+            {
+                logger.LogError(
+                    "Failed to make the demo user an Administrator: {Errors}",
+                    string.Join("; ", roleResult.Errors.Select(e => e.Code)));
+            }
         }
 
         var alreadySeeded = await dbContext.People.AnyAsync(p => p.OwnerId == demoUser.Id, cancellationToken);

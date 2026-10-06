@@ -1,0 +1,141 @@
+@* The "Accounts" section of /admin/users (issue #19). Shows who has an account on this instance and
+   whether they can sign in - nothing else. Deliberately no link per row and no display name: an
+   administrator runs the instance, they do not get a window into anyone's notebook. *@
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.Extensions.Options
+@using Relio.Web.Components.Shared
+
+@inject IUserAdministrationService AdminService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject IOptions<AccountOptions> AccountSettings
+@inject IOptions<IdentityOptions> IdentitySettings
+
+<MudTable T="AccountSummary"
+          Items="_accounts"
+          Elevation="0"
+          Breakpoint="Breakpoint.Sm"
+          Hover="false"
+          Loading="_accounts is null"
+          data-testid="admin-accounts">
+    <HeaderContent>
+        <MudTh>Email</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Email">
+            <span data-testid="admin-account-email">@context.Email</span>
+        </MudTd>
+        <MudTd DataLabel="Status">
+            <div class="d-flex flex-wrap gap-1">
+                @if (context.IsAdministrator)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined"
+                             data-testid="admin-account-role-administrator">Administrator</MudChip>
+                }
+                @if (context.IsCurrentUser)
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">You</MudChip>
+                }
+                @if (context.IsDisabled)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined"
+                             data-testid="admin-account-status-disabled">Disabled</MudChip>
+                }
+                @if (context.IsLockedOut)
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Locked out</MudChip>
+                }
+                @if (!context.EmailConfirmed && IdentitySettings.Value.SignIn.RequireConfirmedAccount)
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Unconfirmed</MudChip>
+                }
+            </div>
+        </MudTd>
+        <MudTd>
+            @if (!context.IsCurrentUser)
+            {
+                @if (context.IsDisabled)
+                {
+                    <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary"
+                               aria-label="@($"Enable {context.Email}")"
+                               OnClick="() => EnableAsync(context)"
+                               data-testid="admin-account-enable">Enable</MudButton>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary"
+                               aria-label="@($"Disable {context.Email}")"
+                               OnClick="() => DisableAsync(context)"
+                               data-testid="admin-account-disable">Disable</MudButton>
+                }
+            }
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private IReadOnlyList<AccountSummary>? _accounts;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _accounts = await AdminService.ListAccountsAsync();
+        }
+        catch (AdministratorRequiredException)
+        {
+            // The session's role is stale (demoted or disabled since sign-in): the service said no.
+            Navigation.NavigateTo("/Account/AccessDenied", forceLoad: true);
+        }
+    }
+
+    private async Task DisableAsync(AccountSummary account)
+    {
+        var minutes = Math.Max(1, (int)Math.Ceiling(AccountSettings.Value.Session.ValidationInterval.TotalMinutes));
+        var confirmed = await DialogService.ShowConfirmAsync(
+            "Disable this account?",
+            $"They won't be able to sign in, and any open session ends within {minutes} minutes. " +
+            "Nothing they keep in Relio is changed or shown to you. You can enable the account again at any time.",
+            confirmLabel: "Disable account");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        await ChangeAsync(() => AdminService.DisableAccountAsync(account.UserId), "Account disabled");
+    }
+
+    private Task EnableAsync(AccountSummary account) =>
+        ChangeAsync(() => AdminService.EnableAccountAsync(account.UserId), "Account enabled");
+
+    private async Task ChangeAsync(Func<Task<AccountChangeResult>> change, string successMessage)
+    {
+        try
+        {
+            var result = await change();
+            switch (result)
+            {
+                case AccountChangeResult.Succeeded:
+                    Snackbar.Saved(successMessage);
+                    break;
+                case AccountChangeResult.CannotChangeOwnAccount:
+                    Snackbar.Problem("You can't disable your own account.");
+                    break;
+                default:
+                    Snackbar.Problem("That account no longer exists.");
+                    break;
+            }
+
+            await LoadAsync();
+        }
+        catch (AdministratorRequiredException)
+        {
+            Navigation.NavigateTo("/Account/AccessDenied", forceLoad: true);
+        }
+    }
+}
