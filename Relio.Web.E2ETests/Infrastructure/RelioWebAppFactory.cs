@@ -65,9 +65,15 @@ public sealed class RelioWebAppFactory(Action<IServiceCollection>? configureTest
         // problem: WebApplication.CreateBuilder(args) reads them as soon as it runs, which is
         // before any of Program.cs's own code executes, so setting the variable here - before
         // builder.Build() below triggers Program's Main - reaches it in time.
-        Environment.SetEnvironmentVariable(
-            ServiceCollectionExtensions.ProviderConfigurationKey.Replace(":", "__"),
-            ServiceCollectionExtensions.InMemoryProvider);
+        //
+        // Only defaulted: a variant app (VariantApp, SqlServerPageLoadTests) sets
+        // Database__Provider=SqlServer before building its host, because InMemory hides DbContext
+        // concurrency bugs (see AGENTS.md "One database operation at a time").
+        var providerVariable = ServiceCollectionExtensions.ProviderConfigurationKey.Replace(":", "__");
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(providerVariable)))
+        {
+            Environment.SetEnvironmentVariable(providerVariable, ServiceCollectionExtensions.InMemoryProvider);
+        }
 
         // Same timing constraint as Database:Provider above - Program.cs reads this (via
         // DemoDataSeeder's options) before builder.Build(), so it must already be set as an

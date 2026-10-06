@@ -10,7 +10,7 @@ namespace Relio.Data.People;
 /// like <see cref="PeopleService"/>, and follows the same rules: every query is explicitly
 /// filtered by <see cref="IOwnedEntity.OwnerId"/>, and reads are untracked because the scoped
 /// <see cref="RelioDbContext"/> can live as long as a Blazor circuit (see
-/// <see cref="PeopleService"/>'s remarks).
+/// <see cref="PeopleService"/>'s remarks). Calls run in the context's <see cref="Concurrency.DatabaseLane"/>.
 /// </summary>
 public sealed class RelationshipTypeService(RelioDbContext dbContext, ICurrentUser currentUser) : IRelationshipTypeService
 {

@@ -174,6 +174,40 @@ public class UserProfileServiceTests
         (await CreateService(dbContext, UserA).GetDisplayNameAsync()).Should().Be("Alice");
     }
 
+    [Fact]
+    public async Task SetDisplayNameAsync_leaves_nothing_tracked()
+    {
+        await using var dbContext = CreateDbContext();
+        var service = CreateService(dbContext, UserA);
+
+        await service.SetDisplayNameAsync("Ada");
+        dbContext.ChangeTracker.Entries().Should().BeEmpty("creating the profile clears the tracker");
+
+        await service.SetDisplayNameAsync("Bea");
+        dbContext.ChangeTracker.Entries().Should().BeEmpty("updating the profile clears the tracker");
+    }
+
+    [Fact]
+    public async Task A_failed_save_does_not_make_the_next_save_insert_the_profile_again()
+    {
+        var failing = new FailOnceSaveChangesInterceptor();
+        var options = new DbContextOptionsBuilder<RelioDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(failing)
+            .Options;
+        await using var dbContext = new RelioDbContext(options, TimeProvider.System);
+        var service = CreateService(dbContext, UserA);
+
+        var act = () => service.SetDisplayNameAsync("Ada");
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*simulated*");
+        dbContext.ChangeTracker.Entries().Should().BeEmpty();
+
+        await service.SetDisplayNameAsync("Bea");
+
+        (await dbContext.UserProfiles.AsNoTracking().Where(p => p.OwnerId == UserA).ToListAsync())
+            .Should().ContainSingle().Which.DisplayName.Should().Be("Bea");
+    }
+
     private static RelioDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<RelioDbContext>()

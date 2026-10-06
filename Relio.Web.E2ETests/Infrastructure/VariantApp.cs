@@ -52,6 +52,11 @@ public sealed class VariantApp : IAsyncDisposable
         bool seedDemoData = true)
     {
         var variables = environment ?? new Dictionary<string, string?>();
+
+        // Remember what each variable was and put it back afterwards, rather than clearing it: a
+        // variable like ConnectionStrings__Relio (CI sets it for the whole job) or Database__Provider
+        // (the shared fixture app sets it) must survive for the rest of the process.
+        var previous = variables.Keys.ToDictionary(key => key, Environment.GetEnvironmentVariable);
         foreach (var (key, value) in variables)
         {
             Environment.SetEnvironmentVariable(key, value);
@@ -73,9 +78,9 @@ public sealed class VariantApp : IAsyncDisposable
         }
         finally
         {
-            foreach (var key in variables.Keys)
+            foreach (var (key, value) in previous)
             {
-                Environment.SetEnvironmentVariable(key, null);
+                Environment.SetEnvironmentVariable(key, value);
             }
         }
     }

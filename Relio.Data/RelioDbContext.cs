@@ -18,6 +18,10 @@ namespace Relio.Data;
 /// AGENTS.md for why ownership is instead enforced explicitly in each service method.
 /// </remarks>
 /// <remarks>
+/// A <see cref="DbContext"/> allows one operation in flight, and the scoped instance is shared by
+/// every component of a Blazor circuit, so <see cref="Lane"/> serializes data service calls on it.
+/// </remarks>
+/// <remarks>
 /// Inherits <see cref="IdentityDbContext{TUser}"/> (epic #14) instead of plain <see cref="DbContext"/>
 /// so ASP.NET Core Identity's own tables (<c>AspNetUsers</c>, <c>AspNetUserClaims</c>, etc.) live in
 /// the same database and migration history as the rest of Relio. Identity's own entities are not
@@ -28,6 +32,16 @@ public sealed class RelioDbContext(DbContextOptions<RelioDbContext> options, Tim
     : IdentityDbContext<RelioUser>(options)
 {
     private readonly TimeProvider _timeProvider = timeProvider;
+
+    /// <summary>
+    /// Lets one operation at a time run on this context. A Blazor circuit (and a prerender) shares one
+    /// scoped context across components, and the renderer starts a sibling's load while the previous
+    /// one is still awaiting the database - see "One database operation at a time" in AGENTS.md.
+    /// Every data service runs through it (<c>AddRelioData</c> wraps them). It is idle whenever no
+    /// data service call is running, so it stays correct if context pooling is adopted later. Not
+    /// mapped: EF Core only maps <see cref="DbSet{TEntity}"/> properties, so there is no model change.
+    /// </summary>
+    public Concurrency.DatabaseLane Lane { get; } = new();
 
     /// <summary>The current user's people (filtered explicitly by services, not by a global query filter).</summary>
     public DbSet<Person> People => Set<Person>();

@@ -40,23 +40,33 @@ public sealed class UserProfileService(RelioDbContext dbContext, ICurrentUser cu
                 nameof(displayName));
         }
 
-        var profile = await dbContext.UserProfiles
-            .FirstOrDefaultAsync(p => p.OwnerId == ownerId, cancellationToken);
-
-        if (profile is null)
+        // The scoped context lives as long as a Blazor circuit, so a tracked profile (or an Added
+        // one left behind by a failed save, which the next save would insert again and hit the
+        // unique OwnerId index) must never outlive the call - see PeopleService's remarks.
+        try
         {
-            dbContext.UserProfiles.Add(new UserProfile
+            var profile = await dbContext.UserProfiles
+                .FirstOrDefaultAsync(p => p.OwnerId == ownerId, cancellationToken);
+
+            if (profile is null)
             {
-                OwnerId = ownerId,
-                TimeZoneId = TimeZoneIds.Default,
-                DisplayName = normalized,
-            });
-        }
-        else
-        {
-            profile.DisplayName = normalized;
-        }
+                dbContext.UserProfiles.Add(new UserProfile
+                {
+                    OwnerId = ownerId,
+                    TimeZoneId = TimeZoneIds.Default,
+                    DisplayName = normalized,
+                });
+            }
+            else
+            {
+                profile.DisplayName = normalized;
+            }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        finally
+        {
+            dbContext.ChangeTracker.Clear();
+        }
     }
 }

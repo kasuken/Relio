@@ -86,7 +86,8 @@ for every new owned entity and service; do not invent new plumbing per feature.
 - Service *interfaces* live in `Relio.Application`; service *implementations* live in
   `Relio.Data` (e.g. `Relio.Data.People.PeopleService`) because they depend on `RelioDbContext`
   directly. This keeps Domain and Application free of EF Core while still satisfying "data access
-  belongs in services". Register implementations in `AddRelioData` (`ServiceCollectionExtensions`).
+  belongs in services". Register implementations in `AddRelioData` (`ServiceCollectionExtensions`)
+  with `AddDataService`, not `AddScoped` (see "One database operation at a time" below).
 - Ownership is enforced by **explicit filtering in every query and mutation**
   (`.Where(x => x.OwnerId == ownerId)`), not a global EF Core query filter. A global filter would
   need the `DbContext` itself to know the current user, which is riskier to get right with a
@@ -112,6 +113,32 @@ for every new owned entity and service; do not invent new plumbing per feature.
   currentUser, timeProvider)` directly, so a service constructor must not gain parameters lightly.
   Read-only loads belong in `OnInitializedAsync`/`OnParametersSetAsync`, which prerendering runs
   twice.
+- **One database operation at a time per `RelioDbContext` (the database lane).** A `DbContext`
+  allows one operation in flight, and Blazor's renderer does not wait. When a component's
+  `OnInitializedAsync`/`OnParametersSetAsync` awaits, the renderer starts the next sibling's, and
+  a second UI event can arrive while a first handler awaits. Every component of a circuit (and of
+  one prerender) shares the scoped context, so `/settings`' three sections used to throw "A second
+  operation was started on this context instance" against SQL Server. The InMemory provider
+  completes synchronously and never shows it. `RelioDbContext.Lane`
+  (`Relio.Data.Concurrency.DatabaseLane`) is a per-context async gate. **Every data service is
+  registered with `AddDataService<IService, Service>()` in `AddRelioData`, never `AddScoped`.**
+  That wraps it in `DatabaseLaneProxy`, so each interface call runs alone on its context and the
+  others wait their turn. Constructors stay `(RelioDbContext, ICurrentUser, ...)`, and unit tests
+  keep building services directly.
+  - Data service interfaces return only `Task`/`Task<T>` (checked at startup).
+  - Within one call a service may use `UserManager`, `SaveChangesAsync` or another data service
+    (the lane is re-entrant within one async flow). Never block synchronously on a service task.
+    Never start database work you do not await (`Task.Run`, fire-and-forget, `Task.WhenAll` over
+    one context). Never call back into UI code from a service.
+  - Interactive components reach the database only through data services. Never
+    `@inject RelioDbContext`, `UserManager<RelioUser>` or `SignInManager<RelioUser>` in a
+    component; only static SSR pages (`[ExcludeFromInteractiveRouting]`) may.
+    `InteractiveComponentDataAccessTests` and `DataServiceRegistrationTests` enforce both rules.
+  - The lane prevents overlap, not staleness: `AsNoTracking()` reads and `ChangeTracker.Clear()`
+    after writes still apply.
+  - Concurrency only shows on SQL Server. For a new data service, add its read to
+    `DatabaseLaneSqlServerTests` next to another service's. For a page that composes several
+    data-loading components, add it to the E2E `SqlServerPageLoadTests`.
 - A multi-step write is **one** tracked `SaveChangesAsync` (a transaction on SQL Server). The InMemory
   provider used by `Relio.Data.Tests` ignores check constraints, unique indexes and case-insensitive
   collation, throws on `BeginTransaction`, and has no `ExecuteUpdate`/`ExecuteDelete`: prove
@@ -141,6 +168,10 @@ for every new owned entity and service; do not invent new plumbing per feature.
   in milliseconds with no external dependency, so keep it as the first signal and use the SQL
   Server project to prove anything InMemory cannot (constraints, indexes, migrations, real query
   translation).
+- InMemory completes every async query synchronously, so it can never reveal two operations
+  overlapping on one context. `DatabaseLaneSqlServerTests` proves the lane on SQL Server, with
+  `SlowReaderInterceptor` making the overlap deterministic (and a control test showing the same
+  reads do collide without the lane).
 - `Relio.Data.IntegrationTests` re-proves these same cross-user scenarios against a real SQL
   Server database (CI's service container, or Docker locally), applies the real EF Core migrations
   with `Database.MigrateAsync()`, and additionally proves the unique `(OwnerId, Name)` index on
@@ -758,6 +789,11 @@ or an actual SignalR circuit.
   decisions" below and `Relio.Data.DependencyInjection.ServiceCollectionExtensions`) - no SQL
   Server, no connection string, no migrations (`Database.EnsureCreatedAsync()` instead). Never the
   default; it is test/dev only and logs a startup warning when active.
+  `SqlServerPageLoadTests` is the one exception. It starts a `VariantApp` with
+  `Database__Provider=SqlServer` on a throwaway database, skipped unless `ConnectionStrings__Relio`
+  is set (CI always sets it), because InMemory hides `DbContext` concurrency. `RelioWebAppFactory`
+  only defaults `Database__Provider` to InMemory when it is unset, and `VariantApp` restores the
+  variables it changes.
 - **Fixture API** (`Relio.Web.E2ETests/Infrastructure/`):
   - `RelioAppFixture` is an `IAsyncLifetime` shared across every test class via
     `[Collection(RelioAppCollection.Name)]` - one running app (`RelioWebAppFactory`, a real Kestrel

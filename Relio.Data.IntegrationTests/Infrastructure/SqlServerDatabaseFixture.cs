@@ -29,6 +29,16 @@ public sealed class SqlServerDatabaseFixture : IAsyncLifetime
 {
     private string? _databaseConnectionString;
 
+    /// <summary>
+    /// This run's database connection string, for tests that build the real dependency injection
+    /// registration (<c>AddRelioData</c>) against it. Throws if no SQL Server instance was
+    /// available - guard the test with <see cref="SqlServerFactAttribute"/>.
+    /// </summary>
+    public string ConnectionString => _databaseConnectionString ?? throw new InvalidOperationException(
+        $"{nameof(SqlServerDatabaseFixture)} has no database because " +
+        $"{SqlServerTestEnvironment.ConnectionStringEnvironmentVariable} was not set. Guard " +
+        $"the test with [{nameof(SqlServerFactAttribute)}] so it is skipped instead of run.");
+
     public async Task InitializeAsync()
     {
         var serverConnectionString = SqlServerTestEnvironment.ServerConnectionString;

@@ -25,7 +25,9 @@ namespace Relio.Data.People;
 /// So reads are untracked (<c>AsNoTracking</c>), and every mutation loads what it changes tracked,
 /// saves once, and clears the change tracker in a <c>finally</c> block. Not an
 /// <c>IDbContextFactory</c>: ASP.NET Core Identity's stores need the scoped context, and tests
-/// construct this class directly, so the constructor must stay as it is.
+/// construct this class directly, so the constructor must stay as it is. Calls run in the context's
+/// <see cref="Concurrency.DatabaseLane"/> (registered by <c>AddDataService</c>), so loads started by
+/// sibling components queue instead of colliding on the one shared context.
 /// </para>
 /// <para>
 /// Nothing here logs a name, a nickname or any profile text (see the gdpr-compliant skill).
