@@ -117,6 +117,9 @@ public class SqlServerPageLoadTests(RelioAppFixture fixture)
             await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, $"/people/{demoPeople[0]}");
             await Expect(page.GetByTestId("pinned-note-text")).ToHaveTextAsync("A note for the SQL Server page-load test.");
             await Expect(page.GetByTestId("timeline-entries")
+                .GetByText("A note for the SQL Server page-load test.", new() { Exact = true }))
+                .ToBeVisibleAsync();
+            await Expect(page.GetByTestId("timeline-entries")
                 .GetByText("A shared moment for the SQL Server page-load test.", new() { Exact = true }))
                 .ToBeVisibleAsync();
             await AssertCircuitSurvivesAsync(page);
