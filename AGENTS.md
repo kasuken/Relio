@@ -1183,6 +1183,18 @@ a vCard or CSV file. Entry points: an outlined **Import** button next to **Add a
   Windows-1252 bytes survive git and `git diff --check`. Write non-UTF-8 fixtures with a tool that writes raw
   bytes and check them with a hex dump.
 
+## Reminders and follow-ups
+
+Established by epic #36 (issues #37, #38, #39, #40, #41). Follows the user-scoped data pattern and calendar-date rules.
+
+- **Entity & Storage**: `Reminder` (`Relio.Domain.Reminder`, inherits `OwnedEntity`, foreign key `PersonId` to `People` with `OnDelete(Cascade)`). Tracks `Title`, `DueDate` (`date`), `Frequency` (string), `CustomIntervalMonths`, `SnoozedUntilDate` (`date`), `IsCompleted`, `CompletedAtUtc` (audit timestamp), and `LastDeliveredDate` (`date`, ensures idempotent exact-once delivery). Indexes on `(OwnerId, PersonId)` and `(OwnerId, IsCompleted, DueDate)`.
+- **Delete and Merge checklists**: `Reminder` is integrated into `PeopleService.RemoveDependentsAsync` and `PersonMergeService.MoveDependentsAsync` (reassigns `PersonId`), tested by `PersonDeleteChecklistTests`, `PersonMergeChecklistTests`, `PersonDeleteSqlServerTests`, and `PersonMergeSqlServerTests`. `Person` columns `StayInTouchCadenceDays`, `BirthdayReminderDisabled`, and `BirthdayReminderLeadDays` are integrated into `PersonMergeRules.Combine`.
+- **Recurrence & Snooze**: `ReminderRecurrence.CalculateNextDueDate` advances completed recurring reminders based on `Frequency` and `CustomIntervalMonths`. One-off reminders simply mark completed (`IsCompleted = true`). Snoozing sets `SnoozedUntilDate`.
+- **Birthday Reminders**: Derived dynamically from `Person.Birthday` via `BirthdayReminderCalculator.Calculate` using `UserCalendar.NextOccurrence` (observing Feb 28 in non-leap years for Feb 29 birthdays). Supports global enable/disable (`UserProfile.BirthdayRemindersEnabled`), default lead days (`UserProfile.DefaultBirthdayLeadDays`), and per-person overrides (`Person.BirthdayReminderDisabled`, `Person.BirthdayReminderLeadDays`).
+- **Stay-in-Touch Cadence**: Optional per-person cadence in days (`Person.StayInTouchCadenceDays`). When elapsed days since `LastContactedOn ?? ToUserDate(CreatedAtUtc)` exceeds the cadence, the person is surfaced in "Reach out" on the Dashboard and Reminders page. "Mark contacted" updates `Person.LastContactedOn` to reset the cadence.
+- **Email Delivery & Privacy Invariant**: `IReminderEmailSender` abstraction with `SmtpReminderEmailSender` (when `Email:Provider == Smtp`) and `NullReminderEmailSender` (no-op logger when unconfigured). User notification preferences at `/settings/reminders` (`ReminderEmailDelivery`: `None`, `Immediate`, `DailyDigest`). Unsubscribe links use cryptographically secure URL-safe tokens via `/unsubscribe?token=...`. **Email bodies strictly contain only person name, reminder title, and due date — NEVER notes, difficult moments, or sensitive details** (GDPR compliance).
+- **Background Scheduler**: `ReminderSchedulerBackgroundService` periodically runs `IReminderSchedulerRunner.RunDueRemindersJobAsync`. Evaluates user time zones to determine local `today`. Queries due reminders and birthdays via indexed queries, dispatches emails according to preferences, and stamps `LastDeliveredDate = userToday` atomically, guaranteeing exact-once delivery across app restarts and multi-instance deployments. All time-sensitive logic uses injected `TimeProvider`.
+
 ## End-to-end tests
 
 `Relio.Web.E2ETests` drives the real Relio.Web app (the `Program` entry point, via its trailing
