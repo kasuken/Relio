@@ -1,11 +1,11 @@
 using System.Diagnostics;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Relio.Application.Ownership;
 using Relio.Application.Paging;
 using Relio.Application.People;
 using Relio.Application.Security;
 using Relio.Application.Time;
+using Relio.Data.Configurations;
 using Relio.Domain;
 
 namespace Relio.Data.People;
@@ -487,8 +487,7 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
     }
 
     private static bool IsTagNameConflict(DbUpdateException exception) =>
-        exception.InnerException is SqlException { Number: 2601 or 2627 } sqlException
-        && sqlException.Message.Contains("IX_Tags_OwnerId_Name", StringComparison.Ordinal);
+        SqlServerErrors.IsUniqueIndexViolation(exception, TagConfiguration.NameIndexName);
 
     private static ContactMethod CreateContactMethod(string ownerId, ContactMethodInput input, int sortOrder)
     {

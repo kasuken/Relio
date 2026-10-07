@@ -20,6 +20,18 @@ All notable changes to this project are documented in this file.
   orphans. `PersonDeleteChecklistTests` fails when a new entity references a person without being added to
   `PeopleService.RemoveDependentsAsync`; a SQL Server test proves every foreign key to `People` cascades.
   AGENTS.md now spells out which features exclude archived people and which include them.
+- Manage relationship types and tags (issue #25), epic #21. Settings has a new "Relationship types and
+  tags" section with two pages: `/settings/relationship-types` and `/settings/tags`. Each lists your
+  labels with how many people have them (archived people included), lets you **add** one (Enter works),
+  **rename** one in a dialog (changing only the casing is fine; a rename shows for everyone who has it)
+  and **remove** one. Removing a relationship type that people have asks what they should have instead:
+  move them to another type or leave it empty (everyone is moved and the type removed in one save);
+  removing a tag takes it off everyone and says how many people that is. A name is trimmed, at most 50
+  characters and unique ignoring case, for both kinds; a clash that two requests race to create is
+  refused calmly by the database's unique index. You can remove every relationship type (the person form
+  then says where to add them), and removing a default never brings it back. No migration. Follow-ups:
+  reordering relationship types, restoring the defaults, and an administrator-visible count limit if
+  ever needed. The shared `SqlServerErrors.IsUniqueIndexViolation` now backs the tag-name race from #24 too.
 - Edit person details: contact methods, tags and relationship type (issue #24), epic #21. Each
   profile has an **Edit** button opening `/people/{id}/edit`, the same form as "Add a person" started
   from what is saved. It now carries **contact methods** (email, phone, address, social, other, each

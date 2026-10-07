@@ -1,0 +1,260 @@
+@* Manage the user's relationship types (issue #25): add, rename, remove. Rendered by the
+   /settings/relationship-types page, the one data consumer on it: every call is awaited in turn,
+   because the circuit's DbContext runs one operation at a time. Counts include archived people.
+   Names are shown on screen but never logged or put in an address. *@
+@using Relio.Application.Ownership
+@using Relio.Application.People
+@using Relio.Domain
+
+@inject IRelationshipTypeService RelationshipTypeService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+@if (_usage is not null)
+{
+    <MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+        How you know someone, like Friend or Colleague. Renaming or removing a type keeps everything
+        else about the people who have it. Counts include archived people.
+    </MudText>
+
+    <form class="rl-label-add" data-testid="relationship-type-add-form" @onsubmit="AddAsync" @onsubmit:preventDefault>
+        <div class="rl-label-add-field" data-testid="relationship-type-add-field">
+            <MudTextField T="string"
+                          @bind-Value="_newName"
+                          Label="New relationship type"
+                          MaxLength="RelationshipType.NameMaxLength"
+                          Immediate="true"
+                          Variant="Variant.Outlined"
+                          Error="@(_addError is not null)"
+                          ErrorText="@_addError" />
+        </div>
+        <MudButton ButtonType="ButtonType.Submit"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Outlined.Add"
+                   Disabled="_busy"
+                   data-testid="relationship-type-add">
+            Add
+        </MudButton>
+    </form>
+
+    @if (_usage.Count == 0)
+    {
+        <div data-testid="relationship-types-empty">
+            <EmptyState HeadingTag="h2"
+                        Title="No relationship types"
+                        Message="Add one above to describe how you know someone." />
+        </div>
+    }
+    else
+    {
+        <ul class="rl-label-list" data-testid="relationship-type-list">
+            @foreach (var row in _usage)
+            {
+                <li class="rl-label-row" data-testid="relationship-type-row" @key="row.Id">
+                    <span class="rl-label-row-text">
+                        <span class="rl-label-name" data-testid="relationship-type-row-name">@row.Name</span>
+                        <span class="rl-meta" data-testid="relationship-type-row-count">@LabelSettingsText.UsedBy(row.PeopleCount)</span>
+                    </span>
+                    <span class="rl-label-row-actions">
+                        <MudTooltip Text="Rename">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Edit"
+                                           aria-label="@($"Rename {row.Name}")"
+                                           Disabled="_busy"
+                                           OnClick="() => RenameAsync(row)"
+                                           data-testid="relationship-type-rename" />
+                        </MudTooltip>
+                        <MudTooltip Text="Remove">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete"
+                                           aria-label="@($"Remove {row.Name}")"
+                                           Disabled="_busy"
+                                           OnClick="() => RemoveAsync(row)"
+                                           data-testid="relationship-type-remove" />
+                        </MudTooltip>
+                    </span>
+                </li>
+            }
+        </ul>
+    }
+}
+
+@code {
+    private IReadOnlyList<RelationshipTypeUsage>? _usage;
+    private string? _newName;
+    private string? _addError;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Read-only on purpose: prerendering runs this once for the server-rendered HTML and again
+        // when the circuit connects.
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync() =>
+        _usage = await RelationshipTypeService.ListWithUsageAsync();
+
+    private async Task AddAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _addError = null;
+
+        try
+        {
+            await RelationshipTypeService.CreateAsync(_newName);
+            _newName = string.Empty;
+            Snackbar.Saved("Relationship type added");
+            await ReloadAsync();
+        }
+        catch (LabelValidationException exception)
+        {
+            _addError = LabelSettingsText.Message(exception.Error, LabelKind.RelationshipType);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RenameAsync(RelationshipTypeUsage row)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+
+        try
+        {
+            var gone = false;
+            Func<string?, Task<string?>> save = async name =>
+            {
+                try
+                {
+                    if (!await RelationshipTypeService.RenameAsync(row.Id, name))
+                    {
+                        gone = true;
+                    }
+
+                    return null;
+                }
+                catch (LabelValidationException exception)
+                {
+                    return LabelSettingsText.Message(exception.Error, LabelKind.RelationshipType);
+                }
+            };
+
+            var parameters = new DialogParameters<LabelNameDialog>
+            {
+                { x => x.Title, "Rename relationship type" },
+                { x => x.InitialName, row.Name },
+                { x => x.Save, save },
+            };
+            var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+
+            var dialog = await DialogService.ShowAsync<LabelNameDialog>("Rename relationship type", parameters, options);
+            var result = await dialog.Result;
+            if (result is not { Canceled: false })
+            {
+                return;
+            }
+
+            if (gone)
+            {
+                Snackbar.Problem("That relationship type was already removed.");
+            }
+            else
+            {
+                Snackbar.Saved("Relationship type renamed");
+            }
+
+            await ReloadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RemoveAsync(RelationshipTypeUsage listed)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+
+        try
+        {
+            // The count in the dialog is the count right now, not the one from when the page loaded.
+            await ReloadAsync();
+            var row = _usage!.FirstOrDefault(u => u.Id == listed.Id);
+            if (row is null)
+            {
+                Snackbar.Problem("That relationship type was already removed.");
+                return;
+            }
+
+            Guid? reassignToId = null;
+            if (row.PeopleCount == 0)
+            {
+                var confirmed = await DialogService.ShowConfirmAsync(
+                    $"Remove {row.Name}?",
+                    "No one has this relationship type.",
+                    "Remove",
+                    destructive: true);
+                if (!confirmed)
+                {
+                    return;
+                }
+            }
+            else
+            {
+                var parameters = new DialogParameters<RemoveRelationshipTypeDialog>
+                {
+                    { x => x.Type, row },
+                    { x => x.Others, _usage!.Where(u => u.Id != row.Id).ToList() },
+                };
+                var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+
+                var dialog = await DialogService.ShowAsync<RemoveRelationshipTypeDialog>($"Remove {row.Name}?", parameters, options);
+                var result = await dialog.Result;
+                if (result is not { Canceled: false, Data: RemoveRelationshipTypeResult choice })
+                {
+                    return;
+                }
+
+                reassignToId = choice.ReassignToId;
+            }
+
+            try
+            {
+                if (await RelationshipTypeService.DeleteAsync(row.Id, reassignToId))
+                {
+                    Snackbar.Saved("Relationship type removed");
+                }
+                else
+                {
+                    Snackbar.Problem("That relationship type was already removed.");
+                }
+            }
+            catch (ForeignEntityNotOwnedException)
+            {
+                Snackbar.Problem("The relationship type you chose was removed in the meantime. Try again.");
+            }
+
+            await ReloadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

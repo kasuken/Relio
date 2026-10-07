@@ -457,6 +457,10 @@ completing epic #14.
   `Href`s - the interactive router answers a click on an excluded page with a full page load
   (covered by `AccountSettingsTests`). Don't add a drawer entry: the shell
   keeps its five routes (`NavMenuTests`); the signed-in email in the app bar links to `/settings`.
+  Issue #25 added a "Relationship types and tags" section to the hub: two link buttons to the sub-pages
+  `/settings/relationship-types` and `/settings/tags` (see "Relationship types and tags (issue #25)"
+  under People). The hub makes **no data calls** for them - its sibling components already share one
+  circuit `DbContext` - and the sub-pages need no drawer entry (the Settings link matches by prefix).
   - **Display name** lives on `UserProfile.DisplayName` (nullable, `DisplayNameMaxLength` = 100),
     read/written through `Relio.Application.Profile.IUserProfileService` (implemented in
     `Relio.Data.Profile.UserProfileService`, same user-scoped pattern as `UserTimeZoneService`; it
@@ -831,7 +835,7 @@ Established by issue #22 under epic #21. The routes are pages, not dialogs: `/pe
   `(OwnerId, Name)` index stays the authority: a lost race (`SqlException` 2601/2627 naming
   `IX_Tags_OwnerId_Name`) becomes `PersonValidationError.TagNameConflict`, the form reloads its tags and
   asks the user to choose the tag from the list (proven with a `SaveChangesInterceptor` in
-  `ContactMethodSqlServerTests`). `ITagService.ListAsync` is read-only until #25. `ForeignEntityNotOwnedException`
+  `ContactMethodSqlServerTests`). `ITagService` also manages the list since #25 (see below). `ForeignEntityNotOwnedException`
   now has `EntityName` (constants in `ForeignEntityNames`) so the form tells a stale relationship type, tag
   and contact method apart; the message is unchanged and never contains an id or a value.
 - **Last write wins, with stale-tab detection.** There is no concurrency token. A save from a stale tab
@@ -912,6 +916,62 @@ Established by issue #22 under epic #21. The routes are pages, not dialogs: `/pe
   relationship type and tag counts (#25). Archiving never deletes or changes anything about the person's
   children, and restoring brings everything back. **Every feature that excludes archived people adds a
   `..._excludes_archived_people` test.**
+
+### Relationship types and tags (issue #25)
+
+- **Where.** Two interactive sub-pages, `/settings/relationship-types` and `/settings/tags`
+  (`Components/Pages/SettingsRelationshipTypes.razor`, `SettingsTags.razor`: a back link, the page's one
+  `h1`, and a component), reached from a section of the `/settings` hub. The components are
+  `Components/Settings/RelationshipTypeSettings.razor` and `TagSettings.razor`, with `LabelNameDialog`
+  (rename), `RemoveRelationshipTypeDialog` and `LabelSettingsText` (all the words, pure). Each sub-page is the
+  **one data consumer** on its page and awaits its calls in turn (`_busy` disables the controls). Renaming is a
+  dialog, not inline; the add form sits above the list and Enter adds. "Remove", not "Delete", in the UI.
+- **Services.** `IRelationshipTypeService` gained `ListWithUsageAsync` (one query: the people count is a
+  correlated subquery, served by `IX_People_RelationshipTypeId`), `CreateAsync(name)` (appended with
+  `SortOrder = max + 1`), `RenameAsync(id, name)` and `DeleteAsync(id, Guid? reassignToId)`;
+  `ITagService` gained `ListWithUsageAsync`, `CreateAsync`, `RenameAsync` and `DeleteAsync(id)`. Counts
+  **include archived people** (the page says so). Not-found and not-owned are `false`, as for people.
+- **Names.** `LabelNameRules` (pure; it reuses `TagNameRules.Normalize`/`Comparer`, so a type and a tag
+  mean the same by "the same name"; limit 50 for both) gives `LabelValidationError` codes
+  (`NameRequired`, `NameTooLong`, `NameTaken`) thrown as `LabelValidationException` before anything is loaded
+  for a blank or long name. Uniqueness is checked in code with the comparer (InMemory is case-sensitive), a
+  rename **excludes the row itself** (so `friend` -> `Friend` works), and the unique `(OwnerId, Name)` index is
+  the backstop for a race: `SqlServerErrors.IsUniqueIndexViolation(exception, indexName)` (2601/2627 naming
+  `TagConfiguration.NameIndexName` / `RelationshipTypeConfiguration.NameIndexName` - never add
+  `HasDatabaseName`) turns it into `NameTaken`. That `SqlException` quotes the owner id and the name, so it is
+  **never logged, attached as an inner exception or shown**. `LabelSettingsText.Message` words the codes.
+- **Removing a type** (`DeleteAsync`): a `reassignToId` equal to the removed id is an `ArgumentException`
+  (before loading); the primary type is loaded first (missing/foreign -> `false`), **then** the target is
+  checked (`ForeignEntityNotOwnedException(RelationshipTypes)`, same message whether it does not exist or is
+  someone else's); every affected person (archived too) is loaded **tracked**, given the new id (or `null`),
+  and only then is the type removed, all in **one** `SaveChangesAsync`. No `ExecuteUpdate` (InMemory lacks
+  it, and InMemory does not null untracked dependents), so reassign **before** `Remove`; the database's
+  `ON DELETE SET NULL` is the backstop for a person given the type at the same moment. People's
+  `UpdatedAtUtc` changes. The dialog (`RemoveRelationshipTypeDialog`) offers "Move them to another
+  relationship type" (a select, no preselection, Remove disabled until chosen) or "Leave their relationship
+  type empty"; with no other type only the second is shown; an unused type gets a plain `ShowConfirmAsync`.
+  The count is refreshed right before the dialog opens.
+- **Removing a tag**: `Include(t => t.People)`, `tag.People.Clear()`, `Remove(tag)`, one save, then the
+  tracker is cleared; the people are not modified (the join table's cascading foreign keys are the SQL Server
+  backstop, proven with `ExecuteDeleteAsync`). The confirmation says how many people have it.
+- **Decisions.** The user may remove **every** relationship type (the person form then shows the select
+  disabled with "You have no relationship types. Add them in Settings."); there is **no "restore the
+  defaults"** and **no reordering** yet (follow-ups); defaults are seeded only at registration, in the
+  `AddPersonProfile` migration and by the demo seeder - **no read ever creates a type**, and
+  `DemoDataSeeder` does not recreate a removed type once the demo user has people. Renaming a tag or type
+  changes it for everyone who has it (people refer to it by id). No caches: a rename shows on the next read.
+- **Tests.** `Relio.Data.Tests`: `RelationshipTypeServiceManagementTests`/`TagServiceManagementTests` and the
+  `...OwnershipTests` (cross-user), `Mutations_leave_nothing_tracked...`; `Relio.Data.IntegrationTests`:
+  `RelationshipTypeServiceSqlServerTests`/`TagServiceSqlServerTests` (case-insensitive index, the races via
+  `RunOnFirstSaveInterceptor`, one save via `CountSavesInterceptor`, a failing delete rolled back via
+  `FailDeleteFromInterceptor`) and the label calls in `DatabaseLaneSqlServerTests`; `Relio.Web.Tests`: the
+  `Fake...Service` doubles in `People/Fakes.cs` are real in-memory fakes (rules, records, `Add(name, people)`),
+  and bUnit needs `MudPopoverProvider` + `MudDialogProvider` + `MudSnackbarProvider`, `MouseDown` on
+  `.mud-input-control` to open a select and a click on the radio's `input` to choose it (bUnit's form
+  `Submit()` stands in for Enter; Enter itself is in E2E). E2E (`RelationshipTypesAndTagsSettingsTests`)
+  registers a **fresh user per test** - their six default types are theirs to change - and **never changes the
+  demo user's relationship types or tags**; pick options in dialogs with `AriaRole.Option`/`AriaRole.Radio`.
+  A page that composes label components belongs in `SqlServerPageLoadTests`.
 
 ## End-to-end tests
 

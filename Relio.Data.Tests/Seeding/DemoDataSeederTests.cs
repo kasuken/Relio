@@ -170,6 +170,25 @@ public class DemoDataSeederTests
     }
 
     [Fact]
+    public async Task SeedAsync_does_not_recreate_relationship_types_the_demo_user_removed()
+    {
+        // Issue #25: a default the user removed in settings must stay removed on the next start.
+        await using var dbContext = CreateDbContext();
+        var userManager = UserManagerTestFactory.Create(dbContext);
+        var seeder = CreateSeeder(dbContext, userManager, enabled: true, environmentName: Environments.Development);
+        await seeder.SeedAsync();
+        var demoUser = (await userManager.FindByEmailAsync(DemoDataSeeder.DemoEmail))!;
+        var service = new Relio.Data.People.RelationshipTypeService(
+            dbContext, new Relio.Data.Tests.People.FakeCurrentUser(demoUser.Id));
+        var other = (await service.ListAsync()).Single(t => t.Name == "Other");
+        await service.DeleteAsync(other.Id, null);
+
+        await seeder.SeedAsync();
+
+        (await service.ListAsync()).Select(t => t.Name).Should().NotContain("Other").And.HaveCount(5);
+    }
+
+    [Fact]
     public async Task SeedAsync_reuses_relationship_types_that_already_exist_for_the_demo_user()
     {
         // A demo database upgraded by the AddPersonProfile migration: the types exist, the people do not yet.

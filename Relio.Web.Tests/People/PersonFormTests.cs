@@ -92,6 +92,32 @@ public class PersonFormTests
     }
 
     [Fact]
+    public async Task With_no_relationship_types_the_select_is_disabled_and_explains_where_to_add_them()
+    {
+        var people = new FakePeopleService();
+        await using var context = CreateContext(people, new FakeRelationshipTypeService(), out _, out _);
+
+        var cut = context.Render<PersonForm>();
+
+        var field = cut.Find("[data-testid='person-relationship-field']");
+        field.TextContent.Should().Contain("You have no relationship types. Add them in Settings.");
+        field.QuerySelector("input")!.HasAttribute("disabled").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task With_relationship_types_the_select_is_enabled_without_the_hint()
+    {
+        var people = new FakePeopleService();
+        await using var context = CreateContext(people, DefaultTypes(), out _, out _);
+
+        var cut = context.Render<PersonForm>();
+
+        var field = cut.Find("[data-testid='person-relationship-field']");
+        field.TextContent.Should().NotContain("no relationship types");
+        field.QuerySelector("input")!.HasAttribute("disabled").Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Offers_the_twelve_months_by_name_and_sends_the_chosen_one_as_a_number()
     {
         var people = new FakePeopleService();

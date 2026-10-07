@@ -138,30 +138,219 @@ internal sealed class FakePeopleService : IPeopleService
     }
 }
 
-/// <summary>An <see cref="IRelationshipTypeService"/> that lists whatever a test sets, and counts the calls.</summary>
+/// <summary>
+/// An in-memory <see cref="IRelationshipTypeService"/> for component tests: lists whatever a test
+/// puts in <see cref="Types"/> (with the people counts in <see cref="PeopleCounts"/>), applies the
+/// real name rules, records every mutation, and can be told to report "gone" or to throw.
+/// </summary>
 internal sealed class FakeRelationshipTypeService : IRelationshipTypeService
 {
     public List<RelationshipType> Types { get; } = [];
 
+    /// <summary>How many people have each type (by id); a type not in here has none.</summary>
+    public Dictionary<Guid, int> PeopleCounts { get; } = [];
+
     public int ListCalls { get; private set; }
+
+    public int ListWithUsageCalls { get; private set; }
+
+    public List<string?> Created { get; } = [];
+
+    public List<(Guid Id, string? Name)> Renamed { get; } = [];
+
+    public List<(Guid Id, Guid? ReassignToId)> Deleted { get; } = [];
+
+    /// <summary>What <see cref="RenameAsync"/> returns when the rules accept the name: <see langword="false"/> means the type is gone.</summary>
+    public bool RenameResult { get; set; } = true;
+
+    /// <summary>What <see cref="DeleteAsync"/> returns: <see langword="false"/> means the type is gone.</summary>
+    public bool DeleteResult { get; set; } = true;
+
+    /// <summary>Thrown by (and then cleared from) the next <see cref="DeleteAsync"/> call.</summary>
+    public Exception? ThrowOnNextDelete { get; set; }
+
+    /// <summary>Adds a type to the list, with the number of people who have it.</summary>
+    public RelationshipType Add(string name, int people = 0)
+    {
+        var type = new RelationshipType { Id = Guid.NewGuid(), OwnerId = "owner", Name = name, SortOrder = Types.Count };
+        Types.Add(type);
+        PeopleCounts[type.Id] = people;
+        return type;
+    }
 
     public Task<IReadOnlyList<RelationshipType>> ListAsync(CancellationToken cancellationToken = default)
     {
         ListCalls++;
         return Task.FromResult<IReadOnlyList<RelationshipType>>(Types.ToList());
     }
+
+    public Task<IReadOnlyList<RelationshipTypeUsage>> ListWithUsageAsync(CancellationToken cancellationToken = default)
+    {
+        ListWithUsageCalls++;
+        return Task.FromResult<IReadOnlyList<RelationshipTypeUsage>>(Types
+            .OrderBy(t => t.SortOrder)
+            .Select(t => new RelationshipTypeUsage(t.Id, t.Name, t.SortOrder, PeopleCounts.GetValueOrDefault(t.Id)))
+            .ToList());
+    }
+
+    public Task<RelationshipType> CreateAsync(string? name, CancellationToken cancellationToken = default)
+    {
+        Created.Add(name);
+        var normalized = Validate(name, null);
+        return Task.FromResult(Add(normalized));
+    }
+
+    public Task<bool> RenameAsync(Guid relationshipTypeId, string? name, CancellationToken cancellationToken = default)
+    {
+        Renamed.Add((relationshipTypeId, name));
+        var normalized = Validate(name, relationshipTypeId);
+        if (!RenameResult || Types.FirstOrDefault(t => t.Id == relationshipTypeId) is not { } type)
+        {
+            return Task.FromResult(false);
+        }
+
+        type.Name = normalized;
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> DeleteAsync(Guid relationshipTypeId, Guid? reassignToId, CancellationToken cancellationToken = default)
+    {
+        Deleted.Add((relationshipTypeId, reassignToId));
+        if (ThrowOnNextDelete is { } exception)
+        {
+            ThrowOnNextDelete = null;
+            throw exception;
+        }
+
+        if (!DeleteResult || Types.FirstOrDefault(t => t.Id == relationshipTypeId) is not { } type)
+        {
+            return Task.FromResult(false);
+        }
+
+        if (reassignToId is { } target)
+        {
+            PeopleCounts[target] = PeopleCounts.GetValueOrDefault(target) + PeopleCounts.GetValueOrDefault(type.Id);
+        }
+
+        Types.Remove(type);
+        PeopleCounts.Remove(type.Id);
+        return Task.FromResult(true);
+    }
+
+    private string Validate(string? name, Guid? ownId)
+    {
+        var normalized = LabelNameRules.Normalize(name);
+        if (LabelNameRules.Validate(normalized, RelationshipType.NameMaxLength) is { } error)
+        {
+            throw new LabelValidationException(error);
+        }
+
+        if (Types.Any(t => t.Id != ownId && LabelNameRules.Comparer.Equals(t.Name, normalized)))
+        {
+            throw new LabelValidationException(LabelValidationError.NameTaken);
+        }
+
+        return normalized!;
+    }
 }
 
-/// <summary>An <see cref="ITagService"/> that lists whatever a test sets, and counts the calls.</summary>
+/// <summary>
+/// An in-memory <see cref="ITagService"/> for component tests, like
+/// <see cref="FakeRelationshipTypeService"/>: lists <see cref="Tags"/> (counts in
+/// <see cref="PeopleCounts"/>), applies the real name rules and records every mutation.
+/// </summary>
 internal sealed class FakeTagService : ITagService
 {
     public List<Tag> Tags { get; } = [];
 
+    /// <summary>How many people have each tag (by id); a tag not in here has none.</summary>
+    public Dictionary<Guid, int> PeopleCounts { get; } = [];
+
     public int ListCalls { get; private set; }
+
+    public int ListWithUsageCalls { get; private set; }
+
+    public List<string?> Created { get; } = [];
+
+    public List<(Guid Id, string? Name)> Renamed { get; } = [];
+
+    public List<Guid> Deleted { get; } = [];
+
+    /// <summary>What <see cref="RenameAsync"/> returns when the rules accept the name: <see langword="false"/> means the tag is gone.</summary>
+    public bool RenameResult { get; set; } = true;
+
+    /// <summary>What <see cref="DeleteAsync"/> returns: <see langword="false"/> means the tag is gone.</summary>
+    public bool DeleteResult { get; set; } = true;
+
+    /// <summary>Adds a tag to the list, with the number of people who have it.</summary>
+    public Tag Add(string name, int people = 0)
+    {
+        var tag = new Tag { Id = Guid.NewGuid(), OwnerId = "owner", Name = name };
+        Tags.Add(tag);
+        PeopleCounts[tag.Id] = people;
+        return tag;
+    }
 
     public Task<IReadOnlyList<Tag>> ListAsync(CancellationToken cancellationToken = default)
     {
         ListCalls++;
         return Task.FromResult<IReadOnlyList<Tag>>(Tags.ToList());
+    }
+
+    public Task<IReadOnlyList<TagUsage>> ListWithUsageAsync(CancellationToken cancellationToken = default)
+    {
+        ListWithUsageCalls++;
+        return Task.FromResult<IReadOnlyList<TagUsage>>(Tags
+            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(t => new TagUsage(t.Id, t.Name, PeopleCounts.GetValueOrDefault(t.Id)))
+            .ToList());
+    }
+
+    public Task<Tag> CreateAsync(string? name, CancellationToken cancellationToken = default)
+    {
+        Created.Add(name);
+        return Task.FromResult(Add(Validate(name, null)));
+    }
+
+    public Task<bool> RenameAsync(Guid tagId, string? name, CancellationToken cancellationToken = default)
+    {
+        Renamed.Add((tagId, name));
+        var normalized = Validate(name, tagId);
+        if (!RenameResult || Tags.FirstOrDefault(t => t.Id == tagId) is not { } tag)
+        {
+            return Task.FromResult(false);
+        }
+
+        tag.Name = normalized;
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> DeleteAsync(Guid tagId, CancellationToken cancellationToken = default)
+    {
+        Deleted.Add(tagId);
+        if (!DeleteResult || Tags.FirstOrDefault(t => t.Id == tagId) is not { } tag)
+        {
+            return Task.FromResult(false);
+        }
+
+        Tags.Remove(tag);
+        PeopleCounts.Remove(tag.Id);
+        return Task.FromResult(true);
+    }
+
+    private string Validate(string? name, Guid? ownId)
+    {
+        var normalized = LabelNameRules.Normalize(name);
+        if (LabelNameRules.Validate(normalized, Tag.NameMaxLength) is { } error)
+        {
+            throw new LabelValidationException(error);
+        }
+
+        if (Tags.Any(t => t.Id != ownId && LabelNameRules.Comparer.Equals(t.Name, normalized)))
+        {
+            throw new LabelValidationException(LabelValidationError.NameTaken);
+        }
+
+        return normalized!;
     }
 }

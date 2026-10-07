@@ -23,6 +23,9 @@ internal static class TestDataFactory
     public static RelationshipTypeService CreateRelationshipTypeService(RelioDbContext dbContext, string? ownerId) =>
         new(dbContext, new FakeCurrentUser(ownerId));
 
+    public static TagService CreateTagService(RelioDbContext dbContext, string? ownerId) =>
+        new(dbContext, new FakeCurrentUser(ownerId));
+
     /// <summary>
     /// Creates a person. <paramref name="createdAtUtc"/> backdates the profile: the context stamps
     /// <c>CreatedAtUtc</c> on insert and ignores a value set before it, so the date is assigned
@@ -36,7 +39,9 @@ internal static class TestDataFactory
         string? lastName = null,
         DateOnly? lastContactedOn = null,
         bool isArchived = false,
-        DateTime? createdAtUtc = null)
+        DateTime? createdAtUtc = null,
+        Guid? relationshipTypeId = null,
+        IReadOnlyList<Guid>? tagIds = null)
     {
         var person = new Person
         {
@@ -46,7 +51,16 @@ internal static class TestDataFactory
             LastContactedOn = lastContactedOn,
             IsArchived = isArchived,
             ArchivedAtUtc = isArchived ? TimeProvider.System.GetUtcNow().UtcDateTime : null,
+            RelationshipTypeId = relationshipTypeId,
         };
+        if (tagIds is { Count: > 0 })
+        {
+            foreach (var tag in await dbContext.Tags.Where(t => tagIds.Contains(t.Id)).ToListAsync())
+            {
+                person.Tags.Add(tag);
+            }
+        }
+
         dbContext.People.Add(person);
         await dbContext.SaveChangesAsync();
 

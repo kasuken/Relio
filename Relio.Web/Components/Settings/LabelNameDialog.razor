@@ -1,0 +1,97 @@
+@* Renames a relationship type or a tag (issue #25). The dialog owns only the text field: it hands the
+   typed name to Save, which asks the service and answers with an error message to show under the
+   field, or null once the name was saved - then the dialog closes. Keeping the failure inside the
+   dialog means the user never loses what they typed. *@
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h3">@Title</MudText>
+    </TitleContent>
+    <DialogContent>
+        <div data-testid="label-name-dialog-field">
+            <MudTextField T="string"
+                          @bind-Value="_name"
+                          Label="Name"
+                          MaxLength="50"
+                          Counter="50"
+                          Immediate="true"
+                          AutoFocus="true"
+                          Variant="Variant.Outlined"
+                          Error="@(_error is not null)"
+                          ErrorText="@_error"
+                          OnKeyDown="OnKeyDownAsync" />
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" data-testid="label-name-dialog-cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="_saving"
+                   OnClick="SaveAsync"
+                   data-testid="label-name-dialog-save">
+            @ConfirmLabel
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string? _name;
+    private string? _error;
+    private bool _saving;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>The name the field starts with.</summary>
+    [Parameter]
+    public string InitialName { get; set; } = string.Empty;
+
+    [Parameter]
+    public string ConfirmLabel { get; set; } = "Rename";
+
+    /// <summary>
+    /// Saves the typed name. Returns the message to show under the field when the name was refused,
+    /// or <see langword="null"/> when it was saved.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public Func<string?, Task<string?>> Save { get; set; } = _ => Task.FromResult<string?>(null);
+
+    protected override void OnInitialized() => _name = InitialName;
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            await SaveAsync();
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+
+        try
+        {
+            _error = await Save(_name);
+            if (_error is null)
+            {
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
