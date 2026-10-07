@@ -37,9 +37,12 @@
                     </MudTooltip>
                     <form action="Account/Logout" method="post" class="rl-signout-form">
                         <AntiforgeryToken />
-                        <MudLink Href="/settings" Typo="Typo.body2" Class="mr-2 d-none d-sm-inline"
+                        <MudLink Href="/settings" Typo="Typo.body2" Class="mr-2"
                                  aria-label="Account settings"
-                                 data-testid="signed-in-as">@context.User.Identity?.Name</MudLink>
+                                 data-testid="signed-in-as">
+                            <MudIcon Icon="@Icons.Material.Outlined.Person" Class="d-sm-none" />
+                            <span class="d-none d-sm-inline">@context.User.Identity?.Name</span>
+                        </MudLink>
                         <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text" Size="Size.Small"
                                    data-testid="sign-out">
                             Sign out

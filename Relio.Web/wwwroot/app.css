@@ -183,9 +183,11 @@ a {
 }
 
 .rl-signout-form [data-testid="signed-in-as"] {
-    display: block;
+    display: inline-flex;
+    align-items: center;
     flex: 0 1 auto;
-    min-width: 0;
+    min-width: 44px;
+    min-height: 44px;
     max-width: clamp(5rem, 18vw, 12rem);
     overflow: hidden;
     text-overflow: ellipsis;
