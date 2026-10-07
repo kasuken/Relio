@@ -316,7 +316,7 @@ public class PersonProfilePageTests
         providers.Popovers.FindAll(".mud-menu-item").Select(item => item.TextContent.Trim()).ToArray();
 
     [Fact]
-    public async Task The_actions_menu_offers_archive_and_delete_for_an_active_person()
+    public async Task The_actions_menu_offers_archive_merge_and_delete_for_an_active_person()
     {
         var person = ActivePerson();
         var people = new FakePeopleService();
@@ -327,14 +327,29 @@ public class PersonProfilePageTests
         cut.Find("[data-testid='person-actions']").TextContent.Should().Contain("Edit").And.Contain("More");
         OpenMenu(cut, providers);
 
-        MenuLabels(providers).Should().Equal("Archive", "Delete");
+        MenuLabels(providers).Should().Equal("Archive", "Merge with…", "Delete");
         providers.Popovers.FindAll("[data-testid='person-restore-menu']").Should().BeEmpty();
         cut.FindAll("[data-testid='person-archived']").Should().BeEmpty("an active person has no archived note");
         cut.Find(".rl-avatar").ClassList.Should().NotContain("rl-avatar-archived");
     }
 
     [Fact]
-    public async Task The_actions_menu_offers_restore_and_delete_for_an_archived_person()
+    public async Task The_actions_menu_offers_merge_linking_to_the_merge_page()
+    {
+        var person = ActivePerson();
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people, out var providers);
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        var merge = MenuItem(cut, providers, "person-merge");
+
+        merge.TextContent.Trim().Should().Be("Merge with…");
+        merge.GetAttribute("href").Should().Be($"/people/{person.Id}/merge");
+    }
+
+    [Fact]
+    public async Task The_actions_menu_offers_restore_merge_and_delete_for_an_archived_person()
     {
         var person = ArchivedPerson();
         var people = new FakePeopleService();
@@ -344,7 +359,7 @@ public class PersonProfilePageTests
 
         OpenMenu(cut, providers);
 
-        MenuLabels(providers).Should().Equal("Restore", "Delete");
+        MenuLabels(providers).Should().Equal("Restore", "Merge with…", "Delete");
         providers.Popovers.FindAll("[data-testid='person-archive']").Should().BeEmpty();
         cut.Find(".rl-avatar").ClassList.Should().Contain("rl-avatar-archived");
     }

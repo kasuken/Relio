@@ -69,6 +69,28 @@ public class SqlServerPageLoadTests(RelioAppFixture fixture)
             await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/people/new");
             await Expect(page.GetByTestId("person-form")).ToBeVisibleAsync();
             await AssertCircuitSurvivesAsync(page);
+            // /people/{id}/merge (issue #28): both profiles, the candidates and today's date, one after
+            // the other, in the first step and then in the comparison.
+            Guid[] demoPeople;
+            using (var scope = app.Factory.CreateRealScope())
+            {
+                var demo = await scope.ServiceProvider
+                    .GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<Relio.Data.Identity.RelioUser>>()
+                    .FindByEmailAsync(Relio.Data.Seeding.DemoDataSeeder.DemoEmail);
+                demoPeople = await scope.ServiceProvider.GetRequiredService<RelioDbContext>().People
+                    .Where(p => p.OwnerId == demo!.Id)
+                    .OrderBy(p => p.FirstName)
+                    .Select(p => p.Id)
+                    .Take(2)
+                    .ToArrayAsync();
+            }
+
+            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, $"/people/{demoPeople[0]}/merge");
+            await Expect(page.GetByTestId("merge-picker-field")).ToBeVisibleAsync();
+            await AssertCircuitSurvivesAsync(page);
+            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, $"/people/{demoPeople[0]}/merge?with={demoPeople[1]}");
+            await Expect(page.GetByTestId("merge-preview")).ToBeVisibleAsync();
+            await AssertCircuitSurvivesAsync(page);
         }
         finally
         {

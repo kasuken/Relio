@@ -20,6 +20,9 @@ internal static class TestDataFactory
     public static PeopleService CreateService(RelioDbContext dbContext, string? ownerId) =>
         new(dbContext, new FakeCurrentUser(ownerId), TimeProvider.System);
 
+    public static PersonMergeService CreatePersonMergeService(RelioDbContext dbContext, string? ownerId) =>
+        new(dbContext, new FakeCurrentUser(ownerId), TimeProvider.System);
+
     public static RelationshipTypeService CreateRelationshipTypeService(RelioDbContext dbContext, string? ownerId) =>
         new(dbContext, new FakeCurrentUser(ownerId));
 
@@ -97,13 +100,15 @@ internal static class TestDataFactory
         Guid personId,
         string value,
         ContactMethodKind kind = ContactMethodKind.Email,
-        int sortOrder = 0)
+        int sortOrder = 0,
+        string? label = null)
     {
         var contactMethod = new ContactMethod
         {
             OwnerId = ownerId,
             PersonId = personId,
             Kind = kind,
+            Label = label,
             Value = value,
             NormalizedValue = Relio.Application.People.ContactMethodRules.ToNormalizedValue(kind, value),
             SortOrder = sortOrder,

@@ -108,6 +108,39 @@ public static class PeopleTestHelpers
         return await people.FindPossibleDuplicatesAsync(query);
     }
 
+    /// <summary>One person with tags, contact methods and relationship type loaded, through the real <c>PeopleService</c> acting as <paramref name="ownerId"/>.</summary>
+    public static async Task<Person?> GetPersonAsync(RelioWebAppFactory app, string ownerId, Guid personId)
+    {
+        using var scope = app.CreateRealScope();
+        var people = new PeopleService(
+            scope.ServiceProvider.GetRequiredService<RelioDbContext>(),
+            new OwnerCurrentUser(ownerId),
+            scope.ServiceProvider.GetRequiredService<TimeProvider>());
+        return await people.GetAsync(personId);
+    }
+
+    /// <summary>Merges through the real <c>PersonMergeService</c> acting as <paramref name="ownerId"/> (issue #28).</summary>
+    public static async Task<MergeOutcome> MergeAsync(RelioWebAppFactory app, string ownerId, MergePeopleRequest request)
+    {
+        using var scope = app.CreateRealScope();
+        var merge = new PersonMergeService(
+            scope.ServiceProvider.GetRequiredService<RelioDbContext>(),
+            new OwnerCurrentUser(ownerId),
+            scope.ServiceProvider.GetRequiredService<TimeProvider>());
+        return await merge.MergeAsync(request);
+    }
+
+    /// <summary>The merge candidates for a person, through the real <c>PersonMergeService</c> acting as <paramref name="ownerId"/>.</summary>
+    public static async Task<MergeCandidates?> ListMergeCandidatesAsync(RelioWebAppFactory app, string ownerId, Guid personId)
+    {
+        using var scope = app.CreateRealScope();
+        var merge = new PersonMergeService(
+            scope.ServiceProvider.GetRequiredService<RelioDbContext>(),
+            new OwnerCurrentUser(ownerId),
+            scope.ServiceProvider.GetRequiredService<TimeProvider>());
+        return await merge.ListCandidatesAsync(personId);
+    }
+
     private sealed class OwnerCurrentUser(string userId) : ICurrentUser
     {
         public bool IsAuthenticated => true;
