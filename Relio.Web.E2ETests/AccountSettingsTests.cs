@@ -174,7 +174,7 @@ public class AccountSettingsTests(RelioAppFixture fixture)
         var email = NewEmail("appbar");
         var page = await fixture.NewPageAsync(Viewports.Phone);
         await RegisterAsync(page, email, StrongPassword);
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
 
         var signedInAs = page.Locator("[data-testid='signed-in-as']");
         await Expect(signedInAs).ToHaveTextAsync(email);

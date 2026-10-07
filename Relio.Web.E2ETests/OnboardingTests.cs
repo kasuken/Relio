@@ -44,7 +44,7 @@ public sealed class OnboardingTests(RelioAppFixture fixture)
             await Expect(page.Locator("[data-testid='onboarding-interaction-step']")).ToBeVisibleAsync();
             await page.GetByLabel("What happened?").FillAsync(description);
             await page.Locator("[data-testid='interaction-save']").ClickAsync();
-            await Expect(page).ToHaveURLAsync(new Regex("/$"));
+            await Expect(page).ToHaveURLAsync(new Regex("/dashboard$"));
             await Expect(page.Locator("[data-testid='dashboard-add-person']")).ToBeVisibleAsync();
 
             timer.Stop();
@@ -85,7 +85,7 @@ public sealed class OnboardingTests(RelioAppFixture fixture)
             await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, $"/people/{personId}");
             await Expect(page.Locator("[data-testid='person-timeline'] [data-testid='timeline-entry-text']"))
                 .ToContainTextAsync(description);
-            await page.GotoAsync("/");
+            await page.GotoAsync("/dashboard");
             await page.Locator("html[data-app-ready='true']").WaitForAsync();
             await Expect(page.Locator("[data-testid='onboarding-prompt']")).ToHaveCountAsync(0);
 
@@ -95,7 +95,7 @@ public sealed class OnboardingTests(RelioAppFixture fixture)
                 await LoginAndWaitForAppAsync(secondPage, email, StrongPassword);
                 await Expect(secondPage.Locator("[data-testid='onboarding-prompt']")).ToHaveCountAsync(0);
                 await secondPage.GotoAsync("/onboarding");
-                await Expect(secondPage).ToHaveURLAsync(new Regex("/$"));
+                await Expect(secondPage).ToHaveURLAsync(new Regex("/dashboard$"));
                 await Expect(secondPage.Locator("[data-testid='onboarding-timezone-step']")).ToHaveCountAsync(0);
             }
             finally
@@ -121,7 +121,7 @@ public sealed class OnboardingTests(RelioAppFixture fixture)
             await page.Locator("html[data-app-ready='true']").WaitForAsync();
             await Expect(page).ToHaveURLAsync(new Regex("/onboarding$"));
             await page.Locator("[data-testid='onboarding-skip']").ClickAsync();
-            await Expect(page).ToHaveURLAsync(new Regex("/$"));
+            await Expect(page).ToHaveURLAsync(new Regex("/dashboard$"));
             await Expect(page.Locator("[data-testid='dashboard-empty']")).ToContainTextAsync("Add person");
             await Expect(page.Locator("[data-testid='onboarding-prompt']")).ToHaveCountAsync(0);
 

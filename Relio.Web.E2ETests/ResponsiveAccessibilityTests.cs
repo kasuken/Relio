@@ -85,7 +85,7 @@ public sealed class ResponsiveAccessibilityTests(RelioAppFixture fixture)
 
             await VisitInteractivePageAsync(
                 page,
-                "/",
+                "/dashboard",
                 "[data-testid='dashboard-overview']",
                 width);
             await Expect(page.GetByTestId("appbar-log-interaction"))
@@ -361,7 +361,7 @@ public sealed class ResponsiveAccessibilityTests(RelioAppFixture fixture)
         {
             var email = NewEmail("skip-link");
             await RegisterAsync(page, email, StrongPassword);
-            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
 
             var skipLink = page.GetByRole(AriaRole.Link, new()
             {
@@ -391,7 +391,7 @@ public sealed class ResponsiveAccessibilityTests(RelioAppFixture fixture)
             var ownerId = (await GetUserAsync(fixture.App, email))!.Id;
             var firstName = $"Kendall{Guid.NewGuid():N}"[..18];
 
-            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
             var addPersonLink = page.GetByTestId("dashboard-add-person");
             await page.Keyboard.PressAsync("Tab");
             await Expect(addPersonLink).ToBeFocusedAsync();
@@ -485,7 +485,7 @@ public sealed class ResponsiveAccessibilityTests(RelioAppFixture fixture)
             await PeopleTestHelpers.SeedInteractionsAsync(fixture.App, ownerId, personId, today, 55);
 
             var dashboardTimer = Stopwatch.StartNew();
-            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
             var dashboardInteractions = page.GetByTestId("dashboard-interactions-list");
             await dashboardInteractions.WaitForAsync();
             await Expect(dashboardInteractions.Locator("[data-testid^='dashboard-interaction-']"))

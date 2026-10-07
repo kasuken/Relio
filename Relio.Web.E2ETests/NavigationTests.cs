@@ -19,7 +19,7 @@ public class NavigationTests(RelioAppFixture fixture)
         var page = await fixture.NewPageAsync();
 
         await RelioAppFixture.SignInAsDemoAsync(page);
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
 
         await page.Locator("nav[aria-label='Primary']").GetByText(linkText, new() { Exact = true }).ClickAsync();
 

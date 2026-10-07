@@ -90,7 +90,7 @@ public sealed class DashboardOverviewTests(RelioAppFixture fixture)
             await dbContext.SaveChangesAsync();
         }
 
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
 
         await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Dashboard", Exact = true })).ToBeVisibleAsync();
         await Expect(page.Locator($"[data-testid='dashboard-reminder-{reminderId}']")).ToBeVisibleAsync();

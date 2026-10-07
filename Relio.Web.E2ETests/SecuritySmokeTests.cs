@@ -49,7 +49,7 @@ public sealed class SecuritySmokeTests(RelioAppFixture fixture)
                     webSocket.FrameReceived += (_, _) => signalRSocketWithFrame.TrySetResult(webSocket);
                 }
             };
-            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
             var signalRSocket = await signalRSocketWithFrame.Task.WaitAsync(TimeSpan.FromSeconds(15));
             signalRSocket.IsClosed.Should().BeFalse();
             var appUri = new Uri(fixture.BaseUrl);

@@ -32,7 +32,7 @@ public class RegistrationModeTests(RelioAppFixture fixture)
         await Expect(first.Locator("[data-testid='register-first-account-note']")).ToBeVisibleAsync();
         await RegisterAsync(first, firstEmail, StrongPassword);
 
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(first, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(first, "/dashboard");
         await Expect(first.Locator("nav[aria-label='Primary']").GetByText("Administration", new() { Exact = true }))
             .ToBeVisibleAsync();
         await RelioAppFixture.GotoAndWaitForInteractiveAsync(first, "/admin/users");
@@ -45,7 +45,7 @@ public class RegistrationModeTests(RelioAppFixture fixture)
         await Expect(second.Locator("[data-testid='register-first-account-note']")).ToHaveCountAsync(0);
         await RegisterAsync(second, secondEmail, StrongPassword);
 
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(second, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(second, "/dashboard");
         await Expect(second.Locator("nav[aria-label='Primary']").GetByText("Administration", new() { Exact = true }))
             .ToHaveCountAsync(0);
         await second.GotoAsync("/admin/users");

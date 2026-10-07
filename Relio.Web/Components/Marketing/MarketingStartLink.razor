@@ -1,0 +1,45 @@
+@inject IAccountRegistrationService RegistrationService
+
+<div class="rl-marketing-actions">
+    @if (_isAuthenticated)
+    {
+        <a class="rl-marketing-primary" href="/dashboard" data-enhance-nav="false">Open Relio</a>
+    }
+    else if (_eligibility is { } eligibility)
+    {
+        @if (ShowSignIn || !eligibility.CanRegister)
+        {
+            <a href="/Account/Login" data-enhance-nav="false">Sign in</a>
+        }
+        @if (eligibility.CanRegister)
+        {
+            <a class="rl-marketing-primary" href="/Account/Register" data-enhance-nav="false">Create an account</a>
+        }
+        else
+        {
+            <span class="rl-marketing-access-note">
+                @(eligibility.Access == RegistrationAccess.RequiresInvitation ? "An invitation is needed to join." : "Sign-up is closed on this instance.")
+            </span>
+        }
+    }
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = default!;
+
+    [Parameter]
+    public bool ShowSignIn { get; set; }
+
+    private bool _isAuthenticated;
+    private RegistrationEligibility? _eligibility;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isAuthenticated = (await AuthenticationState).User.Identity?.IsAuthenticated == true;
+        if (!_isAuthenticated)
+        {
+            _eligibility = await RegistrationService.GetEligibilityAsync(null);
+        }
+    }
+}

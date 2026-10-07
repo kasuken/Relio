@@ -155,7 +155,7 @@ public partial class TwoFactorAuthenticationTests(RelioAppFixture fixture)
         var cookieNames = (await page.Context.CookiesAsync()).Select(c => c.Name).ToList();
         cookieNames.Should().Contain(n => n.Contains("Identity.TwoFactorUserId", StringComparison.Ordinal));
         cookieNames.Should().NotContain(n => n.Contains("Identity.Application", StringComparison.Ordinal));
-        await page.GotoAsync("/");
+        await page.GotoAsync("/dashboard");
         await Expect(page).ToHaveURLAsync(new Regex("/Account/Login"));
 
         // The second step still works afterwards, and completes the sign-in.
@@ -311,7 +311,7 @@ public partial class TwoFactorAuthenticationTests(RelioAppFixture fixture)
         await SubmitAuthenticatorCodeAsync(page, CurrentCode(user.Key));
         await page.Locator("html[data-app-ready='true']").WaitForAsync();
 
-        await Expect(page).ToHaveURLAsync(new Regex("^" + Regex.Escape(fixture.BaseUrl) + "/$"));
+        await Expect(page).ToHaveURLAsync(new Regex("^" + Regex.Escape(fixture.BaseUrl) + "/dashboard$"));
 
         await RelioAppFixture.ClosePageAsync(page);
     }
@@ -339,7 +339,7 @@ public partial class TwoFactorAuthenticationTests(RelioAppFixture fixture)
         (await GetAuthenticatorKeyAsync(user.Email)).Should().NotBe(user.Key, "the old app's key is gone for good");
 
         // This session stays signed in...
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
         await Expect(page.Locator("[data-testid='signed-in-as']")).ToHaveTextAsync(user.Email);
 
         // ...and the next sign-in only asks for the password.
@@ -537,7 +537,7 @@ public partial class TwoFactorAuthenticationTests(RelioAppFixture fixture)
 
         await Expect(page.Locator("[data-testid='login-2fa-error']")).ToContainTextAsync("This account has been disabled");
         (await page.Context.CookiesAsync()).Should().NotContain(c => c.Name.Contains("Identity.Application", StringComparison.Ordinal));
-        await page.GotoAsync("/");
+        await page.GotoAsync("/dashboard");
         await Expect(page).ToHaveURLAsync(new Regex("/Account/Login"));
 
         await RelioAppFixture.ClosePageAsync(page);

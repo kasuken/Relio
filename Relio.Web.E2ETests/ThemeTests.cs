@@ -12,14 +12,14 @@ public class ThemeTests(RelioAppFixture fixture)
         var page = await fixture.NewPageAsync();
 
         await RelioAppFixture.SignInAsDemoAsync(page);
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
 
         await page.Locator("button[aria-label='Change appearance']").ClickAsync();
         await page.GetByText("Dark", new() { Exact = true }).ClickAsync();
 
         await Expect(page.Locator("html")).ToHaveAttributeAsync("data-theme", "dark");
 
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
 
         await Expect(page.Locator("html")).ToHaveAttributeAsync("data-theme", "dark");
 

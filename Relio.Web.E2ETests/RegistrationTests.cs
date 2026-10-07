@@ -34,7 +34,7 @@ public class RegistrationTests(RelioAppFixture fixture)
             new() { Name = "Get started", Exact = true })).ToBeVisibleAsync();
         await page.GetByTestId("onboarding-skip").ClickAsync();
 
-        await Expect(page).ToHaveURLAsync(new Regex("/$"));
+        await Expect(page).ToHaveURLAsync(new Regex("/dashboard$"));
         await Expect(page.Locator("[data-testid='signed-in-as']")).ToHaveTextAsync(email);
 
         await RelioAppFixture.ClosePageAsync(page);

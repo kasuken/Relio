@@ -69,7 +69,7 @@ public class EmailConfirmationTests(RelioAppFixture fixture)
                     .ToHaveTextAsync("Check your email");
 
                 // Not signed in yet - confirming is required first.
-                await page.GotoAsync("/");
+                await page.GotoAsync("/dashboard");
                 await Expect(page).ToHaveURLAsync(new Regex("/Account/Login"));
 
                 using (var scope = smtpFactory.CreateRealScope())
@@ -88,7 +88,7 @@ public class EmailConfirmationTests(RelioAppFixture fixture)
                 await page.Locator("[data-testid='login-submit']").ClickAsync();
                 await page.Locator("html[data-app-ready='true']").WaitForAsync();
 
-                await Expect(page).ToHaveURLAsync(new Regex("/$"));
+                await Expect(page).ToHaveURLAsync(new Regex("/dashboard$"));
                 await Expect(page.Locator("[data-testid='signed-in-as']")).ToHaveTextAsync(email);
             }
             finally

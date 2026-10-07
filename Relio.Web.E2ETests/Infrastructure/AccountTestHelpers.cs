@@ -83,7 +83,7 @@ public static class AccountTestHelpers
     /// <summary>Signs the current user out through the app bar's real Sign out button.</summary>
     public static async Task SignOutAsync(IPage page)
     {
-        await page.GotoAsync("/");
+        await page.GotoAsync("/dashboard");
         await page.Locator("html[data-app-ready='true']").WaitForAsync();
         await page.Locator("[data-testid='sign-out']").ClickAsync();
         await Expect(page).ToHaveURLAsync(new Regex("/Account/Login$"));

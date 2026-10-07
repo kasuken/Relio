@@ -48,7 +48,7 @@ public sealed class QuickLogInteractionTests(RelioAppFixture fixture)
             var ownerId = (await GetUserAsync(fixture.App, email))!.Id;
             var today = await SetTimeZoneAndGetTodayAsync(fixture.App, ownerId, "Pacific/Kiritimati");
 
-            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
             var appbarLog = page.GetByTestId("appbar-log-interaction");
             await Expect(appbarLog).ToBeVisibleAsync();
             await Expect(appbarLog).ToHaveAttributeAsync("aria-label", "Log an interaction");
