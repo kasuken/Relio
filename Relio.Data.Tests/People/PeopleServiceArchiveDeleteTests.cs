@@ -10,9 +10,11 @@ namespace Relio.Data.Tests.People;
 /// <summary>
 /// Issue #26 through <see cref="PeopleService"/>: archiving and restoring are reversible and touch
 /// nothing but the person, and deleting is permanent and takes everything that belongs to the person
-/// with it - the contact methods and the tag links, but never the tags themselves, another person's
-/// links to them, or the relationship type - in one save, even though the InMemory provider enforces
-/// no foreign keys and would otherwise leave orphans behind.
+/// with it - contact methods, notes, tag links and interaction participation, deleting a shared interaction
+/// only when its last participant is removed, but never the tags themselves, another person's links
+/// to them, or the relationship type - in one save, even though the InMemory provider enforces no
+/// foreign keys and would otherwise leave orphans behind. Reminders belong to one person, while
+/// interactions are shared and are removed only with their final participant.
 /// </summary>
 public class PeopleServiceArchiveDeleteTests
 {
@@ -21,11 +23,26 @@ public class PeopleServiceArchiveDeleteTests
     private static readonly DateTimeOffset Now = new(2026, 10, 6, 11, 30, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task DeleteAsync_removes_the_person_their_contact_methods_and_tag_links_but_keeps_the_tags()
+    public async Task DeleteAsync_removes_the_person_and_its_children_but_keeps_the_tags()
     {
         var database = NewDatabase();
         await using var dbContext = CreateDbContext(database);
         var seeded = await SeedAsync(dbContext);
+        dbContext.Notes.Add(new Note
+        {
+            OwnerId = Owner,
+            PersonId = seeded.AdaId,
+            Text = "A private note.",
+            IsPinned = true,
+        });
+        dbContext.Reminders.Add(new Reminder
+        {
+            OwnerId = Owner,
+            PersonId = seeded.AdaId,
+            Title = "Call Ada",
+            DueDate = new DateOnly(2026, 10, 8),
+        });
+        await dbContext.SaveChangesAsync();
 
         var deleted = await CreateService(dbContext).DeleteAsync(seeded.AdaId);
 
@@ -34,9 +51,57 @@ public class PeopleServiceArchiveDeleteTests
         (await fresh.People.AsNoTracking().AnyAsync(p => p.Id == seeded.AdaId)).Should().BeFalse();
         (await fresh.ContactMethods.AsNoTracking().Where(c => c.PersonId == seeded.AdaId).CountAsync())
             .Should().Be(0, "no contact method is left orphaned");
+        (await fresh.Notes.AsNoTracking().Where(note => note.PersonId == seeded.AdaId).CountAsync())
+            .Should().Be(0, "no note is left orphaned");
+        (await fresh.Reminders.AsNoTracking().Where(reminder => reminder.PersonId == seeded.AdaId).CountAsync())
+            .Should().Be(0, "no reminder is left orphaned");
         (await TagLinksAsync(fresh)).Select(link => link.PersonId).Should().NotContain(seeded.AdaId, "the links go with the person");
         (await fresh.Tags.AsNoTracking().Select(t => t.Name).ToListAsync())
             .Should().BeEquivalentTo("Chess", "Climbing");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_removes_only_the_deleted_person_from_shared_interactions_and_deletes_orphans()
+    {
+        var database = NewDatabase();
+        await using var dbContext = CreateDbContext(database);
+        var seeded = await SeedAsync(dbContext);
+        var shared = new Interaction
+        {
+            OwnerId = Owner,
+            OccurredOn = new DateOnly(2026, 10, 2),
+            Kind = InteractionKind.Meeting,
+            Description = "A shared conversation",
+        };
+        var onlyAda = new Interaction
+        {
+            OwnerId = Owner,
+            OccurredOn = new DateOnly(2026, 10, 3),
+            Kind = InteractionKind.Call,
+            Description = "A private call",
+        };
+        dbContext.Interactions.AddRange(shared, onlyAda);
+        dbContext.InteractionParticipants.AddRange(
+            new InteractionParticipant { OwnerId = Owner, InteractionId = shared.Id, PersonId = seeded.AdaId },
+            new InteractionParticipant { OwnerId = Owner, InteractionId = shared.Id, PersonId = seeded.GraceId },
+            new InteractionParticipant { OwnerId = Owner, InteractionId = onlyAda.Id, PersonId = seeded.AdaId });
+        await dbContext.SaveChangesAsync();
+        var service = CreateService(dbContext);
+
+        (await service.DeleteAsync(seeded.AdaId)).Should().BeTrue();
+
+        await using (var fresh = CreateDbContext(database))
+        {
+            (await fresh.Interactions.AsNoTracking().Select(interaction => interaction.Id).ToListAsync())
+                .Should().Equal(new[] { shared.Id }, "the interaction with no remaining participants is removed");
+            (await fresh.InteractionParticipants.AsNoTracking().Select(participant => participant.PersonId).ToListAsync())
+                .Should().Equal(new[] { seeded.GraceId }, "a shared interaction remains for its other person");
+        }
+
+        (await service.DeleteAsync(seeded.GraceId)).Should().BeTrue();
+        await using var final = CreateDbContext(database);
+        (await final.Interactions.AsNoTracking().CountAsync()).Should().Be(0);
+        (await final.InteractionParticipants.AsNoTracking().CountAsync()).Should().Be(0);
     }
 
     [Fact]

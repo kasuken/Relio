@@ -98,13 +98,21 @@ public sealed class RelioAppFixture : IAsyncLifetime
     /// reports it. Defaults to Playwright's own default (the host machine's time zone) when
     /// <see langword="null"/>.
     /// </param>
-    public async Task<IPage> NewPageAsync(ViewportSize? viewport = null, string? timezoneId = null)
+    /// <param name="locale">
+    /// The browser context's BCP 47 locale, such as <c>"fr-FR"</c>, or null to use Playwright's
+    /// default. Useful for proving that user input does not depend on the browser's locale.
+    /// </param>
+    public async Task<IPage> NewPageAsync(
+        ViewportSize? viewport = null,
+        string? timezoneId = null,
+        string? locale = null)
     {
         var context = await Browser.NewContextAsync(new BrowserNewContextOptions
         {
             BaseURL = BaseUrl,
             ViewportSize = viewport ?? Viewports.Desktop,
             TimezoneId = timezoneId,
+            Locale = locale,
         });
 
         // Always on (cheap for this suite's size): exported by ClosePageAsync below, so a failure

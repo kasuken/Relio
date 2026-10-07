@@ -55,6 +55,15 @@ public sealed class RelioDbContext(DbContextOptions<RelioDbContext> options, Tim
     /// <summary>The current user's relationship types ("Friend", "Colleague", ...), seeded per user at registration.</summary>
     public DbSet<RelationshipType> RelationshipTypes => Set<RelationshipType>();
 
+    /// <summary>The current user's dated interactions, shared through their participant links.</summary>
+    public DbSet<Interaction> Interactions => Set<Interaction>();
+
+    /// <summary>The current user's links between interactions and people.</summary>
+    public DbSet<InteractionParticipant> InteractionParticipants => Set<InteractionParticipant>();
+
+    /// <summary>The current user's notes about people.</summary>
+    public DbSet<Note> Notes => Set<Note>();
+
     /// <summary>The current user's reconnect reminders (epic #36).</summary>
     public DbSet<Reminder> Reminders => Set<Reminder>();
 

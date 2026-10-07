@@ -355,6 +355,140 @@ a {
     color: var(--plum);
 }
 
+.rl-profile-memories {
+    display: grid;
+    gap: var(--space-5);
+    margin-block: var(--space-8);
+    max-width: var(--measure);
+}
+
+.rl-profile-memory-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+.rl-profile-primary-action {
+    margin-left: auto;
+}
+
+.rl-note-editor {
+    display: grid;
+    gap: var(--space-4);
+    border-block: 1px solid var(--line-strong);
+    padding-block: var(--space-5);
+}
+
+.rl-pinned-notes {
+    max-width: var(--measure);
+    margin-block: var(--space-6);
+}
+
+.rl-pinned-note {
+    max-width: var(--measure);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--line);
+}
+
+.rl-interaction-editor {
+    display: grid;
+    gap: var(--space-4);
+    border-block: 1px solid var(--line-strong);
+    padding-block: var(--space-5);
+}
+
+.rl-interaction-editor-heading {
+    display: grid;
+    gap: var(--space-1);
+}
+
+.rl-interaction-editor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.rl-person-timeline {
+    margin-block: var(--space-8);
+}
+
+.rl-person-timeline-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
+    max-width: var(--measure);
+}
+
+.rl-person-timeline-heading > div:first-child {
+    display: grid;
+    gap: var(--space-1);
+}
+
+.rl-timeline-filter {
+    min-width: 12rem;
+}
+
+.rl-timeline-participants {
+    margin: var(--space-2) 0 0;
+}
+
+.rl-timeline-pinned {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.rl-timeline-entry-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: var(--space-2);
+}
+
+.rl-timeline-load-more {
+    display: flex;
+    justify-content: center;
+    max-width: var(--measure);
+    margin-top: var(--space-6);
+}
+
+@media (max-width: 600px) {
+    .rl-profile-memory-actions {
+        flex-direction: column;
+    }
+
+    .rl-profile-memory-actions .mud-button-root,
+    .rl-note-editor .mud-button-root {
+        width: 100%;
+    }
+
+    .rl-profile-primary-action {
+        margin-left: 0;
+    }
+
+    .rl-person-timeline-heading {
+        align-items: stretch;
+    }
+
+    .rl-timeline-filter {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .rl-interaction-editor-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .rl-interaction-editor-actions .mud-button-root {
+        width: 100%;
+    }
+}
+
 /* Reminder date tile */
 .rl-when {
     display: flex;

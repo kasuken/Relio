@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Relio.Data;
+using Relio.Domain;
 using Relio.Data.IntegrationTests.Infrastructure;
 using Relio.Web.E2ETests.Infrastructure;
 using static Microsoft.Playwright.Assertions;
@@ -72,18 +73,56 @@ public class SqlServerPageLoadTests(RelioAppFixture fixture)
             // /people/{id}/merge (issue #28): both profiles, the candidates and today's date, one after
             // the other, in the first step and then in the comparison.
             Guid[] demoPeople;
+            string demoUserId;
             using (var scope = app.Factory.CreateRealScope())
             {
                 var demo = await scope.ServiceProvider
                     .GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<Relio.Data.Identity.RelioUser>>()
                     .FindByEmailAsync(Relio.Data.Seeding.DemoDataSeeder.DemoEmail);
-                demoPeople = await scope.ServiceProvider.GetRequiredService<RelioDbContext>().People
+                demoUserId = demo!.Id;
+                var dbContext = scope.ServiceProvider.GetRequiredService<RelioDbContext>();
+                demoPeople = await dbContext.People
                     .Where(p => p.OwnerId == demo!.Id)
                     .OrderBy(p => p.FirstName)
                     .Select(p => p.Id)
                     .Take(2)
                     .ToArrayAsync();
+
+                dbContext.Notes.Add(new Note
+                {
+                    OwnerId = demoUserId,
+                    PersonId = demoPeople[0],
+                    Text = "A note for the SQL Server page-load test.",
+                    IsPinned = true,
+                });
+                var interaction = new Interaction
+                {
+                    OwnerId = demoUserId,
+                    OccurredOn = DateOnly.FromDateTime(TimeProvider.System.GetUtcNow().UtcDateTime).AddDays(-1),
+                    Kind = InteractionKind.Meeting,
+                    Description = "A shared moment for the SQL Server page-load test.",
+                };
+                dbContext.Interactions.Add(interaction);
+                dbContext.InteractionParticipants.Add(new InteractionParticipant
+                {
+                    OwnerId = demoUserId,
+                    Interaction = interaction,
+                    PersonId = demoPeople[0],
+                });
+                await dbContext.SaveChangesAsync();
             }
+
+            // /people/{id}: PinnedNotes and the mixed timeline both load alongside the profile on
+            // the same circuit DbContext, including the real SQL Server query paths.
+            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, $"/people/{demoPeople[0]}");
+            await Expect(page.GetByTestId("pinned-note-text")).ToHaveTextAsync("A note for the SQL Server page-load test.");
+            await Expect(page.GetByTestId("timeline-entries")
+                .GetByText("A note for the SQL Server page-load test.", new() { Exact = true }))
+                .ToBeVisibleAsync();
+            await Expect(page.GetByTestId("timeline-entries")
+                .GetByText("A shared moment for the SQL Server page-load test.", new() { Exact = true }))
+                .ToBeVisibleAsync();
+            await AssertCircuitSurvivesAsync(page);
 
             await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, $"/people/{demoPeople[0]}/merge");
             await Expect(page.GetByTestId("merge-picker-field")).ToBeVisibleAsync();

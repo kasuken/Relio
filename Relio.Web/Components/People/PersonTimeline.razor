@@ -1,0 +1,298 @@
+@using Relio.Application.Interactions
+@using Relio.Application.Time
+@using Relio.Application.Timeline
+@using Relio.Web.Theme
+@using Relio.Web.Time
+@inject IPersonTimelineService TimelineService
+@inject IUserTimeZoneService UserTimeZone
+
+<section class="rl-person-timeline" data-testid="person-timeline" aria-busy="@_loading">
+    <div class="rl-person-timeline-heading">
+        <div>
+            <MudText Typo="Typo.h5" HtmlTag="h2">Timeline</MudText>
+            <MudText Typo="Typo.body2" Class="rl-meta">A record of what you shared, in your calendar.</MudText>
+        </div>
+        <MudSelect T="TimelineFilter"
+                   Value="_filter"
+                   ValueChanged="FilterChangedAsync"
+                   Label="Show"
+                   Variant="Variant.Outlined"
+                   Dense="true"
+                   Disabled="Busy"
+                   Class="rl-timeline-filter"
+                   data-testid="timeline-filter">
+            @foreach (var filter in Filters)
+            {
+                <MudSelectItem T="TimelineFilter" Value="@filter">@PersonTimelineText.FilterName(filter)</MudSelectItem>
+            }
+        </MudSelect>
+    </div>
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" data-testid="timeline-error">
+            @_error
+        </MudAlert>
+    }
+    else if (_personMissing)
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" data-testid="timeline-person-missing">
+            This person isn't in your list.
+        </MudAlert>
+    }
+    else if (!_hasLoaded)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" data-testid="timeline-loading" />
+    }
+    else if (_entries.Count == 0)
+    {
+        <div class="rl-empty" data-testid="timeline-empty">
+            <div class="rl-empty-mark" aria-hidden="true">
+                <span class="rl-m1"></span>
+                <span class="rl-m2"></span>
+                <span class="rl-m3"></span>
+            </div>
+            <p>@PersonTimelineText.EmptyMessage(_filter)</p>
+        </div>
+    }
+    else
+    {
+        <ol class="rl-thread" data-testid="timeline-entries">
+            @foreach (var entry in _entries)
+            {
+                var visual = EntryKindVisuals.For(VisualKind(entry.Kind));
+                <li class="rl-entry" data-testid="timeline-entry" data-entry-kind="@entry.Kind.ToString().ToLowerInvariant()">
+                    <span class="rl-marker @visual.MarkerCssClass" aria-hidden="true"></span>
+                    <div class="rl-entry-head">
+                        <MudIcon Icon="@visual.Icon" Size="Size.Small" aria-hidden="true" />
+                        <span class="rl-entry-kind @visual.LabelCssClass" data-testid="timeline-entry-kind">
+                            @visual.DisplayName@(entry.Kind == TimelineEntryKind.Interaction ? $" · {InteractionKindText.Name(entry.InteractionKind!.Value)}" : string.Empty)
+                        </span>
+                        <time class="rl-entry-date" datetime="@entry.Date.ToString("yyyy-MM-dd")" data-testid="timeline-entry-date">
+                            @DateDisplay.FormatRelative(entry.Date, _today)
+                        </time>
+                        @if (entry.Kind == TimelineEntryKind.Note && entry.IsPinned)
+                        {
+                            <span class="rl-meta rl-timeline-pinned" data-testid="timeline-entry-pinned">
+                                <MudIcon Icon="@Icons.Material.Outlined.PushPin" Size="Size.Small" aria-hidden="true" />
+                                Pinned
+                            </span>
+                        }
+                    </div>
+
+                    @if (entry.Kind == TimelineEntryKind.Interaction && entry.Participants.Count > 1)
+                    {
+                        <p class="rl-meta rl-timeline-participants" data-testid="timeline-entry-participants">
+                            Shared with @string.Join(", ", entry.Participants
+                                .Where(participant => participant.PersonId != PersonId)
+                                .Select(participant => participant.DisplayName + (participant.IsArchived ? " (archived)" : string.Empty)))
+                        </p>
+                    }
+
+                    <p class="rl-entry-text rl-multiline" data-testid="timeline-entry-text">@entry.Text</p>
+
+                    @if (entry.Kind is TimelineEntryKind.Interaction or TimelineEntryKind.Note)
+                    {
+                        <div class="rl-timeline-entry-actions">
+                            @if (entry.Kind == TimelineEntryKind.Interaction)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Outlined.Edit"
+                                               aria-label="Edit shared interaction"
+                                               Color="Color.Default"
+                                               Size="Size.Small"
+                                               OnClick="@(() => EditInteractionAsync(entry.Id))"
+                                               Disabled="Busy"
+                                               data-testid="timeline-edit-interaction" />
+                                <MudIconButton Icon="@Icons.Material.Outlined.DeleteOutline"
+                                               aria-label="Delete shared interaction"
+                                               Color="Color.Default"
+                                               Size="Size.Small"
+                                               OnClick="@(() => DeleteInteractionAsync(entry.Id))"
+                                               Disabled="Busy"
+                                               data-testid="timeline-delete-interaction" />
+                            }
+                            else
+                            {
+                                <MudIconButton Icon="@Icons.Material.Outlined.Edit"
+                                               aria-label="Edit note"
+                                               Color="Color.Default"
+                                               Size="Size.Small"
+                                               OnClick="@(() => EditNoteAsync(entry.Id))"
+                                               Disabled="Busy"
+                                               data-testid="timeline-edit-note" />
+                                <MudIconButton Icon="@Icons.Material.Outlined.DeleteOutline"
+                                               aria-label="Delete note"
+                                               Color="Color.Default"
+                                               Size="Size.Small"
+                                               OnClick="@(() => DeleteNoteAsync(entry.Id))"
+                                               Disabled="Busy"
+                                               data-testid="timeline-delete-note" />
+                            }
+                        </div>
+                    }
+                </li>
+            }
+        </ol>
+    }
+
+    @if (_hasLoaded && _hasMore && !_personMissing)
+    {
+        <div class="rl-timeline-load-more">
+            <MudButton Variant="Variant.Outlined"
+                       OnClick="LoadMoreAsync"
+                       Disabled="@(_loading || Busy)"
+                       data-testid="timeline-load-more">
+                @(_loading ? "Loading…" : "Load more")
+            </MudButton>
+        </div>
+    }
+</section>
+
+@code {
+    private static readonly TimelineFilter[] Filters = Enum.GetValues<TimelineFilter>();
+    private readonly SemaphoreSlim _loadGate = new(1, 1);
+    private readonly List<PersonTimelineEntry> _entries = [];
+    private TimelineFilter _filter;
+    private TimelineContinuation? _continuation;
+    private DateOnly _today;
+    private bool _loading;
+    private bool _hasLoaded;
+    private bool _hasMore;
+    private bool _personMissing;
+    private string? _error;
+    private int _loadVersion;
+    private Guid? _loadedPersonId;
+
+    /// <summary>The profile whose timeline is displayed.</summary>
+    [Parameter, EditorRequired]
+    public Guid PersonId { get; set; }
+
+    /// <summary>Whether the profile is already completing an interaction or note action.</summary>
+    [Parameter]
+    public bool Busy { get; set; }
+
+    /// <summary>Raised when the user asks to edit an interaction, which is shared across participants.</summary>
+    [Parameter]
+    public EventCallback<Guid> EditInteractionRequested { get; set; }
+
+    /// <summary>Raised when the user asks to delete an interaction, which is shared across participants.</summary>
+    [Parameter]
+    public EventCallback<Guid> DeleteInteractionRequested { get; set; }
+
+    /// <summary>Raised when the user asks to edit a note.</summary>
+    [Parameter]
+    public EventCallback<Guid> EditNoteRequested { get; set; }
+
+    /// <summary>Raised when the user asks to delete a note.</summary>
+    [Parameter]
+    public EventCallback<Guid> DeleteNoteRequested { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedPersonId == PersonId)
+        {
+            return;
+        }
+
+        _loadedPersonId = PersonId;
+        await LoadPageAsync(reset: true);
+    }
+
+    /// <summary>Reloads the current filter from its newest entry.</summary>
+    public async Task ReloadAsync()
+    {
+        await LoadPageAsync(reset: true);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task FilterChangedAsync(TimelineFilter filter)
+    {
+        if (_filter == filter)
+        {
+            return;
+        }
+
+        _filter = filter;
+        await LoadPageAsync(reset: true);
+    }
+
+    private Task LoadMoreAsync() => LoadPageAsync(reset: false);
+
+    private async Task LoadPageAsync(bool reset)
+    {
+        var version = Interlocked.Increment(ref _loadVersion);
+        _loading = true;
+        _error = null;
+        if (reset)
+        {
+            _entries.Clear();
+            _continuation = null;
+            _hasMore = false;
+            _hasLoaded = false;
+            _personMissing = false;
+        }
+
+        await _loadGate.WaitAsync();
+        try
+        {
+            if (version != _loadVersion)
+            {
+                return;
+            }
+
+            var today = await UserTimeZone.GetTodayAsync();
+            var result = await TimelineService.GetPageAsync(
+                PersonId,
+                _filter,
+                reset ? null : _continuation,
+                cancellationToken: default);
+            if (version != _loadVersion)
+            {
+                return;
+            }
+
+            _today = today;
+            if (result is null)
+            {
+                _personMissing = true;
+                _hasMore = false;
+                _continuation = null;
+                return;
+            }
+
+            _entries.AddRange(result.Items);
+            _continuation = result.Continuation;
+            _hasMore = result.HasMore;
+            _hasLoaded = true;
+        }
+        catch
+        {
+            // The exception could carry user-written content; keep the message generic and never log it.
+            if (version == _loadVersion)
+            {
+                _error = "The timeline couldn't be loaded. Try again.";
+            }
+        }
+        finally
+        {
+            _loadGate.Release();
+            if (version == _loadVersion)
+            {
+                _loading = false;
+            }
+        }
+    }
+
+    private static EntryKind VisualKind(TimelineEntryKind kind) => kind switch
+    {
+        TimelineEntryKind.Interaction => EntryKind.Interaction,
+        TimelineEntryKind.Note => EntryKind.Note,
+        TimelineEntryKind.DifficultMoment => EntryKind.DifficultMoment,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown timeline entry kind."),
+    };
+
+    private Task EditInteractionAsync(Guid id) => EditInteractionRequested.InvokeAsync(id);
+    private Task DeleteInteractionAsync(Guid id) => DeleteInteractionRequested.InvokeAsync(id);
+    private Task EditNoteAsync(Guid id) => EditNoteRequested.InvokeAsync(id);
+    private Task DeleteNoteAsync(Guid id) => DeleteNoteRequested.InvokeAsync(id);
+}

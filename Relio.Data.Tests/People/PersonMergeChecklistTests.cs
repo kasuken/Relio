@@ -15,12 +15,16 @@ public class PersonMergeChecklistTests
 {
     /// <summary>
     /// The entities that reference a person, each handled by <c>PersonMergeService.MoveDependentsAsync</c>:
-    /// the tag links (the <c>PersonTags</c> join) and the contact methods.
+    /// the tag links (the <c>PersonTags</c> join), contact methods, reminders, notes (reassigned to
+    /// the primary while retaining their text, pin state and audit dates), and interaction participant
+    /// links (reassigned to the primary unless that interaction already has the primary).
     /// </summary>
     private static readonly string[] HandledByMoveDependents =
     [
         "PersonTag",
         typeof(ContactMethod).FullName!,
+        typeof(Note).FullName!,
+        typeof(InteractionParticipant).FullName!,
         typeof(Reminder).FullName!,
     ];
 

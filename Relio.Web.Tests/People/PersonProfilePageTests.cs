@@ -2,11 +2,15 @@ using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
+using Relio.Application.Interactions;
+using Relio.Application.Notes;
 using Relio.Application.People;
 using Relio.Application.Time;
+using Relio.Application.Timeline;
 using Relio.Domain;
 using Relio.Web.Components.Pages;
 using Relio.Web.Components.People;
+using Relio.Web.Tests.Notes;
 using Relio.Web.Tests.Settings;
 using Relio.Web.Tests.Shared;
 
@@ -22,11 +26,18 @@ public class PersonProfilePageTests
         CreateContext(people, out _, timeZoneId);
 
     private static BunitContext CreateContext(
-        FakePeopleService people, out ProfileProviders providers, string timeZoneId = "Europe/Rome")
+        FakePeopleService people,
+        out ProfileProviders providers,
+        string timeZoneId = "Europe/Rome",
+        FakeNoteService? notes = null,
+        FakePersonTimelineService? timeline = null)
     {
         var context = new BunitContext();
         context.UseMudBlazor();
         context.Services.AddSingleton<IPeopleService>(people);
+        context.Services.AddSingleton<IInteractionService>(new FakeInteractionService());
+        context.Services.AddSingleton<INoteService>(notes ?? new FakeNoteService());
+        context.Services.AddSingleton<IPersonTimelineService>(timeline ?? new FakePersonTimelineService());
         context.Services.AddSingleton<IUserTimeZoneService>(new FakeUserTimeZoneService(timeZoneId, Today));
         context.Services.AddSingleton<Relio.Application.Reminders.IReminderService>(new FakeReminderService());
         providers = new ProfileProviders(
@@ -201,6 +212,9 @@ public class PersonProfilePageTests
         await using var context = new BunitContext();
         context.UseMudBlazor();
         context.Services.AddSingleton<IPeopleService>(people);
+        context.Services.AddSingleton<IInteractionService>(new FakeInteractionService());
+        context.Services.AddSingleton<INoteService>(new FakeNoteService());
+        context.Services.AddSingleton<IPersonTimelineService>(new FakePersonTimelineService());
         context.Services.AddSingleton<IUserTimeZoneService>(new FakeUserTimeZoneService("Europe/Rome", Today));
         context.Services.AddSingleton<Relio.Application.Reminders.IReminderService>(reminders);
         context.Render<MudPopoverProvider>();
@@ -644,5 +658,60 @@ public class PersonProfilePageTests
 
         cut.FindAll("h1").Should().ContainSingle();
         cut.Find("[data-testid='person-archived']").QuerySelector("h1, h2, h3").Should().BeNull("the note is not a heading");
+    }
+
+    [Fact]
+    public async Task Pinned_notes_are_shown_before_the_profile_facts_and_open_in_the_shared_editor()
+    {
+        var person = ActivePerson();
+        var note = new Note
+        {
+            PersonId = person.Id,
+            Text = "A private detail to remember.",
+            IsPinned = true,
+        };
+        var notes = new FakeNoteService();
+        notes.Notes.Add(note);
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people, out _, notes: notes);
+
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        var orderedSections = cut.FindAll("section, dl")
+            .Select(element => element.GetAttribute("data-testid") ?? element.TagName.ToLowerInvariant())
+            .ToArray();
+        orderedSections[0].Should().Be("pinned-notes");
+        cut.Find("[data-testid='pinned-note-text']").TextContent.Should().Be(note.Text);
+
+        cut.Find("[data-testid='pinned-note-edit']").Click();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='note-editor']").Should().NotBeNull());
+        cut.Find("[data-testid='note-editor-text-field']").OuterHtml.Should().Contain(note.Text);
+    }
+
+    [Fact]
+    public async Task Saving_a_note_refreshes_the_pinned_notes_and_timeline()
+    {
+        var person = ActivePerson();
+        var notes = new FakeNoteService();
+        var timeline = new FakePersonTimelineService();
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people, out _, notes: notes, timeline: timeline);
+
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+        cut.Find("[data-testid='person-add-note']").Click();
+        cut.Find("[data-testid='note-editor-text-field'] textarea").Input("A note worth keeping.");
+        cut.Find("[data-testid='note-editor-save']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            notes.Created.Should().ContainSingle();
+            cut.FindAll("[data-testid='note-editor']").Should().BeEmpty();
+        });
+        notes.Created.Single().Should().Be(new CreateNoteRequest(person.Id, "A note worth keeping."));
+        notes.PinnedQueries.Should().HaveCountGreaterThanOrEqualTo(2, "the profile reloads its pinned notes after a save");
+        timeline.Queries.Should().HaveCount(2, "the profile reloads the timeline after a save");
     }
 }

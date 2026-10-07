@@ -425,8 +425,8 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
     /// <list type="bullet">
     /// <item><description>[x] <c>ContactMethods</c> (#24): removed below.</description></item>
     /// <item><description>[x] Tag links (the <c>PersonTags</c> join): <c>person.Tags.Clear()</c> deletes the join rows only. The <c>Tag</c> rows stay, and so do other people's links to them.</description></item>
-    /// <item><description>[ ] Interactions (#31) and their participants (#35): remove this person's participant rows; delete an interaction only when this person is its last participant.</description></item>
-    /// <item><description>[ ] Notes (#32).</description></item>
+    /// <item><description>[x] Interactions (#31) and their participants (#35): remove this person's participant rows; delete an interaction only when no other participant remains.</description></item>
+    /// <item><description>[x] Notes (#32): remove notes filtered by <c>OwnerId</c> and <c>PersonId</c>.</description></item>
     /// <item><description>[x] Reminders (#37, #38): removed below. The cadence (#41) is a column on <c>Person</c>.</description></item>
     /// <item><description>[ ] Difficult moments (#43). Their status (#44) is a column.</description></item>
     /// </list>
@@ -445,6 +445,40 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
             .Where(c => c.OwnerId == ownerId && c.PersonId == person.Id)
             .ToListAsync(cancellationToken);
         dbContext.ContactMethods.RemoveRange(contactMethods);
+
+        var notes = await dbContext.Notes
+            .Where(note => note.OwnerId == ownerId && note.PersonId == person.Id)
+            .ToListAsync(cancellationToken);
+        dbContext.Notes.RemoveRange(notes);
+
+        // An interaction is shared by its participants, not owned by a profile. Removing one
+        // person's links keeps shared interactions intact and removes a row only when it becomes
+        // unreachable from every remaining participant.
+        var participantRows = await dbContext.InteractionParticipants
+            .Where(participant => participant.OwnerId == ownerId && participant.PersonId == person.Id)
+            .ToListAsync(cancellationToken);
+        var interactionIds = participantRows
+            .Select(participant => participant.InteractionId)
+            .Distinct()
+            .ToArray();
+        dbContext.InteractionParticipants.RemoveRange(participantRows);
+
+        if (interactionIds.Length > 0)
+        {
+            var interactionsWithOtherParticipants = await dbContext.InteractionParticipants
+                .AsNoTracking()
+                .Where(participant => participant.OwnerId == ownerId
+                    && interactionIds.Contains(participant.InteractionId)
+                    && participant.PersonId != person.Id)
+                .Select(participant => participant.InteractionId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            var orphanedIds = interactionIds.Except(interactionsWithOtherParticipants).ToArray();
+            var orphanedInteractions = await dbContext.Interactions
+                .Where(interaction => interaction.OwnerId == ownerId && orphanedIds.Contains(interaction.Id))
+                .ToListAsync(cancellationToken);
+            dbContext.Interactions.RemoveRange(orphanedInteractions);
+        }
 
         var reminders = await dbContext.Reminders
             .Where(r => r.OwnerId == ownerId && r.PersonId == person.Id)

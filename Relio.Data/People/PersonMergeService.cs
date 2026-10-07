@@ -121,6 +121,15 @@ public sealed class PersonMergeService(RelioDbContext dbContext, ICurrentUser cu
 
             ApplyFields(primary, merged);
             await MoveDependentsAsync(ownerId, primary, duplicate, merged, cancellationToken);
+            await PersonLastContactUpdater.RecalculateAsync(
+                dbContext,
+                ownerId,
+                [primary.Id, duplicate.Id],
+                combinedPersonIds: new Dictionary<Guid, IReadOnlyCollection<Guid>>
+                {
+                    [primary.Id] = [primary.Id, duplicate.Id],
+                },
+                cancellationToken: cancellationToken);
 
             // Before Remove, on purpose. EF Core cascades a removed principal's delete to the dependents
             // it is tracking *immediately* (CascadeDeleteTiming.Immediate), and it only knows a moved
@@ -186,8 +195,8 @@ public sealed class PersonMergeService(RelioDbContext dbContext, ICurrentUser cu
     /// <list type="bullet">
     /// <item><description>[x] <c>ContactMethods</c> (#24): moved, deduplicated, or dropped, as <see cref="PersonMergeRules.Combine"/> decided (already loaded with both people).</description></item>
     /// <item><description>[x] Tag links (the <c>PersonTags</c> join): the duplicate's tags the primary lacks are attached to the primary, then the duplicate's links are cleared. The <c>Tag</c> rows are never removed.</description></item>
-    /// <item><description>[ ] Interactions (#31) and their participants (#35): when the interaction already has the primary as a participant, remove the duplicate's participant row; otherwise set its <c>PersonId</c> to the primary. Any direct <c>Interaction.PersonId</c> moves too.</description></item>
-    /// <item><description>[ ] Notes (#32): <c>PersonId = primary.Id</c>.</description></item>
+    /// <item><description>[x] Interactions (#31) and their participants (#35): when the interaction already has the primary as a participant, remove the duplicate's participant row; otherwise set its <c>PersonId</c> to the primary.</description></item>
+    /// <item><description>[x] Notes (#32): move the duplicate's notes to the primary, preserving text, pin state and creation dates; the normal save stamping advances <c>UpdatedAtUtc</c>.</description></item>
     /// <item><description>[x] Reminders (#37, #38): <c>PersonId = primary.Id</c>. Birthday reminders are derived from the birthday columns and need nothing.</description></item>
     /// <item><description>[ ] Difficult moments (#43): <c>PersonId = primary.Id</c>.</description></item>
     /// <item><description>[ ] Any person-to-person link (two foreign keys to <c>People</c>): drop a link between primary and duplicate, and dedupe the links both had.</description></item>
@@ -237,6 +246,47 @@ public sealed class PersonMergeService(RelioDbContext dbContext, ICurrentUser cu
         }
 
         duplicate.Tags.Clear();
+
+        var duplicateParticipants = await dbContext.InteractionParticipants
+            .Where(participant => participant.OwnerId == ownerId && participant.PersonId == duplicate.Id)
+            .ToListAsync(cancellationToken);
+        if (duplicateParticipants.Count > 0)
+        {
+            var interactionIds = duplicateParticipants
+                .Select(participant => participant.InteractionId)
+                .Distinct()
+                .ToArray();
+            var primaryInteractionIds = await dbContext.InteractionParticipants
+                .AsNoTracking()
+                .Where(participant => participant.OwnerId == ownerId
+                    && participant.PersonId == primary.Id
+                    && interactionIds.Contains(participant.InteractionId))
+                .Select(participant => participant.InteractionId)
+                .ToListAsync(cancellationToken);
+            var alreadyParticipating = primaryInteractionIds.ToHashSet();
+
+            foreach (var participant in duplicateParticipants)
+            {
+                if (alreadyParticipating.Contains(participant.InteractionId))
+                {
+                    dbContext.InteractionParticipants.Remove(participant);
+                }
+                else
+                {
+                    participant.PersonId = primary.Id;
+                    participant.Person = primary;
+                }
+            }
+        }
+
+        var duplicateNotes = await dbContext.Notes
+            .Where(note => note.OwnerId == ownerId && note.PersonId == duplicate.Id)
+            .ToListAsync(cancellationToken);
+        foreach (var note in duplicateNotes)
+        {
+            note.PersonId = primary.Id;
+            note.Person = primary;
+        }
 
         var reminders = await dbContext.Reminders
             .Where(r => r.OwnerId == ownerId && r.PersonId == duplicate.Id)

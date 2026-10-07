@@ -8,7 +8,7 @@ using Relio.Domain;
 namespace Relio.Data.IntegrationTests.People;
 
 /// <summary>
-/// What only a real SQL Server can prove for issue #28: merging moves contact methods and tag links
+/// What only a real SQL Server can prove for issue #28: merging moves notes, contact methods and tag links
 /// and deletes the duplicate for real (the moved rows survive the removal of the person they used to
 /// belong to), everything is one transaction that rolls back completely when any statement fails, a
 /// duplicate deleted mid-merge is reported as not found, and every foreign key that references
@@ -22,6 +22,23 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
     {
         var owner = TestDataFactory.NewOwnerId();
         var seeded = await SeedAsync(owner);
+        await using (var notes = fixture.CreateDbContext())
+        {
+            await TestDataFactory.CreateNoteAsync(notes, owner, seeded.PrimaryId, "Primary note.", isPinned: true);
+            await TestDataFactory.CreateNoteAsync(notes, owner, seeded.DuplicateId, "Duplicate note.");
+        }
+        await using (var reminders = fixture.CreateDbContext())
+        {
+            reminders.Reminders.Add(new Reminder
+            {
+                OwnerId = owner,
+                PersonId = seeded.DuplicateId,
+                Title = "Call after the trip",
+                DueDate = new DateOnly(2026, 10, 10),
+            });
+            await reminders.SaveChangesAsync();
+        }
+
         await using var dbContext = fixture.CreateDbContext();
 
         var outcome = await TestDataFactory.CreatePersonMergeService(dbContext, owner)
@@ -42,6 +59,26 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
         (await CountTagLinksAsync(verify, seeded.OtherId)).Should().Be(1, "another person's link is untouched");
         (await verify.Tags.CountAsync(t => t.OwnerId == owner)).Should().Be(3, "tag rows are never deleted");
         (await verify.People.CountAsync(p => p.OwnerId == owner)).Should().Be(2);
+        var notesAfterMerge = await verify.Notes.Where(note => note.OwnerId == owner).ToListAsync();
+        notesAfterMerge.Should().HaveCount(2);
+        notesAfterMerge.Should().OnlyContain(note => note.PersonId == seeded.PrimaryId);
+        notesAfterMerge.Single(note => note.IsPinned).Text.Should().Be("Primary note.");
+        notesAfterMerge.Single(note => !note.IsPinned).Text.Should().Be("Duplicate note.");
+        var remindersAfterMerge = await verify.Reminders.Where(reminder => reminder.OwnerId == owner).ToListAsync();
+        remindersAfterMerge.Should().ContainSingle();
+        (remindersAfterMerge[0].PersonId, remindersAfterMerge[0].Title)
+            .Should().Be((seeded.PrimaryId, "Call after the trip"));
+        var sharedParticipants = await verify.InteractionParticipants
+            .Where(participant => participant.InteractionId == seeded.SharedInteractionId)
+            .Select(participant => participant.PersonId)
+            .ToListAsync();
+        sharedParticipants.Should().ContainSingle().Which.Should().Be(seeded.PrimaryId, "the duplicate's repeated participant row is removed");
+        var movedParticipants = await verify.InteractionParticipants
+            .Where(participant => participant.InteractionId == seeded.DuplicateOnlyInteractionId)
+            .Select(participant => participant.PersonId)
+            .ToListAsync();
+        movedParticipants.Should().BeEquivalentTo(new[] { seeded.PrimaryId, seeded.OtherId });
+        (await verify.Interactions.CountAsync(interaction => interaction.OwnerId == owner)).Should().Be(3);
     }
 
     [SqlServerFact]
@@ -66,7 +103,7 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
         var merged = await verify.People.SingleAsync(p => p.Id == seeded.PrimaryId);
         (merged.FirstName, merged.LastName).Should().Be(("Jon", "Smythe"));
         merged.Details.Should().Be("Primary details.\n\nDuplicate details.");
-        merged.LastContactedOn.Should().Be(new DateOnly(2026, 8, 1));
+        merged.LastContactedOn.Should().Be(new DateOnly(2026, 8, 1), "the value comes from the latest surviving interaction, not the stale profile columns");
         merged.IsArchived.Should().BeFalse("the active primary beats the archived duplicate by default");
     }
 
@@ -157,7 +194,13 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
             """).ToListAsync();
 
         foreignKeys.Should().BeEquivalentTo(
-            ["FK_PersonTags_People_PeopleId", "FK_ContactMethods_People_PersonId", "FK_Reminders_People_PersonId"],
+            [
+                "FK_PersonTags_People_PeopleId",
+                "FK_ContactMethods_People_PersonId",
+                "FK_InteractionParticipants_People_PersonId",
+                "FK_Notes_People_PersonId",
+                "FK_Reminders_People_PersonId",
+            ],
             "a new foreign key to People needs a line in PersonMergeService.MoveDependentsAsync (and in "
             + "PeopleService.RemoveDependentsAsync), and an entry here and in PersonMergeChecklistTests");
     }
@@ -224,12 +267,15 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
         Guid OtherId,
         Guid PrimaryEmailId,
         Guid RepeatedEmailId,
-        Guid PhoneId);
+        Guid PhoneId,
+        Guid SharedInteractionId,
+        Guid DuplicateOnlyInteractionId);
 
     /// <summary>
     /// John Smith (primary: "Primary details.", Chess and Climbing, john@example.com without a label), Jon
-    /// Smythe (duplicate: archived, "Duplicate details.", last contacted 1 August 2026, Climbing and Sailing,
-    /// JOHN@example.com labelled Work, and a phone) and Grace with the Chess tag.
+    /// Smythe (duplicate: archived, "Duplicate details.", stale last-contacted 1 August 2026, Climbing and
+    /// Sailing, JOHN@example.com labelled Work, and a phone) and Grace with the Chess tag. Three shared
+    /// interaction cases cover primary-only, duplicate-plus-primary, and duplicate-plus-third-person.
     /// </summary>
     private async Task<Seeded> SeedAsync(string owner)
     {
@@ -237,7 +283,7 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
         var chess = await TestDataFactory.CreateTagAsync(dbContext, owner, "Chess");
         var climbing = await TestDataFactory.CreateTagAsync(dbContext, owner, "Climbing");
         var sailing = await TestDataFactory.CreateTagAsync(dbContext, owner, "Sailing");
-        var primary = await TestDataFactory.CreatePersonAsync(dbContext, owner, "John", "Smith", lastContactedOn: new DateOnly(2026, 3, 1));
+        var primary = await TestDataFactory.CreatePersonAsync(dbContext, owner, "John", "Smith", lastContactedOn: new DateOnly(2026, 10, 5));
         var duplicate = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Jon", "Smythe", lastContactedOn: new DateOnly(2026, 8, 1), isArchived: true);
         var other = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Grace");
         dbContext.ChangeTracker.Clear();
@@ -259,7 +305,38 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
         var repeatedEmail = await TestDataFactory.CreateContactMethodAsync(dbContext, owner, duplicate, "JOHN@example.com", label: "Work");
         var phone = await TestDataFactory.CreateContactMethodAsync(dbContext, owner, duplicate, "+44 7700 900123", ContactMethodKind.Phone, 1);
 
-        return new Seeded(primary, duplicate, other, primaryEmail, repeatedEmail, phone);
+        dbContext.ChangeTracker.Clear();
+        var primaryInteraction = new Interaction
+        {
+            OwnerId = owner,
+            OccurredOn = new DateOnly(2026, 3, 1),
+            Kind = InteractionKind.Call,
+            Description = "A private call.",
+        };
+        var sharedInteraction = new Interaction
+        {
+            OwnerId = owner,
+            OccurredOn = new DateOnly(2026, 8, 1),
+            Kind = InteractionKind.Meeting,
+            Description = "A private meeting.",
+        };
+        var duplicateOnlyInteraction = new Interaction
+        {
+            OwnerId = owner,
+            OccurredOn = new DateOnly(2026, 7, 15),
+            Kind = InteractionKind.Message,
+            Description = "A private message.",
+        };
+        dbContext.Interactions.AddRange(primaryInteraction, sharedInteraction, duplicateOnlyInteraction);
+        dbContext.InteractionParticipants.AddRange(
+            new InteractionParticipant { OwnerId = owner, InteractionId = primaryInteraction.Id, PersonId = primary },
+            new InteractionParticipant { OwnerId = owner, InteractionId = sharedInteraction.Id, PersonId = primary },
+            new InteractionParticipant { OwnerId = owner, InteractionId = sharedInteraction.Id, PersonId = duplicate },
+            new InteractionParticipant { OwnerId = owner, InteractionId = duplicateOnlyInteraction.Id, PersonId = duplicate },
+            new InteractionParticipant { OwnerId = owner, InteractionId = duplicateOnlyInteraction.Id, PersonId = other });
+        await dbContext.SaveChangesAsync();
+
+        return new Seeded(primary, duplicate, other, primaryEmail, repeatedEmail, phone, sharedInteraction.Id, duplicateOnlyInteraction.Id);
     }
 
     private sealed class CountingSaveInterceptor : SaveChangesInterceptor

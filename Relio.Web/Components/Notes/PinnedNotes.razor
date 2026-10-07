@@ -1,0 +1,162 @@
+@using Relio.Application.Notes
+@using Relio.Domain
+@using System.Threading
+@inject INoteService NoteService
+@inject ISnackbar Snackbar
+
+@if (!_loading && _loadFailed)
+{
+    <div role="alert" data-testid="pinned-notes-error">
+        <MudText Typo="Typo.body2">Pinned notes couldn't be loaded. Try again.</MudText>
+        <MudButton Variant="Variant.Text" OnClick="ReloadAsync" data-testid="pinned-notes-reload">
+            Try again
+        </MudButton>
+    </div>
+}
+else if (!_loading && _pinnedNotes.Count > 0)
+{
+    <section aria-labelledby="pinned-notes-title" data-testid="pinned-notes">
+        <MudText Typo="Typo.h6" HtmlTag="h2" id="pinned-notes-title" Class="mb-3">
+            Pinned notes
+        </MudText>
+        <div class="rl-pinned-notes">
+            @foreach (var note in _pinnedNotes)
+            {
+                <article class="rl-pinned-note mb-4" @key="note.Id" data-testid="pinned-note">
+                    <div class="rl-entry-head">
+                        <span class="rl-entry-kind rl-kind-note">
+                            <MudIcon Icon="@Icons.Material.Outlined.StickyNote2"
+                                     Size="Size.Small"
+                                     aria-hidden="true" />
+                            Note
+                        </span>
+                    </div>
+                    <p class="rl-entry-text rl-multiline" data-testid="pinned-note-text">@note.Text</p>
+                    <div class="d-flex flex-wrap align-center gap-2 mt-2">
+                        <MudButton Variant="Variant.Text"
+                                   Size="Size.Small"
+                                   StartIcon="@Icons.Material.Outlined.Edit"
+                                   Disabled="@(_busyNoteId is not null)"
+                                   OnClick="@(() => EditAsync(note.Id))"
+                                   data-testid="pinned-note-edit">
+                            Edit
+                        </MudButton>
+                        <MudButton Variant="Variant.Text"
+                                   Size="Size.Small"
+                                   StartIcon="@Icons.Material.Outlined.PushPin"
+                                   Disabled="@(_busyNoteId is not null)"
+                                   OnClick="@(() => UnpinAsync(note.Id))"
+                                   data-testid="pinned-note-unpin">
+                            Unpin
+                        </MudButton>
+                    </div>
+                </article>
+            }
+        </div>
+    </section>
+}
+
+@code {
+    private readonly SemaphoreSlim _reloadGate = new(1, 1);
+    private IReadOnlyList<Note> _pinnedNotes = [];
+    private Guid? _busyNoteId;
+    private long _reloadVersion;
+    private bool _loading = true;
+    private bool _loadFailed;
+
+    /// <summary>The person whose pinned notes are shown.</summary>
+    [Parameter, EditorRequired]
+    public Guid PersonId { get; set; }
+
+    /// <summary>Raised when the user asks to edit one of the pinned notes.</summary>
+    [Parameter]
+    public EventCallback<Guid> EditRequested { get; set; }
+
+    /// <summary>Raised after a pinned note is successfully unpinned.</summary>
+    [Parameter]
+    public EventCallback Changed { get; set; }
+
+    /// <inheritdoc />
+    protected override Task OnParametersSetAsync() => ReloadAsync();
+
+    /// <summary>Reloads the pinned notes for the current person.</summary>
+    public async Task ReloadAsync()
+    {
+        var personId = PersonId;
+        var version = Interlocked.Increment(ref _reloadVersion);
+        await _reloadGate.WaitAsync();
+
+        try
+        {
+            if (version != _reloadVersion || personId != PersonId)
+            {
+                return;
+            }
+
+            _loading = true;
+            _loadFailed = false;
+            var notes = await NoteService.ListPinnedAsync(personId);
+            if (version == _reloadVersion && personId == PersonId)
+            {
+                _pinnedNotes = notes;
+            }
+        }
+        catch (Exception)
+        {
+            if (version == _reloadVersion)
+            {
+                _pinnedNotes = [];
+                _loadFailed = true;
+            }
+        }
+        finally
+        {
+            if (version == _reloadVersion)
+            {
+                _loading = false;
+            }
+
+            _reloadGate.Release();
+        }
+
+        if (version == _reloadVersion)
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task EditAsync(Guid noteId) => EditRequested.InvokeAsync(noteId);
+
+    private async Task UnpinAsync(Guid noteId)
+    {
+        if (_busyNoteId is not null)
+        {
+            return;
+        }
+
+        _busyNoteId = noteId;
+        var updated = false;
+        try
+        {
+            updated = await NoteService.SetPinnedAsync(noteId, false);
+            Snackbar.Add(
+                updated ? "Note unpinned" : "This note is no longer available.",
+                updated ? Severity.Success : Severity.Info);
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("The note couldn't be unpinned. Try again.", Severity.Error);
+        }
+        finally
+        {
+            _busyNoteId = null;
+        }
+
+        if (updated)
+        {
+            await Changed.InvokeAsync();
+        }
+
+        await ReloadAsync();
+    }
+}

@@ -909,18 +909,22 @@ Established by issue #22 under epic #21. The routes are pages, not dialogs: `/pe
   tracked, calls the one private `RemoveDependentsAsync`, removes the person and saves **once** (a
   transaction on SQL Server; no `ExecuteDelete`, no `BeginTransaction`). The tags are *links*: only the
   `PersonTags` rows go (`person.Tags.Clear()`), never the `Tag` rows or other people's links to them, and the
-  relationship type stays. **Every new entity with a `PersonId` must, in the same pull request: (1) have an
+  relationship type stays. Notes are removed with their person. An interaction is shared: remove only
+  this person's participant row, and delete the interaction only when it has no remaining participants.
+  **Every new entity with a `PersonId` must, in the same pull request: (1) have an
   `OnDelete(Cascade)` foreign key, (2) add one line to `RemoveDependentsAsync` (always filtered by `OwnerId`
-  and `PersonId`; #35's participants remove this person's participant row and delete the interaction only
-  when it was the last participant), and (3) be added to `PersonDeleteChecklistTests`.** That test reads the
+  and `PersonId`), and (3) be added to `PersonDeleteChecklistTests`.** That test reads the
   model and fails when an entity references `Person` that the list does not name, so a forgotten child cannot
   pass quietly (the InMemory provider cascades only tracked dependents and enforces no foreign keys, so a
   missing line would otherwise leave orphans that look fine). `PersonDeleteSqlServerTests` proves every
   foreign key to `People` is `ON DELETE CASCADE` on a real database. A table with two foreign keys to `People`
   cannot cascade both (SQL Server's multiple cascade paths): make one `NoAction` and delete those rows in
   `RemoveDependentsAsync`. Account deletion (#59) deletes every owned table itself. Backups sit outside the
-  app (#65). Two deletes racing from two tabs: the second normally reads `false`; in the tiny window between
-  both loads and the first save it throws `DbUpdateConcurrencyException` (nothing half-deleted).
+  app (#65). After a write changes or removes interactions, recalculate `Person.LastContactedOn` from the
+  surviving interactions for every affected owner/person pair in the same tracked save; do not trust the
+  denormalized value on a profile being merged or deleted. Two deletes racing from two tabs: the second
+  normally reads `false`; in the tiny window between both loads and the first save it throws
+  `DbUpdateConcurrencyException` (nothing half-deleted).
 - **Archived people.** The rule is "exclude by default, include where the user is working with the person",
   enforced by explicit predicates (`!p.IsArchived`, or `!r.Person.IsArchived` on a child table) and a test per
   feature, not by a global filter or a shared `ActivePeople()` extension - the same reasoning as ownership
@@ -1103,8 +1107,11 @@ Established by issue #22 under epic #21. The routes are pages, not dialogs: `/pe
   `FakePersonMergeService` must implement every member) and the E2E `PersonMergeTests`. bUnit puts a MudRadio's
   `data-testid` on its `<input>` and a `MudRadioGroup`'s class on an outer wrapper (the radios sit in
   `.mud-radio-group`, whose own rule needs a three-class selector to override). The full timeline of both
-  profiles can only be proven for contact methods, tags and fields until interactions, notes, reminders and
-  difficult moments exist: each of those issues extends `MoveDependentsAsync` and the E2E merge test.
+  Notes move to the primary with their text, pin state and audit timestamps unchanged; interaction
+  participant rows move too, except the duplicate row is removed when the primary already participates
+  in that shared interaction. A shared interaction stays one entry, never a copy. E2E and SQL Server
+  tests prove both cases. Future person children (for example reminders and difficult moments) extend
+  `MoveDependentsAsync`, both checklists, both SQL Server foreign-key tests and the E2E merge test.
 
 ### Importing people (issue #29)
 
@@ -1182,6 +1189,59 @@ a vCard or CSV file. Entry points: an outlined **Import** button next to **Add a
   `-text -whitespace`, with an `.editorconfig` override, so CRLF, trailing spaces (folds) and the UTF-16 and
   Windows-1252 bytes survive git and `git diff --check`. Write non-UTF-8 fixtures with a tool that writes raw
   bytes and check them with a hex dump.
+
+### Interactions, notes and timeline (epic #30; issues #31–#35)
+
+- **Interactions are shared records.** `Relio.Domain.Interaction` is an `OwnedEntity` with a
+  user-calendar `DateOnly OccurredOn`, `InteractionKind`, and a required description (maximum 10,000
+  characters). People are related through `InteractionParticipant`, not a `PersonId` on the interaction:
+  each participant has its own `OwnerId`, `InteractionId` and `PersonId`; the unique pair prevents a
+  person being listed twice. Interaction deletion cascades to participants, and person deletion cascades
+  to their participant links. `InteractionService` validates that there are 1–20 distinct, non-empty,
+  owner-scoped participant ids and that the profile being viewed is included; it rejects every bad
+  foreign id before mutating anything. Dates after `IUserTimeZoneService.GetTodayAsync()` are rejected
+  in the user's calendar; never compare an interaction date to UTC today. New archived people cannot be
+  added, but existing archived participants remain available when editing. The profile can create or
+  edit an interaction, and the same record appears on every participant's timeline. Explain in the UI
+  that an edit or deletion affects everyone listed.
+- **Last contact follows surviving interactions.** `Person.LastContactedOn` is the latest `OccurredOn`
+  among that owner's surviving interactions for the person, or `null`. Create, update and delete
+  recalculate every old and new participant in the same tracked save; moving or deleting a shared
+  interaction must not leave stale dates on any profile. `PersonLastContactUpdater` is also used when
+  merging profiles, so a seeded or otherwise stale `LastContactedOn` value never outranks the actual
+  interaction history. Include archived people in maintenance. Do not set `LastContactedOn` in ordinary
+  person create/update requests.
+- **Notes belong to one person.** `Relio.Domain.Note` has `PersonId`, up to 10,000 characters of plain
+  text and an optional `IsPinned` flag. Pinned notes appear above the profile facts; all notes also
+  appear in the timeline. A pin changes presentation only, never retention. Note reads and mutations
+  are explicitly filtered by `OwnerId`; a missing or foreign note is indistinguishable. User-written
+  text is rendered as text, never markup, and is never logged. Notes and interactions remain until the
+  user deletes them or deletes their person; there is no automatic content-retention timer. Archiving
+  hides a person from default list/picker flows, but keeps all their notes and interactions intact.
+- **Timeline is bounded and chronological.** `IPersonTimelineService.GetPageAsync` returns at most 50
+  entries by default (caller size is clamped to 1–100) from separate, bounded SQL keyset streams for
+  interactions and notes; never load a person's complete history into memory. Merge those bounded
+  streams by their user-calendar date, timestamp and a stable type/id tie-break. An interaction's date
+  is its stored calendar date; a note's display date is `CreatedAtUtc` converted to the owner's zone.
+  Neither is converted into a UTC calendar date. Filters are All, Interactions, Notes and Difficult
+  moments. There is not yet a DifficultMoment model: its filter is intentionally empty as an extension
+  seam, not placeholder data or a reason to add a model before that feature.
+- **UI and checklists.** `PersonProfile` owns orchestration only: it renders `PinnedNotes`, the mixed
+  timeline and inline `NoteEditor`/`InteractionEditor`; components reach the database only through
+  `INoteService`, `IInteractionService` and `IPersonTimelineService`. Keep one generic page title and one
+  `h1`; never put names, notes, descriptions, ids or search text into URLs or logs. Add every new person
+  child to `PeopleService.RemoveDependentsAsync`, `PersonMergeService.MoveDependentsAsync`,
+  `PersonDeleteChecklistTests`, `PersonMergeChecklistTests`, `PersonDeleteSqlServerTests` and
+  `PersonMergeSqlServerTests`, and extend merge E2E coverage. Delete a person's note; remove their
+  interaction participant and only delete the interaction when no participants remain. During merge,
+  move notes preserving pin/text and participant links preserving one shared interaction when both
+  profiles were listed. Add each service's read to `DatabaseLaneSqlServerTests` and profile composition
+  to `SqlServerPageLoadTests`; unit InMemory tests do not prove SQL query translation or bounded paging.
+- **Migration and tests.** The model changes land together in `AddInteractionsNotesAndTimeline`.
+  `PersonTimelineSqlServerTests` must prove both note/interaction queries take only a bounded page from
+  a long history and that a note crossing UTC midnight gets the right user-calendar date. Exercise
+  last-contact transitions for create, date/participant edits and deletion, plus shared-interaction
+  merge and person deletion (including when its last participant is removed).
 
 ## Reminders and follow-ups
 

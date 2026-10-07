@@ -1,6 +1,12 @@
 using Microsoft.EntityFrameworkCore;
+using Relio.Application.Interactions;
+using Relio.Application.Notes;
 using Relio.Application.Security;
+using Relio.Application.Timeline;
+using Relio.Data.Interactions;
+using Relio.Data.Notes;
 using Relio.Data.People;
+using Relio.Data.Timeline;
 using Relio.Domain;
 
 namespace Relio.Data.IntegrationTests.Infrastructure;
@@ -25,6 +31,19 @@ internal static class TestDataFactory
 
     public static PersonMergeService CreatePersonMergeService(RelioDbContext dbContext, string? ownerId) =>
         new(dbContext, new FakeCurrentUser(ownerId), TimeProvider.System);
+
+    public static InteractionService CreateInteractionService(RelioDbContext dbContext, string? ownerId) =>
+        new(dbContext, new FakeCurrentUser(ownerId), TimeProvider.System);
+
+    public static NoteService CreateNoteService(RelioDbContext dbContext, string? ownerId) =>
+        new(dbContext, new FakeCurrentUser(ownerId));
+
+    public static Task<Note> CreateNoteAsync(
+        RelioDbContext dbContext, string ownerId, Guid personId, string text, bool isPinned = false) =>
+        CreateNoteService(dbContext, ownerId).CreateAsync(new CreateNoteRequest(personId, text, isPinned));
+
+    public static PersonTimelineService CreatePersonTimelineService(RelioDbContext dbContext, string? ownerId) =>
+        new(dbContext, new FakeCurrentUser(ownerId));
 
     public static RelationshipTypeService CreateRelationshipTypeService(RelioDbContext dbContext, string? ownerId) =>
         new(dbContext, new FakeCurrentUser(ownerId));

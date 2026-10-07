@@ -1,0 +1,217 @@
+@using Relio.Application.Notes
+@using Relio.Application.Ownership
+@using Relio.Domain
+@using Microsoft.Extensions.Logging
+@inject INoteService NoteService
+@inject ISnackbar Snackbar
+@inject ILogger<NoteEditor> Logger
+
+@if (_loading)
+{
+    <div role="status" data-testid="note-editor-loading">Loading note</div>
+}
+else if (_unavailableMessage is not null)
+{
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" data-testid="note-editor-unavailable">
+        @_unavailableMessage
+    </MudAlert>
+    <MudButton Variant="Variant.Text"
+               Disabled="@_busy"
+               OnClick="CancelAsync"
+               data-testid="note-editor-cancel">
+        Cancel
+    </MudButton>
+}
+else
+{
+    <div class="rl-note-editor" aria-busy="@_busy" data-testid="note-editor">
+        @if (_saveErrorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error"
+                      Variant="Variant.Text"
+                      Elevation="0"
+                      Class="mb-3"
+                      data-testid="note-editor-save-error">
+                @_saveErrorMessage
+            </MudAlert>
+        }
+
+        <div data-testid="note-editor-text-field">
+            <MudTextField T="string"
+                          Value="_text"
+                          ValueChanged="TextChangedAsync"
+                          Label="Note"
+                          Lines="5"
+                          MaxLength="@Note.TextMaxLength"
+                          Immediate="true"
+                          Variant="Variant.Outlined"
+                          Class="rl-serif"
+                          Disabled="@_busy"
+                          Error="@(_validationMessage is not null)"
+                          ErrorText="@_validationMessage"
+                          UserAttributes="@NoAutofill" />
+        </div>
+
+        <MudCheckBox T="bool"
+                     @bind-Value="_isPinned"
+                     Label="Pin this note near the top"
+                     Disabled="@_busy"
+                     data-testid="note-editor-pinned" />
+
+        <div class="d-flex flex-wrap align-center gap-2 mt-3">
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       ButtonType="ButtonType.Button"
+                       Disabled="@_busy"
+                       OnClick="SaveAsync"
+                       data-testid="note-editor-save">
+                Save note
+            </MudButton>
+            <MudButton Variant="Variant.Text"
+                       ButtonType="ButtonType.Button"
+                       Disabled="@_busy"
+                       OnClick="CancelAsync"
+                       data-testid="note-editor-cancel">
+                Cancel
+            </MudButton>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly Dictionary<string, object> NoAutofill = new() { ["autocomplete"] = "off" };
+
+    private long _loadVersion;
+    private bool _loading;
+    private bool _busy;
+    private bool _isPinned;
+    private string _text = string.Empty;
+    private string? _validationMessage;
+    private string? _saveErrorMessage;
+    private string? _unavailableMessage;
+
+    /// <summary>The person the note belongs to.</summary>
+    [Parameter, EditorRequired]
+    public Guid PersonId { get; set; }
+
+    /// <summary>The note being edited, or <see langword="null"/> when creating a note.</summary>
+    [Parameter]
+    public Guid? NoteId { get; set; }
+
+    /// <summary>Raised after a note is saved.</summary>
+    [Parameter]
+    public EventCallback Saved { get; set; }
+
+    /// <summary>Raised when the user cancels editing or creation.</summary>
+    [Parameter]
+    public EventCallback Cancelled { get; set; }
+
+    /// <inheritdoc />
+    protected override async Task OnParametersSetAsync()
+    {
+        var version = ++_loadVersion;
+        _text = string.Empty;
+        _isPinned = false;
+        _validationMessage = null;
+        _unavailableMessage = null;
+
+        if (NoteId is not Guid noteId)
+        {
+            _loading = false;
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            var note = await NoteService.GetAsync(noteId);
+            if (version != _loadVersion)
+            {
+                return;
+            }
+
+            if (note is null || note.PersonId != PersonId)
+            {
+                _unavailableMessage = "This note is no longer available.";
+                return;
+            }
+
+            _text = note.Text;
+            _isPinned = note.IsPinned;
+        }
+        catch (Exception)
+        {
+            if (version == _loadVersion)
+            {
+                _unavailableMessage = "This note couldn't be loaded. Try again.";
+            }
+        }
+        finally
+        {
+            if (version == _loadVersion)
+            {
+                _loading = false;
+            }
+        }
+    }
+
+    private Task TextChangedAsync(string value)
+    {
+        _text = value;
+        _validationMessage = null;
+        _saveErrorMessage = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_busy || _loading || _unavailableMessage is not null)
+        {
+            return;
+        }
+
+        _busy = true;
+        _validationMessage = null;
+        _saveErrorMessage = null;
+        try
+        {
+            if (NoteId is Guid noteId)
+            {
+                var updated = await NoteService.UpdateAsync(noteId, new UpdateNoteRequest(_text, _isPinned));
+                if (!updated)
+                {
+                    _unavailableMessage = "This note is no longer available.";
+                    return;
+                }
+            }
+            else
+            {
+                await NoteService.CreateAsync(new CreateNoteRequest(PersonId, _text, _isPinned));
+            }
+
+            Snackbar.Add("Note saved", Severity.Success);
+            await Saved.InvokeAsync();
+        }
+        catch (NoteValidationException exception)
+        {
+            _validationMessage = exception.Errors
+                .Select(NoteFormMessages.For)
+                .FirstOrDefault() ?? "Review the note and try again.";
+        }
+        catch (ForeignEntityNotOwnedException exception) when (exception.EntityName == "people")
+        {
+            _unavailableMessage = "This person is no longer available.";
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError("Note save failed with exception type {ExceptionType}", exception.GetType().Name);
+            _saveErrorMessage = "The note couldn't be saved. Try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task CancelAsync() => Cancelled.InvokeAsync();
+}
