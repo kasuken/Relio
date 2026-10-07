@@ -84,4 +84,30 @@ public class HomePageTests
         cut.Markup.Should().Contain("Call Grace");
         cut.Markup.Should().Contain("Due today");
     }
+
+    [Fact]
+    public async Task Dashboard_renders_due_birthday_reminders_when_present()
+    {
+        var people = new FakePeopleService();
+        var person = new Person { Id = Guid.NewGuid(), FirstName = "Ada", LastName = "Lovelace" };
+        people.Known.Add(person);
+        var reminders = new FakeReminderService();
+        reminders.BirthdayReminders.Add(new BirthdayReminderDto(
+            person.Id,
+            "Ada Lovelace",
+            Today,
+            36,
+            Today,
+            0,
+            true,
+            0));
+
+        await using var context = CreateContext(people, reminders);
+        var cut = context.Render<Home>();
+
+        cut.Find($"[data-testid='dashboard-birthday-{person.Id}']").Should().NotBeNull();
+        cut.Markup.Should().Contain("Ada Lovelace");
+        cut.Markup.Should().Contain("Turning 36");
+        cut.Markup.Should().Contain("Birthday is today!");
+    }
 }

@@ -219,6 +219,97 @@ public class ReminderServiceTests
         due.Select(r => r.Id).Should().NotContain(archivedReminder.Id);
     }
 
+    [Fact]
+    public async Task ListDueBirthdaysAsync_returns_due_birthdays_and_respects_lead_days()
+    {
+        await using var dbContext = CreateDbContext();
+        // Today is 2026-10-07
+        var dueTodayId = await CreatePersonAsync(dbContext, UserA, "Grace", birthdayDay: 7, birthdayMonth: 10, birthdayYear: 1990);
+        var dueWithLeadDaysId = await CreatePersonAsync(dbContext, UserA, "Alan", birthdayDay: 14, birthdayMonth: 10, birthdayReminderLeadDays: 7);
+        var notDueId = await CreatePersonAsync(dbContext, UserA, "Bob", birthdayDay: 20, birthdayMonth: 10, birthdayReminderLeadDays: 0);
+
+        var service = CreateService(dbContext, UserA);
+        var due = await service.ListDueBirthdaysAsync();
+
+        due.Should().HaveCount(2);
+        due[0].PersonId.Should().Be(dueTodayId);
+        due[0].PersonDisplayName.Should().Be("Grace");
+        due[0].DaysUntilBirthday.Should().Be(0);
+        due[0].TurningAge.Should().Be(36);
+        due[0].IsDue.Should().BeTrue();
+
+        due[1].PersonId.Should().Be(dueWithLeadDaysId);
+        due[1].PersonDisplayName.Should().Be("Alan");
+        due[1].DaysUntilBirthday.Should().Be(7);
+        due[1].TurningAge.Should().BeNull();
+        due[1].IsDue.Should().BeTrue();
+
+        due.Select(d => d.PersonId).Should().NotContain(notDueId);
+    }
+
+    [Fact]
+    public async Task ListDueBirthdaysAsync_returns_empty_when_globally_disabled()
+    {
+        await using var dbContext = CreateDbContext();
+        await CreatePersonAsync(dbContext, UserA, "Grace", birthdayDay: 7, birthdayMonth: 10);
+        dbContext.UserProfiles.Add(new UserProfile { OwnerId = UserA, BirthdayRemindersEnabled = false });
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+
+        var service = CreateService(dbContext, UserA);
+        var due = await service.ListDueBirthdaysAsync();
+
+        due.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ListDueBirthdaysAsync_respects_per_person_disabled_and_archived()
+    {
+        await using var dbContext = CreateDbContext();
+        await CreatePersonAsync(dbContext, UserA, "Grace", birthdayDay: 7, birthdayMonth: 10, birthdayReminderDisabled: true);
+        await CreatePersonAsync(dbContext, UserA, "Archived", birthdayDay: 7, birthdayMonth: 10, isArchived: true);
+
+        var service = CreateService(dbContext, UserA);
+        var due = await service.ListDueBirthdaysAsync();
+
+        due.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ListUpcomingBirthdaysAsync_filters_by_daysAhead_and_orders_by_date_and_name()
+    {
+        await using var dbContext = CreateDbContext();
+        // Today is 2026-10-07
+        var person1 = await CreatePersonAsync(dbContext, UserA, "Zara", birthdayDay: 10, birthdayMonth: 10);
+        var person2 = await CreatePersonAsync(dbContext, UserA, "Adam", birthdayDay: 10, birthdayMonth: 10);
+        var person3 = await CreatePersonAsync(dbContext, UserA, "Far", birthdayDay: 1, birthdayMonth: 12); // > 30 days ahead
+
+        var service = CreateService(dbContext, UserA);
+        var upcoming30 = await service.ListUpcomingBirthdaysAsync(daysAhead: 30);
+
+        upcoming30.Should().HaveCount(2);
+        // Same date: ordered by name (Adam, then Zara)
+        upcoming30[0].PersonId.Should().Be(person2);
+        upcoming30[1].PersonId.Should().Be(person1);
+
+        var upcoming2 = await service.ListUpcomingBirthdaysAsync(daysAhead: 2);
+        upcoming2.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task User_isolation_User_B_cannot_read_User_A_birthdays()
+    {
+        await using var dbContext = CreateDbContext();
+        await CreatePersonAsync(dbContext, UserA, "Grace", birthdayDay: 7, birthdayMonth: 10);
+
+        var serviceB = CreateService(dbContext, UserB);
+        var due = await serviceB.ListDueBirthdaysAsync();
+        var upcoming = await serviceB.ListUpcomingBirthdaysAsync();
+
+        due.Should().BeEmpty();
+        upcoming.Should().BeEmpty();
+    }
+
     private static RelioDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<RelioDbContext>()
@@ -236,13 +327,26 @@ public class ReminderServiceTests
     }
 
     private static async Task<Guid> CreatePersonAsync(
-        RelioDbContext dbContext, string ownerId, string firstName, bool isArchived = false)
+        RelioDbContext dbContext,
+        string ownerId,
+        string firstName,
+        bool isArchived = false,
+        int? birthdayDay = null,
+        int? birthdayMonth = null,
+        int? birthdayYear = null,
+        bool birthdayReminderDisabled = false,
+        int? birthdayReminderLeadDays = null)
     {
         var person = new Person
         {
             OwnerId = ownerId,
             FirstName = firstName,
             IsArchived = isArchived,
+            BirthdayDay = birthdayDay,
+            BirthdayMonth = birthdayMonth,
+            BirthdayYear = birthdayYear,
+            BirthdayReminderDisabled = birthdayReminderDisabled,
+            BirthdayReminderLeadDays = birthdayReminderLeadDays,
         };
         dbContext.People.Add(person);
         await dbContext.SaveChangesAsync();

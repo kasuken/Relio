@@ -128,6 +128,44 @@ public class PersonProfilePageTests
     }
 
     [Fact]
+    public async Task Shows_birthday_reminder_preference_when_lead_days_set()
+    {
+        var person = new Person
+        {
+            FirstName = "Ada",
+            BirthdayDay = 10,
+            BirthdayMonth = 12,
+            BirthdayReminderLeadDays = 7,
+        };
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people);
+
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        cut.Find("[data-testid='person-birthday-reminder-setting']").TextContent.Should().Be("Remind 7 days before");
+    }
+
+    [Fact]
+    public async Task Shows_birthday_reminder_disabled_when_preference_disabled()
+    {
+        var person = new Person
+        {
+            FirstName = "Ada",
+            BirthdayDay = 10,
+            BirthdayMonth = 12,
+            BirthdayReminderDisabled = true,
+        };
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people);
+
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        cut.Find("[data-testid='person-birthday-reminder-setting']").TextContent.Should().Be("Reminder disabled");
+    }
+
+    [Fact]
     public async Task Leaves_out_everything_that_is_not_set()
     {
         var person = new Person { FirstName = "Grace" };

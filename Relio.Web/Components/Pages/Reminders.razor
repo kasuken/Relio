@@ -33,6 +33,54 @@ else
 {
     <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pt-4" @bind-ActivePanelIndex="_activeTab">
         <MudTabPanel Text="@($"Active ({_activeReminders.Count})")" data-testid="reminders-tab-active">
+            @if (_upcomingBirthdays.Count > 0)
+            {
+                <div class="mb-6" data-testid="upcoming-birthdays-section">
+                    <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-3">Upcoming birthdays</MudText>
+                    <div class="d-flex flex-column gap-3" data-testid="upcoming-birthdays-list">
+                        @foreach (var birthday in _upcomingBirthdays)
+                        {
+                            <MudCard Elevation="1" Class="pa-2" data-testid="@($"birthday-card-{birthday.PersonId}")">
+                                <MudCardContent Class="d-flex align-center justify-space-between pa-2">
+                                    <div class="d-flex align-center gap-3">
+                                        <MudIcon Icon="@Icons.Material.Outlined.Cake" Color="@(birthday.IsDue ? Color.Warning : Color.Primary)" />
+                                        <div>
+                                            <div class="d-flex align-center gap-2 flex-wrap">
+                                                <MudLink Href="@($"/people/{birthday.PersonId}")"
+                                                         Typo="Typo.h4"
+                                                         Color="Color.Primary"
+                                                         Class="text-decoration-none"
+                                                         data-testid="@($"birthday-person-{birthday.PersonId}")">
+                                                    @birthday.PersonDisplayName
+                                                </MudLink>
+                                                @if (birthday.TurningAge.HasValue)
+                                                {
+                                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default" data-testid="@($"birthday-age-{birthday.PersonId}")">
+                                                        Turning @birthday.TurningAge.Value
+                                                    </MudChip>
+                                                }
+                                                @if (birthday.IsDue)
+                                                {
+                                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Color="Color.Warning" data-testid="@($"birthday-due-{birthday.PersonId}")">
+                                                        Due
+                                                    </MudChip>
+                                                }
+                                            </div>
+                                            <MudText Typo="Typo.caption"
+                                                     Color="@(birthday.DaysUntilBirthday == 0 ? Color.Warning : Color.Secondary)"
+                                                     Class="mt-1 font-weight-bold"
+                                                     data-testid="@($"birthday-days-until-{birthday.PersonId}")">
+                                                @FormatBirthdayDaysUntil(birthday)
+                                            </MudText>
+                                        </div>
+                                    </div>
+                                </MudCardContent>
+                            </MudCard>
+                        }
+                    </div>
+                </div>
+            }
+
             @if (_activeReminders.Count == 0)
             {
                 <div data-testid="reminders-empty">
@@ -164,6 +212,7 @@ else
     private DateOnly _today;
     private IReadOnlyList<ReminderDto> _activeReminders = [];
     private IReadOnlyList<ReminderDto> _completedReminders = [];
+    private IReadOnlyList<BirthdayReminderDto> _upcomingBirthdays = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -177,6 +226,7 @@ else
         var all = await ReminderService.ListAsync(includeCompleted: true);
         _activeReminders = all.Where(r => !r.IsCompleted).ToList();
         _completedReminders = all.Where(r => r.IsCompleted).OrderByDescending(r => r.CompletedAtUtc).ToList();
+        _upcomingBirthdays = await ReminderService.ListUpcomingBirthdaysAsync(30);
     }
 
     private async Task AddReminderAsync()
@@ -288,4 +338,19 @@ else
         ReminderFrequency.CustomMonths => $"Every {reminder.CustomIntervalMonths} months",
         _ => string.Empty,
     };
+
+    private static string FormatBirthdayDaysUntil(BirthdayReminderDto birthday)
+    {
+        if (birthday.DaysUntilBirthday == 0)
+        {
+            return "Birthday is today!";
+        }
+
+        if (birthday.DaysUntilBirthday == 1)
+        {
+            return $"Tomorrow ({birthday.BirthdayDate:d MMMM})";
+        }
+
+        return $"In {birthday.DaysUntilBirthday} days ({birthday.BirthdayDate:d MMMM})";
+    }
 }

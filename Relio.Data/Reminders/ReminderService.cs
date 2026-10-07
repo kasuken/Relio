@@ -303,6 +303,70 @@ public sealed class ReminderService(
         }
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<BirthdayReminderDto>> ListDueBirthdaysAsync(CancellationToken cancellationToken = default)
+    {
+        var ownerId = currentUser.RequireUserId();
+
+        var profile = await dbContext.UserProfiles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.OwnerId == ownerId, cancellationToken);
+
+        var globallyEnabled = profile?.BirthdayRemindersEnabled ?? true;
+        if (!globallyEnabled)
+        {
+            return [];
+        }
+
+        var defaultLeadDays = profile?.DefaultBirthdayLeadDays ?? 0;
+        var today = await userTimeZoneService.GetTodayAsync(cancellationToken);
+
+        var people = await dbContext.People
+            .AsNoTracking()
+            .Where(p => p.OwnerId == ownerId && !p.IsArchived && p.BirthdayDay != null && p.BirthdayMonth != null)
+            .ToListAsync(cancellationToken);
+
+        return people
+            .Select(p => BirthdayReminderCalculator.Calculate(p, defaultLeadDays, today, globallyEnabled: true))
+            .Where(b => b is not null && b.IsDue)
+            .Select(b => b!)
+            .OrderBy(b => b.BirthdayDate)
+            .ThenBy(b => b.PersonDisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<BirthdayReminderDto>> ListUpcomingBirthdaysAsync(int daysAhead = 30, CancellationToken cancellationToken = default)
+    {
+        var ownerId = currentUser.RequireUserId();
+
+        var profile = await dbContext.UserProfiles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.OwnerId == ownerId, cancellationToken);
+
+        var globallyEnabled = profile?.BirthdayRemindersEnabled ?? true;
+        if (!globallyEnabled)
+        {
+            return [];
+        }
+
+        var defaultLeadDays = profile?.DefaultBirthdayLeadDays ?? 0;
+        var today = await userTimeZoneService.GetTodayAsync(cancellationToken);
+
+        var people = await dbContext.People
+            .AsNoTracking()
+            .Where(p => p.OwnerId == ownerId && !p.IsArchived && p.BirthdayDay != null && p.BirthdayMonth != null)
+            .ToListAsync(cancellationToken);
+
+        return people
+            .Select(p => BirthdayReminderCalculator.Calculate(p, defaultLeadDays, today, globallyEnabled: true))
+            .Where(b => b is not null && b.DaysUntilBirthday >= 0 && b.DaysUntilBirthday <= daysAhead)
+            .Select(b => b!)
+            .OrderBy(b => b.BirthdayDate)
+            .ThenBy(b => b.PersonDisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private static ReminderDto ToDto(Reminder reminder) => new(
         reminder.Id,
         reminder.PersonId,

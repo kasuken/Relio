@@ -59,7 +59,7 @@ else
     @* Reminders Section *@
     <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-3">Due reminders</MudText>
 
-    @if (_dueReminders.Count == 0)
+    @if (_dueReminders.Count == 0 && _dueBirthdays.Count == 0)
     {
         <MudCard Elevation="0" Outlined="true" Class="pa-4 mb-6" data-testid="dashboard-reminders-caught-up">
             <div class="d-flex align-center gap-3">
@@ -76,6 +76,41 @@ else
     else
     {
         <div class="d-flex flex-column gap-3 mb-6" data-testid="dashboard-due-reminders-list">
+            @foreach (var birthday in _dueBirthdays)
+            {
+                <MudCard Elevation="1" Class="pa-2" data-testid="@($"dashboard-birthday-{birthday.PersonId}")">
+                    <MudCardContent Class="d-flex align-center justify-space-between pa-2">
+                        <div class="d-flex align-center gap-3">
+                            <MudIcon Icon="@Icons.Material.Outlined.Cake" Color="Color.Secondary" Size="Size.Medium" Class="ml-2" />
+                            <div>
+                                <div class="d-flex align-center gap-2">
+                                    <MudLink Href="@($"/people/{birthday.PersonId}")"
+                                             Typo="Typo.h4"
+                                             Color="Color.Primary"
+                                             Class="text-decoration-none"
+                                             data-testid="@($"dashboard-birthday-person-{birthday.PersonId}")">
+                                        @birthday.PersonDisplayName
+                                    </MudLink>
+                                    @if (birthday.TurningAge.HasValue)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" data-testid="@($"dashboard-birthday-age-{birthday.PersonId}")">
+                                            Turning @birthday.TurningAge.Value
+                                        </MudChip>
+                                    }
+                                </div>
+                                <MudText Typo="Typo.body1" Class="mt-1" data-testid="@($"dashboard-birthday-title-{birthday.PersonId}")">
+                                    @(birthday.DaysUntilBirthday == 0 ? "Birthday is today!" : $"Birthday in {birthday.DaysUntilBirthday} {(birthday.DaysUntilBirthday == 1 ? "day" : "days")} ({birthday.BirthdayDate:d MMMM})")
+                                </MudText>
+                                <MudText Typo="Typo.caption"
+                                         Color="@(birthday.DaysUntilBirthday == 0 ? Color.Warning : Color.Secondary)"
+                                         Class="font-weight-bold">
+                                    @(birthday.DaysUntilBirthday == 0 ? "Due today" : $"Upcoming on {birthday.BirthdayDate:d MMMM}")
+                                </MudText>
+                            </div>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            }
             @foreach (var reminder in _dueReminders)
             {
                 var isOverdue = reminder.EffectiveDueDate < _today;
@@ -132,6 +167,7 @@ else
     private DateOnly _today;
     private int _peopleCount;
     private IReadOnlyList<ReminderDto> _dueReminders = [];
+    private IReadOnlyList<BirthdayReminderDto> _dueBirthdays = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -148,6 +184,7 @@ else
         if (_peopleCount > 0)
         {
             _dueReminders = await ReminderService.ListDueAsync(_today);
+            _dueBirthdays = await ReminderService.ListDueBirthdaysAsync();
         }
     }
 

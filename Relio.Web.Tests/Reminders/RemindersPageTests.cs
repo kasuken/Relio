@@ -97,4 +97,30 @@ public class RemindersPageTests
 
         reminders.Reminders.Single(r => r.Id == id).IsCompleted.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task Reminders_page_renders_upcoming_birthday_reminders()
+    {
+        var reminders = new FakeReminderService();
+        var personId = Guid.NewGuid();
+        reminders.BirthdayReminders.Add(new BirthdayReminderDto(
+            personId,
+            "Grace Hopper",
+            Today.AddDays(5),
+            85,
+            Today,
+            7,
+            true,
+            5));
+
+        await using var context = CreateContext(reminders);
+        var cut = context.Render<Relio.Web.Components.Pages.Reminders>();
+
+        cut.Find("[data-testid='upcoming-birthdays-section']").Should().NotBeNull();
+        cut.Find($"[data-testid='birthday-card-{personId}']").Should().NotBeNull();
+        cut.Markup.Should().Contain("Grace Hopper");
+        cut.Markup.Should().Contain("Turning 85");
+        cut.Markup.Should().Contain("In 5 days");
+        cut.Markup.Should().Contain("Due");
+    }
 }

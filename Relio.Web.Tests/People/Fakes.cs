@@ -460,4 +460,14 @@ internal sealed class FakeReminderService : Relio.Application.Reminders.IReminde
         var removed = Reminders.RemoveAll(r => r.Id == id);
         return Task.FromResult(removed > 0);
     }
+
+    public List<Relio.Application.Reminders.BirthdayReminderDto> BirthdayReminders { get; } = [];
+
+    public Task<IReadOnlyList<Relio.Application.Reminders.BirthdayReminderDto>> ListDueBirthdaysAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<Relio.Application.Reminders.BirthdayReminderDto>>(
+            BirthdayReminders.Where(b => b.IsDue).ToList());
+
+    public Task<IReadOnlyList<Relio.Application.Reminders.BirthdayReminderDto>> ListUpcomingBirthdaysAsync(int daysAhead = 30, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<Relio.Application.Reminders.BirthdayReminderDto>>(
+            BirthdayReminders.Where(b => b.DaysUntilBirthday >= 0 && b.DaysUntilBirthday <= daysAhead).ToList());
 }

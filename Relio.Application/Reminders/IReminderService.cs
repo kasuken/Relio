@@ -34,4 +34,10 @@ public interface IReminderService
 
     /// <summary>Deletes a reminder permanently. Returns false if not found or not owned.</summary>
     Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Lists due birthday reminders for active people owned by the current user.</summary>
+    Task<IReadOnlyList<BirthdayReminderDto>> ListDueBirthdaysAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Lists upcoming birthday reminders for active people owned by the current user within a given number of days.</summary>
+    Task<IReadOnlyList<BirthdayReminderDto>> ListUpcomingBirthdaysAsync(int daysAhead = 30, CancellationToken cancellationToken = default);
 }

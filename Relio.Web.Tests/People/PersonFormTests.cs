@@ -280,4 +280,24 @@ public class PersonFormTests
         cut.Find("[data-testid='person-first-name-field']").TextContent
             .Should().Contain("The only thing Relio needs.");
     }
+
+    [Fact]
+    public async Task Birthday_reminder_disabled_and_lead_days_can_be_configured_in_form()
+    {
+        var people = new FakePeopleService();
+        await using var context = CreateContext(people, DefaultTypes(), out _, out _);
+        var cut = context.Render<PersonForm>();
+
+        cut.Find("[data-testid='person-birthday-reminder-disabled']").Should().NotBeNull();
+        cut.Find("[data-testid='person-birthday-lead-days']").Should().NotBeNull();
+
+        Type(cut, "person-first-name-field", "Grace");
+        cut.Find("[data-testid='person-birthday-reminder-disabled']").Change(true);
+        Save(cut);
+
+        cut.WaitForAssertion(() => people.Created.Should().ContainSingle());
+        var request = people.Created.Single();
+        request.FirstName.Should().Be("Grace");
+        request.BirthdayReminderDisabled.Should().BeTrue();
+    }
 }

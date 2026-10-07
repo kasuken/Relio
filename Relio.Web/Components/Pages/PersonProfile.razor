@@ -136,6 +136,13 @@
                     <dt><MudIcon Icon="@Icons.Material.Outlined.Cake" Size="Size.Small" />Birthday</dt>
                     <dd data-testid="person-birthday">@BirthdayDisplay.Format(birthday)</dd>
                 </div>
+                @if (FormatBirthdayReminderSetting(_person) is { } reminderSetting)
+                {
+                    <div data-testid="person-birthday-reminder">
+                        <dt>Birthday reminder</dt>
+                        <dd data-testid="person-birthday-reminder-setting">@reminderSetting</dd>
+                    </div>
+                }
             }
             @if (_person.HowWeMet is not null)
             {
@@ -395,5 +402,25 @@
         {
             await LoadAsync();
         }
+    }
+
+    private static string? FormatBirthdayReminderSetting(Person person)
+    {
+        if (person.BirthdayReminderDisabled)
+        {
+            return "Reminder disabled";
+        }
+
+        if (person.BirthdayReminderLeadDays is { } leadDays)
+        {
+            return leadDays switch
+            {
+                0 => "Remind on the day",
+                1 => "Remind 1 day before",
+                _ => $"Remind {leadDays} days before",
+            };
+        }
+
+        return null;
     }
 }

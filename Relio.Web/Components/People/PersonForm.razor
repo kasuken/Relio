@@ -150,6 +150,33 @@
                 @ErrorFor(PersonFormField.Birthday)
             </MudText>
         }
+
+        <div class="mt-3">
+            <MudCheckBox T="bool"
+                         @bind-Value="_model.BirthdayReminderDisabled"
+                         Label="Disable birthday reminder"
+                         Color="Color.Primary"
+                         data-testid="person-birthday-reminder-disabled" />
+        </div>
+
+        <div class="mt-2" data-testid="person-birthday-lead-days">
+            <MudSelect T="int?"
+                       @bind-Value="_model.BirthdayReminderLeadDays"
+                       Label="Reminder lead time"
+                       Variant="Variant.Outlined"
+                       Clearable="true"
+                       Disabled="@_model.BirthdayReminderDisabled"
+                       data-testid="person-birthday-lead-days-select">
+                <MudSelectItem T="int?" Value="@((int?)null)">Default (from settings)</MudSelectItem>
+                <MudSelectItem T="int?" Value="@((int?)0)">On the day</MudSelectItem>
+                <MudSelectItem T="int?" Value="@((int?)1)">1 day before</MudSelectItem>
+                <MudSelectItem T="int?" Value="@((int?)2)">2 days before</MudSelectItem>
+                <MudSelectItem T="int?" Value="@((int?)3)">3 days before</MudSelectItem>
+                <MudSelectItem T="int?" Value="@((int?)7)">1 week before</MudSelectItem>
+                <MudSelectItem T="int?" Value="@((int?)14)">2 weeks before</MudSelectItem>
+                <MudSelectItem T="int?" Value="@((int?)30)">1 month before</MudSelectItem>
+            </MudSelect>
+        </div>
     </fieldset>
 
     <div data-testid="person-how-we-met-field">
