@@ -1,0 +1,94 @@
+@* Asks what happens to the people who have a relationship type that is about to be removed
+   (issue #25): move them to another type, or leave them without one. Only used when at least one
+   person has the type; an unused type is removed after a plain confirmation. *@
+@using Relio.Application.People
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h3">Remove @Type.Name?</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body1" Class="mb-3" data-testid="remove-type-dialog-message">
+            @LabelSettingsText.TypeInUse(Type.PeopleCount) Choose what they have instead.
+        </MudText>
+
+        @if (Others.Count > 0)
+        {
+            <MudRadioGroup T="RemoveTypeChoice" @bind-Value="_choice" data-testid="remove-type-dialog-choice">
+                <MudRadio T="RemoveTypeChoice" Value="RemoveTypeChoice.Move" Color="Color.Primary">Move them to another relationship type</MudRadio>
+                <MudRadio T="RemoveTypeChoice" Value="RemoveTypeChoice.LeaveEmpty" Color="Color.Primary">Leave their relationship type empty</MudRadio>
+            </MudRadioGroup>
+
+            @if (_choice == RemoveTypeChoice.Move)
+            {
+                <div data-testid="remove-type-dialog-target-field" class="mt-3">
+                    <MudSelect T="Guid?"
+                               @bind-Value="_targetId"
+                               Label="Move them to"
+                               Variant="Variant.Outlined"
+                               ToStringFunc="@TargetName">
+                        @foreach (var other in Others)
+                        {
+                            <MudSelectItem T="Guid?" Value="@((Guid?)other.Id)">@other.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </div>
+            }
+            else
+            {
+                <MudText Typo="Typo.body1" Class="mud-text-secondary mt-3">
+                    They'll have no relationship type. Nothing else about them changes.
+                </MudText>
+            }
+        }
+        else
+        {
+            <MudText Typo="Typo.body1" Class="mud-text-secondary">
+                They'll have no relationship type. Nothing else about them changes.
+            </MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" data-testid="remove-type-dialog-cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Error"
+                   Disabled="@(_choice == RemoveTypeChoice.Move && Others.Count > 0 && _targetId is null)"
+                   OnClick="Confirm"
+                   data-testid="remove-type-dialog-confirm">
+            Remove
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private RemoveTypeChoice _choice = RemoveTypeChoice.Move;
+    private Guid? _targetId;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    /// <summary>The type being removed, with how many people have it.</summary>
+    [Parameter, EditorRequired]
+    public RelationshipTypeUsage Type { get; set; } = null!;
+
+    /// <summary>The user's other types, in list order: where people can be moved to.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<RelationshipTypeUsage> Others { get; set; } = [];
+
+    private string TargetName(Guid? id) =>
+        Others.FirstOrDefault(t => id is Guid value && t.Id == value)?.Name ?? string.Empty;
+
+    private void Confirm()
+    {
+        var reassignTo = _choice == RemoveTypeChoice.Move && Others.Count > 0 ? _targetId : null;
+        MudDialog.Close(DialogResult.Ok(new RemoveRelationshipTypeResult(reassignTo)));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private enum RemoveTypeChoice
+    {
+        Move,
+        LeaveEmpty,
+    }
+}

@@ -26,7 +26,7 @@ public class AccountSettingsTests(RelioAppFixture fixture)
 
         await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/settings");
 
-        foreach (var heading in new[] { "Profile", "Time zone", "Sign-in and security", "Reminder emails", "Appearance" })
+        foreach (var heading in new[] { "Profile", "Time zone", "Relationship types and tags", "Sign-in and security", "Reminder emails", "Appearance" })
         {
             await Expect(page.GetByRole(AriaRole.Heading, new() { Name = heading, Exact = true })).ToBeVisibleAsync();
         }

@@ -7,6 +7,14 @@ namespace Relio.Data.Configurations;
 /// <summary>EF Core mapping for <see cref="RelationshipType"/>.</summary>
 public sealed class RelationshipTypeConfiguration : IEntityTypeConfiguration<RelationshipType>
 {
+    /// <summary>
+    /// The name EF Core gives the unique <c>(OwnerId, Name)</c> index by convention. Services
+    /// recognise a duplicate-key error by it (<c>SqlServerErrors.IsUniqueIndexViolation</c>); do not
+    /// add <c>HasDatabaseName</c> - <c>DatabaseSchemaSqlServerTests</c> checks the index really has
+    /// this name.
+    /// </summary>
+    public const string NameIndexName = "IX_RelationshipTypes_OwnerId_Name";
+
     /// <inheritdoc />
     public void Configure(EntityTypeBuilder<RelationshipType> builder)
     {

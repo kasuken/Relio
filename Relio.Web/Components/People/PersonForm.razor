@@ -78,6 +78,8 @@
                    Label="Relationship"
                    Clearable="true"
                    Variant="Variant.Outlined"
+                   Disabled="@(_types.Count == 0)"
+                   HelperText="@(_types.Count == 0 ? "You have no relationship types. Add them in Settings." : null)"
                    ToStringFunc="@TypeName">
             @foreach (var type in _types)
             {

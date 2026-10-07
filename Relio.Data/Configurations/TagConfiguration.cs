@@ -7,6 +7,14 @@ namespace Relio.Data.Configurations;
 /// <summary>EF Core mapping for <see cref="Tag"/>.</summary>
 public sealed class TagConfiguration : IEntityTypeConfiguration<Tag>
 {
+    /// <summary>
+    /// The name EF Core gives the unique <c>(OwnerId, Name)</c> index by convention. Services
+    /// recognise a duplicate-key error by it (<c>SqlServerErrors.IsUniqueIndexViolation</c>); do not
+    /// add <c>HasDatabaseName</c> - <c>DatabaseSchemaSqlServerTests</c> checks the index really has
+    /// this name.
+    /// </summary>
+    public const string NameIndexName = "IX_Tags_OwnerId_Name";
+
     /// <inheritdoc />
     public void Configure(EntityTypeBuilder<Tag> builder)
     {

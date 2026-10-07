@@ -1,0 +1,230 @@
+@* Manage the user's tags (issue #25): add, rename, remove. Rendered by the /settings/tags page, the
+   one data consumer on it: every call is awaited in turn, because the circuit's DbContext runs one
+   operation at a time. Counts include archived people. Names are shown on screen but never logged
+   or put in an address. *@
+@using Relio.Application.People
+@using Relio.Domain
+
+@inject ITagService TagService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+@if (_usage is not null)
+{
+    <MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
+        Labels you add to people, like Climbing or Book club. Renaming a tag changes it for everyone
+        who has it. Counts include archived people.
+    </MudText>
+
+    <form class="rl-label-add" data-testid="tag-add-form" @onsubmit="AddAsync" @onsubmit:preventDefault>
+        <div class="rl-label-add-field" data-testid="tag-add-field">
+            <MudTextField T="string"
+                          @bind-Value="_newName"
+                          Label="New tag"
+                          MaxLength="Tag.NameMaxLength"
+                          Immediate="true"
+                          Variant="Variant.Outlined"
+                          Error="@(_addError is not null)"
+                          ErrorText="@_addError" />
+        </div>
+        <MudButton ButtonType="ButtonType.Submit"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Outlined.Add"
+                   Disabled="_busy"
+                   data-testid="tag-add">
+            Add
+        </MudButton>
+    </form>
+
+    @if (_usage.Count == 0)
+    {
+        <div data-testid="tags-empty">
+            <EmptyState HeadingTag="h2"
+                        Title="No tags yet"
+                        Message="Add one above, or add tags while editing a person." />
+        </div>
+    }
+    else
+    {
+        <ul class="rl-label-list" data-testid="tag-list">
+            @foreach (var row in _usage)
+            {
+                <li class="rl-label-row" data-testid="tag-row" @key="row.Id">
+                    <span class="rl-label-row-text">
+                        <span class="rl-label-name" data-testid="tag-row-name">@row.Name</span>
+                        <span class="rl-meta" data-testid="tag-row-count">@LabelSettingsText.UsedBy(row.PeopleCount)</span>
+                    </span>
+                    <span class="rl-label-row-actions">
+                        <MudTooltip Text="Rename">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Edit"
+                                           aria-label="@($"Rename {row.Name}")"
+                                           Disabled="_busy"
+                                           OnClick="() => RenameAsync(row)"
+                                           data-testid="tag-rename" />
+                        </MudTooltip>
+                        <MudTooltip Text="Remove">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete"
+                                           aria-label="@($"Remove {row.Name}")"
+                                           Disabled="_busy"
+                                           OnClick="() => RemoveAsync(row)"
+                                           data-testid="tag-remove" />
+                        </MudTooltip>
+                    </span>
+                </li>
+            }
+        </ul>
+    }
+}
+
+@code {
+    private IReadOnlyList<TagUsage>? _usage;
+    private string? _newName;
+    private string? _addError;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Read-only on purpose: prerendering runs this once for the server-rendered HTML and again
+        // when the circuit connects.
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync() =>
+        _usage = await TagService.ListWithUsageAsync();
+
+    private async Task AddAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _addError = null;
+
+        try
+        {
+            await TagService.CreateAsync(_newName);
+            _newName = string.Empty;
+            Snackbar.Saved("Tag added");
+            await ReloadAsync();
+        }
+        catch (LabelValidationException exception)
+        {
+            _addError = LabelSettingsText.Message(exception.Error, LabelKind.Tag);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RenameAsync(TagUsage row)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+
+        try
+        {
+            var gone = false;
+            Func<string?, Task<string?>> save = async name =>
+            {
+                try
+                {
+                    if (!await TagService.RenameAsync(row.Id, name))
+                    {
+                        gone = true;
+                    }
+
+                    return null;
+                }
+                catch (LabelValidationException exception)
+                {
+                    return LabelSettingsText.Message(exception.Error, LabelKind.Tag);
+                }
+            };
+
+            var parameters = new DialogParameters<LabelNameDialog>
+            {
+                { x => x.Title, "Rename tag" },
+                { x => x.InitialName, row.Name },
+                { x => x.Save, save },
+            };
+            var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+
+            var dialog = await DialogService.ShowAsync<LabelNameDialog>("Rename tag", parameters, options);
+            var result = await dialog.Result;
+            if (result is not { Canceled: false })
+            {
+                return;
+            }
+
+            if (gone)
+            {
+                Snackbar.Problem("That tag was already removed.");
+            }
+            else
+            {
+                Snackbar.Saved("Tag renamed");
+            }
+
+            await ReloadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RemoveAsync(TagUsage listed)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+
+        try
+        {
+            // The count in the confirmation is the count right now, not the one from when the page loaded.
+            await ReloadAsync();
+            var row = _usage!.FirstOrDefault(u => u.Id == listed.Id);
+            if (row is null)
+            {
+                Snackbar.Problem("That tag was already removed.");
+                return;
+            }
+
+            var confirmed = await DialogService.ShowConfirmAsync(
+                $"Remove {row.Name}?",
+                LabelSettingsText.TagRemoval(row.PeopleCount),
+                "Remove tag",
+                destructive: true);
+            if (!confirmed)
+            {
+                return;
+            }
+
+            if (await TagService.DeleteAsync(row.Id))
+            {
+                Snackbar.Saved("Tag removed");
+            }
+            else
+            {
+                Snackbar.Problem("That tag was already removed.");
+            }
+
+            await ReloadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

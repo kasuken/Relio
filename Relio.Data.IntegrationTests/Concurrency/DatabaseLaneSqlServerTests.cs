@@ -154,6 +154,30 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
     }
 
     [SqlServerFact]
+    public async Task Label_settings_loading_and_saving_together_do_not_collide()
+    {
+        var ownerId = await SeedProfileAsync("Europe/Rome", "Ada");
+        await using var provider = BuildProvider(ownerId);
+        await using var scope = provider.CreateAsyncScope();
+        var types = scope.ServiceProvider.GetRequiredService<IRelationshipTypeService>();
+        var tags = scope.ServiceProvider.GetRequiredService<ITagService>();
+
+        // The two label sub-pages in one circuit: listing with counts while an add is still on its way.
+        Task<IReadOnlyList<RelationshipTypeUsage>>? typeUsage = null;
+        Task<IReadOnlyList<TagUsage>>? tagUsage = null;
+        var act = async () =>
+        {
+            typeUsage = types.ListWithUsageAsync();
+            tagUsage = tags.ListWithUsageAsync();
+            await Task.WhenAll(typeUsage, tagUsage, types.CreateAsync("Mentor"), tags.CreateAsync("Climbing"));
+        };
+
+        await act.Should().NotThrowAsync();
+        (await types.ListWithUsageAsync()).Select(t => t.Name).Should().Equal("Mentor");
+        (await tags.ListWithUsageAsync()).Select(t => t.Name).Should().Equal("Climbing");
+    }
+
+    [SqlServerFact]
     public async Task Two_saves_started_together_both_land()
     {
         var ownerId = await SeedProfileAsync("Europe/Rome", "Ada");

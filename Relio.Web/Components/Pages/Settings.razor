@@ -10,6 +10,23 @@
 <MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-8 mb-2">Time zone</MudText>
 <TimeZoneSettings />
 
+@* No data calls here: the two sub-pages own them (the sibling components on this page share one
+   database operation at a time per circuit). *@
+<MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-8 mb-2">Relationship types and tags</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-4">
+    Rename, add or remove the relationship types and tags you use for people.
+</MudText>
+<div class="d-flex flex-wrap gap-2">
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="/settings/relationship-types"
+               data-testid="settings-relationship-types-link">
+        Manage relationship types
+    </MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="/settings/tags"
+               data-testid="settings-tags-link">
+        Manage tags
+    </MudButton>
+</div>
+
 <MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-8 mb-2">Sign-in and security</MudText>
 <SignInSecuritySettings />
 

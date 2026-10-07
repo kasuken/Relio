@@ -58,6 +58,13 @@ public class SqlServerPageLoadTests(RelioAppFixture fixture)
             await Expect(page.GetByTestId("admin-accounts")).ToContainTextAsync("demo@relio.local");
             await Expect(page.GetByTestId("admin-invite-submit")).ToBeVisibleAsync();
             await AssertCircuitSurvivesAsync(page);
+            // The two label sub-pages (issue #25): one data consumer each, loading counts in one query.
+            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/settings/relationship-types");
+            await Expect(page.GetByTestId("relationship-type-list")).ToBeVisibleAsync();
+            await AssertCircuitSurvivesAsync(page);
+            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/settings/tags");
+            await Expect(page.GetByTestId("tag-add-form")).ToBeVisibleAsync();
+            await AssertCircuitSurvivesAsync(page);
             // /people/new: PersonForm loads the relationship types.
             await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/people/new");
             await Expect(page.GetByTestId("person-form")).ToBeVisibleAsync();

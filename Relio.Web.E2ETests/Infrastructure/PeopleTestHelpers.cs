@@ -51,6 +51,37 @@ public static class PeopleTestHelpers
             .ToListAsync();
     }
 
+    /// <summary>Archives a person through the real <c>PeopleService</c> acting as <paramref name="ownerId"/>.</summary>
+    public static async Task ArchivePersonAsync(RelioWebAppFactory app, string ownerId, Guid personId)
+    {
+        using var scope = app.CreateRealScope();
+        var people = new PeopleService(
+            scope.ServiceProvider.GetRequiredService<RelioDbContext>(),
+            new OwnerCurrentUser(ownerId),
+            scope.ServiceProvider.GetRequiredService<TimeProvider>());
+        (await people.ArchiveAsync(personId)).Should().BeTrue();
+    }
+
+    /// <summary>The id of <paramref name="ownerId"/>'s relationship type called <paramref name="name"/>, straight from the database.</summary>
+    public static async Task<Guid> RelationshipTypeIdAsync(RelioWebAppFactory app, string ownerId, string name)
+    {
+        using var scope = app.CreateRealScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<RelioDbContext>();
+        return await dbContext.RelationshipTypes.AsNoTracking()
+            .Where(t => t.OwnerId == ownerId && t.Name == name)
+            .Select(t => t.Id)
+            .SingleAsync();
+    }
+
+    /// <summary>Adds a relationship type for <paramref name="ownerId"/> through the real service.</summary>
+    public static async Task CreateRelationshipTypeAsync(RelioWebAppFactory app, string ownerId, string name)
+    {
+        using var scope = app.CreateRealScope();
+        var types = new RelationshipTypeService(
+            scope.ServiceProvider.GetRequiredService<RelioDbContext>(), new OwnerCurrentUser(ownerId));
+        await types.CreateAsync(name);
+    }
+
     private sealed class OwnerCurrentUser(string userId) : ICurrentUser
     {
         public bool IsAuthenticated => true;
