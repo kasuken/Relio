@@ -397,7 +397,7 @@ public sealed class DashboardServiceTests
         var options = new DbContextOptionsBuilder<RelioDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        return new RelioDbContext(options, timeProvider);
+        return new RelioDbContext(options, timeProvider, FieldProtector);
     }
 
     private static DashboardService CreateService(

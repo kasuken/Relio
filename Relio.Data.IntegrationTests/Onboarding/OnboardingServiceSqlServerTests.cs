@@ -18,9 +18,9 @@ public sealed class OnboardingServiceSqlServerTests(SqlServerDatabaseFixture fix
     public async Task Pending_state_and_dismissal_are_persistent_and_owner_scoped()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
-        var ownerWithoutProfile = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerWithoutProfile = await TestDataFactory.CreateOwnerAsync(fixture);
         dbContext.UserProfiles.AddRange(
             new UserProfile { OwnerId = ownerA, OnboardingDismissed = false },
             new UserProfile { OwnerId = ownerB });

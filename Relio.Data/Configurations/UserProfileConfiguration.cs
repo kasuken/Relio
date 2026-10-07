@@ -37,7 +37,12 @@ public sealed class UserProfileConfiguration : IEntityTypeConfiguration<UserProf
             .HasDefaultValue(ReminderEmailDelivery.DailyDigest);
 
         builder.Property(p => p.UnsubscribeToken)
-            .HasMaxLength(64);
+            .HasMaxLength(Encryption.FieldProtectionSchema.MaxStoredLength(64));
+
+        builder.Property(p => p.UnsubscribeTokenVerifier)
+            .HasColumnType("char(64)")
+            .HasMaxLength(64)
+            .IsUnicode(false);
 
         builder.Property(p => p.OnboardingDismissed)
             .IsRequired()
@@ -47,6 +52,6 @@ public sealed class UserProfileConfiguration : IEntityTypeConfiguration<UserProf
         // Exactly one profile per user.
         builder.HasIndex(p => p.OwnerId).IsUnique();
 
-        builder.HasIndex(p => p.UnsubscribeToken);
+        builder.HasIndex(p => p.UnsubscribeTokenVerifier);
     }
 }

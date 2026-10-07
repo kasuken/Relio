@@ -19,7 +19,7 @@ public sealed class PersonTimelineSqlServerTests(SqlServerDatabaseFixture fixtur
     public async Task The_first_page_reads_bounded_rows_from_both_indexed_streams()
     {
         const int pageSize = 50;
-        var ownerId = TestDataFactory.NewOwnerId();
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
         var (personId, today) = await SeedTimelineAsync(ownerId, count: 1_000);
         var commands = new SelectCommandRecorder();
         await using var dbContext = fixture.CreateDbContext(commands);
@@ -60,7 +60,7 @@ public sealed class PersonTimelineSqlServerTests(SqlServerDatabaseFixture fixtur
     [SqlServerFact]
     public async Task A_note_near_UTC_midnight_uses_the_owners_calendar_date()
     {
-        var ownerId = TestDataFactory.NewOwnerId();
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
         var zone = TimeZoneInfo.FindSystemTimeZoneById("Pacific/Kiritimati");
         var noteInstant = TimeProvider.System.GetUtcNow().UtcDateTime.Date
             .AddDays(-10)

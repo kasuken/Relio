@@ -19,7 +19,7 @@ public sealed class UserProfileServiceSqlServerTests(SqlServerDatabaseFixture fi
     public async Task Display_name_round_trips_through_the_real_migrations()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerId = TestDataFactory.NewOwnerId();
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
         await new UserTimeZoneService(dbContext, new FakeCurrentUser(ownerId), TimeProvider.System)
             .SetTimeZoneAsync("Europe/Rome");
         var service = CreateService(dbContext, ownerId);
@@ -35,8 +35,8 @@ public sealed class UserProfileServiceSqlServerTests(SqlServerDatabaseFixture fi
     public async Task User_A_cannot_overwrite_user_Bs_display_name()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         await CreateService(dbContext, ownerB).SetDisplayNameAsync("Bea");
 
         await CreateService(dbContext, ownerA).SetDisplayNameAsync("Alice");

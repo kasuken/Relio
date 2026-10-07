@@ -25,7 +25,7 @@ public sealed class InteractionConfiguration : IEntityTypeConfiguration<Interact
 
         builder.Property(interaction => interaction.Description)
             .IsRequired()
-            .HasMaxLength(Interaction.DescriptionMaxLength);
+            .HasMaxLength(Encryption.FieldProtectionSchema.MaxStoredLength(Interaction.DescriptionMaxLength));
 
         builder.HasMany(interaction => interaction.Participants)
             .WithOne(participant => participant.Interaction)

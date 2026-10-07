@@ -127,7 +127,7 @@ public class NoteServiceOwnershipTests
         var options = new DbContextOptionsBuilder<RelioDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        return new RelioDbContext(options, TimeProvider.System);
+        return new RelioDbContext(options, TimeProvider.System, FieldProtector);
     }
 
     private static async Task<Guid> AddPersonAsync(RelioDbContext dbContext, string ownerId)

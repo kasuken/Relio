@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Relio.Data.Encryption;
 
 namespace Relio.Data;
 
@@ -26,6 +27,10 @@ public sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Rel
             connectionString,
             sqlServerOptions => sqlServerOptions.MigrationsAssembly(typeof(RelioDbContext).Assembly.FullName));
 
-        return new RelioDbContext(optionsBuilder.Options, TimeProvider.System);
+        return new RelioDbContext(
+            optionsBuilder.Options,
+            TimeProvider.System,
+            new DesignTimeFieldProtector(),
+            FieldProtectionMode.DesignTime);
     }
 }

@@ -16,7 +16,7 @@ public sealed class ReminderConfiguration : IEntityTypeConfiguration<Reminder>
 
         builder.Property(r => r.Title)
             .IsRequired()
-            .HasMaxLength(Reminder.TitleMaxLength);
+            .HasMaxLength(Encryption.FieldProtectionSchema.MaxStoredLength(Reminder.TitleMaxLength));
 
         builder.Property(r => r.DueDate)
             .HasColumnType("date");

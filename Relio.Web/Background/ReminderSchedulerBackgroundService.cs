@@ -43,7 +43,9 @@ public sealed class ReminderSchedulerBackgroundService(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "An error occurred while executing the reminder scheduler job.");
+                logger.LogError(
+                    "Reminder scheduler job failed with exception type {ExceptionType}.",
+                    ex.GetType().Name);
             }
 
             try

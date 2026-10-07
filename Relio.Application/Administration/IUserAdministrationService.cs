@@ -80,6 +80,9 @@ public enum AccountChangeResult
 
     /// <summary>An Administrator can not disable their own account.</summary>
     CannotChangeOwnAccount,
+
+    /// <summary>Disabling the account would leave no active Administrator.</summary>
+    LastActiveAdministrator,
 }
 
 /// <summary>A pending invitation. Never includes the token (only its hash is stored).</summary>

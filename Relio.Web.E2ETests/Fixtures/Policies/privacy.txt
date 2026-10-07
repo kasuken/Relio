@@ -1,0 +1,4 @@
+SYNTHETIC REVIEWED TEST FIXTURE — NOT A POLICY.
+This fixture is only for automated rendering tests. It is not legal wording, and no legal approval is claimed.
+The HTML-looking text below must remain plain text:
+<script>window.relioPolicyFixtureInjected = true;</script>

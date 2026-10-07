@@ -15,6 +15,7 @@ using Relio.Application.Security;
 using Relio.Application.Time;
 using Relio.Application.Timeline;
 using Relio.Data.DependencyInjection;
+using Relio.Data.Encryption;
 using Relio.Data.Identity;
 using Relio.Data.IntegrationTests.Infrastructure;
 using Relio.Data.Profile;
@@ -328,7 +329,7 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
             .UseSqlServer(fixture.ConnectionString)
             .AddInterceptors(new SlowReaderInterceptor(QueryDelay))
             .Options;
-        await using var dbContext = new RelioDbContext(options, TimeProvider.System);
+        await using var dbContext = new RelioDbContext(options, TimeProvider.System, FieldProtector);
         var user = new FakeCurrentUser(ownerId);
 
         var act = async () => await Task.WhenAll(
@@ -340,7 +341,7 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
 
     private async Task<string> SeedProfileAsync(string timeZoneId, string displayName)
     {
-        var ownerId = TestDataFactory.NewOwnerId();
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         dbContext.UserProfiles.Add(new UserProfile
         {
@@ -363,6 +364,8 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
 
         var services = new ServiceCollection();
         services.AddLogging();
+        ConfigureDataProtection(services);
+        services.AddRelioFieldProtection();
         services.AddRelioData(configuration);
         // UserAdministrationService needs a UserManager over the same scoped context, as in the app.
         services.AddIdentityCore<RelioUser>().AddRoles<IdentityRole>().AddEntityFrameworkStores<RelioDbContext>();

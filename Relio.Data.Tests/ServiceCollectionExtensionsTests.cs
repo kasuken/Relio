@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Relio.Data.Encryption;
 using Relio.Data.DependencyInjection;
 
 namespace Relio.Data.Tests;
@@ -11,6 +12,7 @@ public class ServiceCollectionExtensionsTests
     public void AddRelioData_with_connection_string_registers_RelioDbContext_using_sql_server()
     {
         var services = new ServiceCollection();
+        services.AddSingleton<IDataProtectionFieldProtector>(FieldProtector);
         var configuration = BuildConfiguration("Server=.;Database=Relio;Trusted_Connection=True;TrustServerCertificate=True;");
 
         services.AddRelioData(configuration);
@@ -62,6 +64,7 @@ public class ServiceCollectionExtensionsTests
     public void AddRelioData_without_database_provider_configured_defaults_to_sql_server()
     {
         var services = new ServiceCollection();
+        services.AddSingleton<IDataProtectionFieldProtector>(FieldProtector);
         var configuration = BuildConfiguration("Server=.;Database=Relio;Trusted_Connection=True;TrustServerCertificate=True;");
 
         services.AddRelioData(configuration);
@@ -80,6 +83,7 @@ public class ServiceCollectionExtensionsTests
     public void AddRelioData_with_database_provider_InMemory_registers_RelioDbContext_using_the_in_memory_provider(string providerValue)
     {
         var services = new ServiceCollection();
+        services.AddSingleton<IDataProtectionFieldProtector>(FieldProtector);
         var configuration = BuildConfiguration(relioConnectionString: null, databaseProvider: providerValue);
 
         services.AddRelioData(configuration);

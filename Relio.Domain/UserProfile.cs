@@ -52,6 +52,12 @@ public sealed class UserProfile : OwnedEntity
     public string? UnsubscribeToken { get; set; }
 
     /// <summary>
+    /// A SHA-256 verifier used to find the encrypted unsubscribe token without searching its
+    /// randomized ciphertext. This is infrastructure metadata and is not user-exportable.
+    /// </summary>
+    public string? UnsubscribeTokenVerifier { get; set; }
+
+    /// <summary>
     /// Whether the first-run guide has been completed or skipped (issue #48). Defaults to
     /// <see langword="true"/> so legacy, programmatically-created and demo accounts are not
     /// unexpectedly enrolled; account registration explicitly sets this to <see langword="false"/>.

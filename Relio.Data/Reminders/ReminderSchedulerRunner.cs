@@ -116,7 +116,10 @@ public sealed class ReminderSchedulerRunner(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to deliver reminders for user {OwnerId}", profile.OwnerId);
+                logger.LogError(
+                    "Reminder delivery failed for user {OwnerId} with exception type {ExceptionType}.",
+                    profile.OwnerId,
+                    ex.GetType().Name);
             }
             finally
             {

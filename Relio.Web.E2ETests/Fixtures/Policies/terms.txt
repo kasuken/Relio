@@ -1,0 +1,3 @@
+SYNTHETIC REVIEWED TEST FIXTURE — NOT A POLICY.
+This fixture is only for automated rendering tests. It is not legal wording, and no legal approval is claimed.
+Terms fixture marker: TEST-TERMS-ONLY.

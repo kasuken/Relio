@@ -19,7 +19,7 @@ public sealed class ContactMethodSqlServerTests(SqlServerDatabaseFixture fixture
     public async Task CreateAsync_and_GetAsync_round_trip_contact_methods_and_tags_in_order()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var service = TestDataFactory.CreateService(dbContext, owner);
 
         var created = await service.CreateAsync(new CreatePersonRequest
@@ -49,7 +49,7 @@ public sealed class ContactMethodSqlServerTests(SqlServerDatabaseFixture fixture
     public async Task UpdateAsync_adds_edits_and_removes_contact_methods_for_real()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var service = TestDataFactory.CreateService(dbContext, owner);
         var person = await service.CreateAsync(new CreatePersonRequest
         {
@@ -83,7 +83,7 @@ public sealed class ContactMethodSqlServerTests(SqlServerDatabaseFixture fixture
     [SqlServerFact]
     public async Task Deleting_a_person_deletes_their_contact_methods_and_tag_links_in_the_database()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid personId;
         await using (var setup = fixture.CreateDbContext())
         {
@@ -113,7 +113,7 @@ public sealed class ContactMethodSqlServerTests(SqlServerDatabaseFixture fixture
     public async Task A_contact_method_kind_outside_the_list_is_rejected_by_the_database()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ada");
 
         var act = () => InsertRawAsync(dbContext, owner, personId, "Fax");
@@ -126,7 +126,7 @@ public sealed class ContactMethodSqlServerTests(SqlServerDatabaseFixture fixture
     public async Task Contact_method_kind_is_stored_as_text()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ada");
         var id = await TestDataFactory.CreateContactMethodAsync(dbContext, owner, personId, "+44 7700 900123", ContactMethodKind.Phone);
 
@@ -159,7 +159,7 @@ public sealed class ContactMethodSqlServerTests(SqlServerDatabaseFixture fixture
     public async Task The_widest_possible_contact_method_still_fits_the_index_key_limit()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var longestOwnerId = new string('o', 450);
+        var longestOwnerId = await TestDataFactory.CreateOwnerAsync(fixture, new string('o', 450));
         var personId = Guid.NewGuid();
         dbContext.People.Add(new Person { Id = personId, OwnerId = longestOwnerId, FirstName = "Ada" });
         await dbContext.SaveChangesAsync();
@@ -185,7 +185,7 @@ public sealed class ContactMethodSqlServerTests(SqlServerDatabaseFixture fixture
     public async Task A_tag_name_is_unique_per_owner_case_insensitively()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await TestDataFactory.CreateTagAsync(dbContext, owner, "Chess");
 
         dbContext.Tags.Add(new Tag { OwnerId = owner, Name = "chess" });
@@ -200,7 +200,7 @@ public sealed class ContactMethodSqlServerTests(SqlServerDatabaseFixture fixture
     public async Task UpdateAsync_matches_an_existing_tag_case_insensitively()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var existingId = await TestDataFactory.CreateTagAsync(dbContext, owner, "Climbing");
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ada");
 
@@ -218,7 +218,7 @@ public sealed class ContactMethodSqlServerTests(SqlServerDatabaseFixture fixture
     public async Task UpdateAsync_creates_a_new_tag_with_the_person_in_one_save()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ada");
 
         await TestDataFactory.CreateService(dbContext, owner).UpdateAsync(
@@ -233,7 +233,7 @@ public sealed class ContactMethodSqlServerTests(SqlServerDatabaseFixture fixture
     [SqlServerFact]
     public async Task UpdateAsync_reports_a_tag_name_taken_at_the_same_moment_as_a_conflict_and_saves_nothing()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid personId;
         await using (var setup = fixture.CreateDbContext())
         {

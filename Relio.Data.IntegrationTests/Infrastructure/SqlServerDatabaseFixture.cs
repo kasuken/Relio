@@ -55,7 +55,7 @@ public sealed class SqlServerDatabaseFixture : IAsyncLifetime
         _databaseConnectionString = builder.ConnectionString;
 
         await using var dbContext = CreateDbContext();
-        await dbContext.Database.MigrateAsync();
+        await SqlServerTestDatabase.CreateAndMigrateAsync(dbContext);
     }
 
     public async Task DisposeAsync()
@@ -92,6 +92,6 @@ public sealed class SqlServerDatabaseFixture : IAsyncLifetime
             .AddInterceptors(interceptors)
             .Options;
 
-        return new RelioDbContext(options, TimeProvider.System);
+        return new RelioDbContext(options, TimeProvider.System, FieldProtector);
     }
 }

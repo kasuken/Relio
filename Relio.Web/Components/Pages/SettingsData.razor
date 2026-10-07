@@ -1,0 +1,270 @@
+@page "/settings/data"
+@attribute [Authorize]
+@implements IAsyncDisposable
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@using Relio.Application.Portability
+
+@inject IUserDataPortabilityService PortabilityService
+@inject IJSRuntime JsRuntime
+@inject ISnackbar Snackbar
+@inject ILogger<SettingsData> Logger
+
+<PageTitle>Your data - Relio</PageTitle>
+
+<MudLink Href="/settings" Class="mb-4 d-inline-block" data-testid="settings-data-back">Settings</MudLink>
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-4">Your data</MudText>
+
+<MudText Typo="Typo.body1" Class="mud-text-secondary rl-data-intro">
+    Export a copy of your Relio data or restore a JSON export into a fresh account.
+</MudText>
+
+<section class="rl-data-panel" data-testid="data-export-panel">
+    <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-2">Export</MudText>
+    <MudText Typo="Typo.body1" Class="mud-text-secondary mb-4">
+        JSON is the complete format: it includes people, archived profiles, contact details, tags,
+        relationship types, interactions, notes, reminders and portable profile settings.
+        The optional product-activity entry is included for access but is not restored to another instance.
+    </MudText>
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-4" data-testid="data-export-privacy">
+        Downloaded files contain decrypted private data. Keep them somewhere secure and delete them
+        when you no longer need them.
+    </MudAlert>
+    <div class="rl-data-actions">
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="_busy"
+                   OnClick="ExportJsonAsync"
+                   data-testid="data-export-json">
+            Download complete JSON
+        </MudButton>
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Primary"
+                   Disabled="_busy"
+                   OnClick="ExportVCardAsync"
+                   data-testid="data-export-vcard">
+            Download people vCard
+        </MudButton>
+    </div>
+    <MudText Typo="Typo.caption" Class="mud-text-secondary mt-3">
+        vCard contains contact details only. It does not include notes, interactions, reminders,
+        tags or other profile settings.
+    </MudText>
+</section>
+
+<section class="rl-data-panel" data-testid="data-restore-panel">
+    <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-2">Restore from JSON</MudText>
+    <MudText Typo="Typo.body1" Class="mud-text-secondary mb-3">
+        Restore is available only for a fresh account. It never replaces existing Relio records or
+        changes the account email, password, roles or sign-in credentials.
+    </MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+        Reminder email delivery is turned off after restore, and the destination receives a new local
+        unsubscribe credential. Product-activity observations are export-only and are not carried into
+        another instance.
+    </MudText>
+    <InputFile OnChange="SelectFile"
+               accept=".json,application/json"
+               disabled="@_busy"
+               data-testid="data-restore-file" />
+    <MudText Typo="Typo.caption" Class="mud-text-secondary mt-2 mb-4" data-testid="data-restore-selection">
+        @(_selectedFile is null ? "Choose a Relio JSON export (up to 50 MB)." : "A JSON export is selected.")
+    </MudText>
+    <MudButton Variant="Variant.Filled"
+               Color="Color.Primary"
+               Disabled="@(_busy || _selectedFile is null)"
+               OnClick="RestoreAsync"
+               data-testid="data-restore-submit">
+        Restore data
+    </MudButton>
+</section>
+
+@if (_busy)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-4" data-testid="data-portability-progress" />
+}
+
+@if (_message is not null)
+{
+    <MudAlert Severity="@_messageSeverity" Variant="Variant.Outlined" Class="mt-4" data-testid="data-portability-message">
+        @_message
+    </MudAlert>
+}
+
+@code {
+    private const long MaxImportFileBytes = 50L * 1024 * 1024;
+    private readonly CancellationTokenSource _lifetime = new();
+    private IJSObjectReference? _module;
+    private IBrowserFile? _selectedFile;
+    private string? _message;
+    private Severity _messageSeverity = Severity.Info;
+    private bool _busy;
+
+    private void SelectFile(InputFileChangeEventArgs args)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _selectedFile = args.File;
+        _message = null;
+    }
+
+    private async Task ExportJsonAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _message = null;
+        try
+        {
+            var document = await PortabilityService.ExportAsync(_lifetime.Token);
+            await using var stream = new MemoryStream();
+            await UserDataJson.SerializeAsync(stream, document, _lifetime.Token);
+            stream.Position = 0;
+            using var streamReference = new DotNetStreamReference(stream);
+            await DownloadAsync("relio-data.json", "application/json;charset=utf-8", streamReference);
+        }
+        catch (OperationCanceledException)
+        {
+            SetMessage("The export was canceled. You can try again.", Severity.Info);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError("Data export failed ({ExceptionType}).", exception.GetType().Name);
+            SetMessage("Relio couldn't create the export. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ExportVCardAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _message = null;
+        try
+        {
+            var vCard = await PortabilityService.ExportPeopleVCardAsync(_lifetime.Token);
+            await using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(vCard), writable: false);
+            using var streamReference = new DotNetStreamReference(stream);
+            await DownloadAsync("relio-people.vcf", "text/vcard;charset=utf-8", streamReference);
+        }
+        catch (OperationCanceledException)
+        {
+            SetMessage("The export was canceled. You can try again.", Severity.Info);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError("vCard export failed ({ExceptionType}).", exception.GetType().Name);
+            SetMessage("Relio couldn't create the export. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RestoreAsync()
+    {
+        if (_busy || _selectedFile is null)
+        {
+            return;
+        }
+
+        var file = _selectedFile;
+        _selectedFile = null;
+        _busy = true;
+        _message = null;
+        try
+        {
+            if (file.Size == 0 || file.Size > MaxImportFileBytes)
+            {
+                SetMessage("Choose a non-empty JSON file no larger than 50 MB.", Severity.Warning);
+                return;
+            }
+
+            await using var stream = file.OpenReadStream(MaxImportFileBytes, _lifetime.Token);
+            var document = await UserDataJson.DeserializeAsync(stream, _lifetime.Token);
+            if (document is null)
+            {
+                SetMessage("This file doesn't contain a Relio data export.", Severity.Error);
+                return;
+            }
+
+            var result = await PortabilityService.RestoreAsync(document, _lifetime.Token);
+            SetMessage(
+                $"Restored {result.People} people, {result.Interactions} interactions, {result.Notes} notes and {result.Reminders} reminders.",
+                Severity.Success);
+        }
+        catch (UserDataPortabilityException exception)
+        {
+            SetMessage(UserDataPortabilityText.For(exception.Errors), Severity.Warning);
+        }
+        catch (JsonException)
+        {
+            SetMessage("This file isn't valid Relio JSON.", Severity.Error);
+        }
+        catch (OperationCanceledException)
+        {
+            SetMessage("The restore was canceled. No more data was read.", Severity.Info);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError("Data restore failed ({ExceptionType}).", exception.GetType().Name);
+            SetMessage("Relio couldn't restore this file. No data was imported.", Severity.Error);
+        }
+        finally
+        {
+            _selectedFile = null;
+            _busy = false;
+        }
+    }
+
+    private async Task DownloadAsync(string filename, string contentType, DotNetStreamReference streamReference)
+    {
+        _module ??= await JsRuntime.InvokeAsync<IJSObjectReference>(
+            "import",
+            _lifetime.Token,
+            "./js/data-portability.js");
+        await _module.InvokeVoidAsync(
+            "downloadStream",
+            _lifetime.Token,
+            filename,
+            contentType,
+            streamReference);
+    }
+
+    private void SetMessage(string message, Severity severity)
+    {
+        _message = message;
+        _messageSeverity = severity;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+        if (_module is not null)
+        {
+            try
+            {
+                await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+    }
+}

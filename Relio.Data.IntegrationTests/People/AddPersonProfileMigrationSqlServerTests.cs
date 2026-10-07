@@ -3,18 +3,20 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Relio.Data.IntegrationTests.Infrastructure;
+using Relio.Domain;
 
 namespace Relio.Data.IntegrationTests.People;
 
 /// <summary>
-/// Proves the hand-written <c>AddPersonProfile</c> migration keeps real data: it starts from a
-/// database at the previous migration with existing accounts and people, migrates to the latest, and
-/// checks the birthdays were carried into the new columns and every existing account got the default
-/// relationship types. Then it migrates back down and checks which birthdays survive a downgrade.
+/// Proves the hand-written <c>AddPersonProfile</c> migration keeps real data. Each scenario starts
+/// from a fresh database at the migration immediately before <c>AddPersonProfile</c>. The upgrade
+/// scenario applies all migrations; the downgrade scenario applies only <c>AddPersonProfile</c> and
+/// then reverts that migration, before the later irreversible protected-fields migration is applied.
 /// </summary>
 /// <remarks>
 /// Each test owns a throwaway database rather than using the shared <see cref="SqlServerDatabaseFixture"/>
-/// one, because the shared one is already at the latest migration and must stay there.
+/// one, because the shared one is already at the latest migration and must stay there. No test
+/// downgrades a database that has applied <c>ProtectSensitiveFieldsAndAddProductMetrics</c>.
 /// </remarks>
 public sealed class AddPersonProfileMigrationSqlServerTests
 {
@@ -59,15 +61,12 @@ public sealed class AddPersonProfileMigrationSqlServerTests
     public async Task Downgrading_restores_dated_birthdays_and_drops_the_ones_without_a_year()
     {
         await using var database = await OldDatabase.CreateAsync();
-        await database.MigrateToLatestAsync();
-        await using (var dbContext = database.CreateDbContext())
-        {
-            dbContext.People.AddRange(
-                new Relio.Domain.Person { OwnerId = "owner", FirstName = "Dated", BirthdayYear = 1992, BirthdayMonth = 2, BirthdayDay = 29 },
-                new Relio.Domain.Person { OwnerId = "owner", FirstName = "Yearless", BirthdayMonth = 3, BirthdayDay = 14 },
-                new Relio.Domain.Person { OwnerId = "owner", FirstName = "None" });
-            await dbContext.SaveChangesAsync();
-        }
+        await database.AddAccountAsync("owner");
+        await database.AddPersonAsync("owner", "Dated", "1992-02-29");
+        await database.AddPersonAsync("owner", "Yearless", null);
+        await database.AddPersonAsync("owner", "None", null);
+        await database.MigrateToAsync(database.ProfileMigrationId);
+        await database.SetYearlessBirthdayAsync("owner", "Yearless", 3, 14);
 
         await database.MigrateToAsync(database.PreviousMigrationId);
 
@@ -85,13 +84,15 @@ public sealed class AddPersonProfileMigrationSqlServerTests
     {
         private readonly string _connectionString;
 
-        private OldDatabase(string connectionString, string previousMigrationId)
+        private OldDatabase(string connectionString, string previousMigrationId, string profileMigrationId)
         {
             _connectionString = connectionString;
             PreviousMigrationId = previousMigrationId;
+            ProfileMigrationId = profileMigrationId;
         }
 
         public string PreviousMigrationId { get; }
+        public string ProfileMigrationId { get; }
 
         public static async Task<OldDatabase> CreateAsync()
         {
@@ -101,21 +102,20 @@ public sealed class AddPersonProfileMigrationSqlServerTests
             };
 
             // Only used to read the migration ids: listing them never opens a connection.
-            await using var probe = new RelioDbContext(
-                new DbContextOptionsBuilder<RelioDbContext>().UseSqlServer(builder.ConnectionString).Options,
-                TimeProvider.System);
+            await using var probe = new RelioDbContext(new DbContextOptionsBuilder<RelioDbContext>().UseSqlServer(builder.ConnectionString).Options, TimeProvider.System, FieldProtector);
             var migrations = probe.Database.GetMigrations().ToList();
             var index = migrations.FindIndex(id => id.EndsWith("_" + MigrationName, StringComparison.Ordinal));
             index.Should().BeGreaterThan(0, "AddPersonProfile must exist and have a migration before it");
 
-            var database = new OldDatabase(builder.ConnectionString, migrations[index - 1]);
+            var database = new OldDatabase(builder.ConnectionString, migrations[index - 1], migrations[index]);
             await database.MigrateToAsync(database.PreviousMigrationId);
             return database;
         }
 
         public RelioDbContext CreateDbContext() => new(
             new DbContextOptionsBuilder<RelioDbContext>().UseSqlServer(_connectionString).Options,
-            TimeProvider.System);
+            TimeProvider.System,
+            FieldProtector);
 
         public async Task MigrateToAsync(string targetMigrationId)
         {
@@ -127,6 +127,17 @@ public sealed class AddPersonProfileMigrationSqlServerTests
         {
             await using var dbContext = CreateDbContext();
             await dbContext.Database.MigrateAsync();
+        }
+
+        public async Task SetYearlessBirthdayAsync(string ownerId, string firstName, int month, int day)
+        {
+            await using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            await ExecuteAsync(
+                connection,
+                "UPDATE [People] SET [BirthdayYear] = NULL, [BirthdayMonth] = @month, [BirthdayDay] = @day " +
+                "WHERE [OwnerId] = @owner AND [FirstName] = @name",
+                ("@month", month), ("@day", day), ("@owner", ownerId), ("@name", firstName));
         }
 
         /// <summary>Adds an account row the way a database at the previous migration holds it.</summary>

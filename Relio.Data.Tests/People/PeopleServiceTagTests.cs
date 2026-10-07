@@ -232,7 +232,7 @@ public class PeopleServiceTagTests
         new DbContextOptionsBuilder<RelioDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
 
     private static RelioDbContext CreateDbContext(DbContextOptions<RelioDbContext> database) =>
-        new(database, new FakeTimeProvider(Now));
+        new(database, new FakeTimeProvider(Now), FieldProtector);
 
     private static PeopleService CreateService(RelioDbContext dbContext) =>
         new(dbContext, new FakeCurrentUser(Owner), new FakeTimeProvider(Now));

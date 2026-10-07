@@ -1,0 +1,40 @@
+@inject Microsoft.Extensions.Options.IOptions<SeoOptions> SeoOptions
+
+<PageTitle>@FullTitle</PageTitle>
+<HeadContent>
+    <meta name="description" content="@Description" />
+    <link rel="canonical" href="@CanonicalUrl" />
+    <meta property="og:type" content="@OpenGraphType" />
+    <meta property="og:site_name" content="@SeoOptions.Value.SiteName" />
+    <meta property="og:title" content="@FullTitle" />
+    <meta property="og:description" content="@Description" />
+    <meta property="og:url" content="@CanonicalUrl" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="@FullTitle" />
+    <meta name="twitter:description" content="@Description" />
+</HeadContent>
+
+@code {
+    /// <summary>Gets or sets the page title, without the configured site name.</summary>
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the public page description.</summary>
+    [Parameter, EditorRequired]
+    public string Description { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets a fixed, application-owned local path for the canonical URL. Never use a
+    /// request host or user-derived value.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public string CanonicalPath { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the Open Graph page type.</summary>
+    [Parameter]
+    public string OpenGraphType { get; set; } = "article";
+
+    private string FullTitle => $"{Title} - {SeoOptions.Value.SiteName}";
+
+    private string CanonicalUrl => SeoOptions.Value.GetCanonicalUrl(CanonicalPath);
+}

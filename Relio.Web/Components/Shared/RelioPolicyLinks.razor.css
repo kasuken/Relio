@@ -1,0 +1,22 @@
+.rl-policy-links {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: var(--space-4);
+    row-gap: var(--space-2);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 20px;
+}
+
+.rl-policy-links a {
+    overflow-wrap: anywhere;
+}
+
+.rl-registration-policy-links {
+    margin-block-start: var(--space-4);
+    padding-block-start: var(--space-4);
+    border-top: 1px solid var(--line);
+}

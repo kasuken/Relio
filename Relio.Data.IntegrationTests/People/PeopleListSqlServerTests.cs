@@ -21,7 +21,7 @@ public sealed class PeopleListSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task ListPageAsync_translates_every_sort(PeopleSort sort)
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ada", "Byron", new DateOnly(2026, 10, 1));
         await TestDataFactory.CreatePersonAsync(dbContext, owner, "Bea");
         await TestDataFactory.CreatePersonAsync(dbContext, owner, "Cleo", isArchived: true);
@@ -39,7 +39,7 @@ public sealed class PeopleListSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task ListPageAsync_sorts_names_case_insensitively()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await TestDataFactory.CreatePersonAsync(dbContext, owner, "carl");
         await TestDataFactory.CreatePersonAsync(dbContext, owner, "Bea");
         await TestDataFactory.CreatePersonAsync(dbContext, owner, "ada");
@@ -53,7 +53,7 @@ public sealed class PeopleListSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task ListPageAsync_sorts_recently_added_newest_first()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var now = DateTime.UtcNow;
         await TestDataFactory.CreatePersonAsync(dbContext, owner, "Oldest", createdAtUtc: now.AddDays(-3));
         await TestDataFactory.CreatePersonAsync(dbContext, owner, "Newest", createdAtUtc: now.AddDays(-1));
@@ -69,7 +69,7 @@ public sealed class PeopleListSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task ListPageAsync_puts_never_contacted_people_last()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await TestDataFactory.CreatePersonAsync(dbContext, owner, "Zed");
         await TestDataFactory.CreatePersonAsync(dbContext, owner, "Older", lastContactedOn: new DateOnly(2026, 10, 1));
         await TestDataFactory.CreatePersonAsync(dbContext, owner, "Amy");
@@ -88,7 +88,7 @@ public sealed class PeopleListSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task ListPageAsync_pages_through_ties_without_repeats(PeopleSort sort)
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var sameMoment = DateTime.UtcNow.AddDays(-1);
         for (var i = 0; i < 5; i++)
         {
@@ -112,7 +112,7 @@ public sealed class PeopleListSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task ListPageAsync_clamps_a_page_past_the_end()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ada");
         await TestDataFactory.CreatePersonAsync(dbContext, owner, "Bea");
         await TestDataFactory.CreatePersonAsync(dbContext, owner, "Cleo");

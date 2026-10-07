@@ -6,22 +6,28 @@ using Relio.Application.Accounts;
 using Relio.Application.Administration;
 using Relio.Application.Dashboard;
 using Relio.Application.Interactions;
+using Relio.Application.Metrics;
 using Relio.Application.Notes;
 using Relio.Application.Onboarding;
 using Relio.Application.People;
 using Relio.Application.People.Import;
+using Relio.Application.Portability;
 using Relio.Application.Timeline;
 using Relio.Application.Reminders;
+using Relio.Data.Accounts;
 using Relio.Data.Administration;
 using Relio.Data.Concurrency;
 using Relio.Data.Dashboard;
+using Relio.Data.Encryption;
 using Relio.Data.Identity;
 using Relio.Data.Interactions;
+using Relio.Data.Metrics;
 using Relio.Data.Notes;
 using Relio.Data.Onboarding;
 using Relio.Application.Profile;
 using Relio.Application.Time;
 using Relio.Data.People;
+using Relio.Data.Portability;
 using Relio.Data.Profile;
 using Relio.Data.Reminders;
 using Relio.Data.Seeding;
@@ -81,6 +87,7 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(configuration);
 
         var provider = GetProviderName(configuration);
+        services.TryAddSingleton<UserDataPortabilityRestoreConcurrencyInterceptor>();
 
         if (string.Equals(provider, InMemoryProvider, StringComparison.OrdinalIgnoreCase))
         {
@@ -101,6 +108,11 @@ public static class ServiceCollectionExtensions
         // deterministic tests); this just guarantees one is always available for audit
         // timestamps.
         services.TryAddSingleton(TimeProvider.System);
+        services.AddFieldProtection();
+        services.AddOptions<ProductMetricsOptions>()
+            .Bind(configuration.GetSection(ProductMetricsOptions.SectionName))
+            .ValidateOnStart();
+        services.TryAddSingleton<IProductMetricsCollectionGate, ProductMetricsCollectionGate>();
 
         AddDataService<IPeopleService, PeopleService>(services);
         AddDataService<IDashboardService, DashboardService>(services);
@@ -119,6 +131,12 @@ public static class ServiceCollectionExtensions
         AddDataService<IUserTimeZoneService, UserTimeZoneService>(services);
         AddDataService<IUserProfileService, UserProfileService>(services);
         AddDataService<ITwoFactorStatusService, TwoFactorStatusService>(services);
+        AddDataService<IUserDataPortabilityService, UserDataPortabilityService>(services);
+        AddDataService<IAccountDeletionService, AccountDeletionService>(services);
+        AddDataService<IAccountSessionStatusService, AccountSessionStatusService>(services);
+        AddDataService<IProductActivityService, ProductActivityService>(services);
+        AddDataService<IProductMetricsReportService, ProductMetricsReportService>(services);
+        AddDataService<IProductMetricsRetentionRunner, ProductMetricsRetentionRunner>(services);
 
         // Self-hosted administration (issue #19). RegistrationLock is a singleton on purpose: it
         // serializes registrations process-wide (see AccountRegistrationService's remarks). Both
@@ -174,13 +192,13 @@ public static class ServiceCollectionExtensions
         // configured. One query is right here (at most 20 of each, so a few hundred rows) and
         // consistent; queries never call AsSingleQuery/AsSplitQuery themselves because those are
         // relational-only and the E2E tests run on the InMemory provider.
-        services.AddDbContext<RelioDbContext>(options => options.UseSqlServer(
+        services.AddDbContext<RelioDbContext>((provider, options) => options.UseSqlServer(
             connectionString,
             sqlServerOptions =>
             {
                 sqlServerOptions.MigrationsAssembly(typeof(RelioDbContext).Assembly.FullName);
                 sqlServerOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SingleQuery);
-            }));
+            }).AddInterceptors(provider.GetRequiredService<UserDataPortabilityRestoreConcurrencyInterceptor>()));
     }
 
     private static void AddInMemoryDatabase(IServiceCollection services)

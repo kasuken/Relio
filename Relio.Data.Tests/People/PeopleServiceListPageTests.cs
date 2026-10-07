@@ -295,7 +295,7 @@ public class PeopleServiceListPageTests
         var options = new DbContextOptionsBuilder<RelioDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        var dbContext = new RelioDbContext(options, time);
+        var dbContext = new RelioDbContext(options, time, FieldProtector);
         return (dbContext, new PeopleService(dbContext, new FakeCurrentUser(Owner), time), time);
     }
 

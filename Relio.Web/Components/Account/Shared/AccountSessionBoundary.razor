@@ -1,0 +1,47 @@
+@implements IDisposable
+
+@using Relio.Application.Security
+@using Relio.Web.Security
+
+@inject ICurrentUser CurrentUser
+@inject IAccountSessionRevocationNotifier Revocations
+@inject NavigationManager Navigation
+
+@code {
+    private IDisposable? _subscription;
+    private int _disposed;
+
+    protected override void OnInitialized()
+    {
+        var userId = CurrentUser.UserId;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            _subscription = Revocations.Subscribe(userId, OnRevokedAsync);
+        }
+    }
+
+    public void Dispose()
+    {
+        Interlocked.Exchange(ref _disposed, 1);
+        Interlocked.Exchange(ref _subscription, null)?.Dispose();
+    }
+
+    private Task OnRevokedAsync(AccountSessionRevocationReason reason)
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        var route = reason == AccountSessionRevocationReason.Deleted
+            ? "/Account/AccountDeleted"
+            : "/Account/AccessDenied";
+        return InvokeAsync(() =>
+        {
+            if (Volatile.Read(ref _disposed) == 0)
+            {
+                Navigation.NavigateTo(route, forceLoad: true);
+            }
+        });
+    }
+}

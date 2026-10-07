@@ -26,7 +26,7 @@ internal static class AdministrationTestHarness
     /// <summary>A context over <paramref name="database"/>; <c>EnsureCreated</c> applies the seeded Administrator role.</summary>
     public static RelioDbContext CreateDbContext(DbContextOptions<RelioDbContext> database, TimeProvider? timeProvider = null)
     {
-        var dbContext = new RelioDbContext(database, timeProvider ?? TimeProvider.System);
+        var dbContext = new RelioDbContext(database, timeProvider ?? TimeProvider.System, FieldProtector);
         dbContext.Database.EnsureCreated();
         return dbContext;
     }

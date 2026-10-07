@@ -1,3 +1,7 @@
+@using Microsoft.Extensions.Options
+@using Relio.Application.Metrics
+@inject IOptionsMonitor<ProductMetricsOptions> MetricsOptions
+
 @* The drawer's primary navigation. Icons are the fixed meanings from
    docs/design-system/README.md (Iconography): People, Reminders and Difficult moment. *@
 
@@ -12,6 +16,11 @@
     <AuthorizeView Policy="@RelioPolicies.Administrator">
         <Authorized>
             <MudNavLink Href="/admin/users" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.AdminPanelSettings">Administration</MudNavLink>
+            @if (MetricsOptions.CurrentValue.Enabled)
+            {
+                <MudNavLink Href="/admin/metrics" Match="NavLinkMatch.Prefix"
+                            Icon="@Icons.Material.Outlined.BarChart">Product metrics</MudNavLink>
+            }
         </Authorized>
     </AuthorizeView>
 </MudNavMenu>

@@ -673,12 +673,12 @@ completing epic #14.
     scanners cannot read an inverted code; never use `fill="..."` attributes). The `otpauth://` URI
     (`Identity/AuthenticatorUri`) uses the constant issuer `Relio`; the key is also shown grouped in
     fours for manual entry. **Never log the key, the URI, a code or a recovery code** - ids and counts only.
-  - **Secrets at rest**: Identity's built-in token storage keeps the authenticator key and the recovery
-    codes in plain text in `AspNetUserTokens` (the default; `IProtectedUserStore`/personal-data
-    protection is not enabled). Relio does not configure a persisted Data Protection key ring, so
-    encrypting them would risk making every account's key unreadable after a restart; instead the
-    database must be protected like the password hashes' database. Follow-up: protect two-factor
-    secrets at rest once a persisted key ring is a supported configuration.
+  - **Secrets at rest (issue #57)**: every `AspNetUserTokens.Value`, including authenticator keys
+    and recovery codes, is encrypted at the EF storage boundary with purpose-separated ASP.NET Core
+    Data Protection. Identity still receives ordinary plaintext values; passwords remain Identity
+    hashes. A durable, externally stored, DPAPI- or certificate-protected key ring is mandatory.
+    Back up its required decryption material with the database; losing the keys loses access to the
+    protected data. See `docs/security/data-protection.md`.
   - **Password reset (#17) does not turn two-factor authentication off** (a test locks it in): the
     reset link proves control of the mailbox, not of the phone. Someone who loses their phone *and*
     every recovery code cannot recover in-app; the pages tell them to contact the person who runs the
@@ -1350,6 +1350,64 @@ or an actual SignalR circuit.
   page with `fixture.NewPageAsync(...)`, navigate with `GotoAndWaitForInteractiveAsync`, assert
   with Playwright's `Expect(...)` (`using static Microsoft.Playwright.Assertions;`), and finish with
   `RelioAppFixture.ClosePageAsync(page)`.
+
+## Privacy and trust
+
+Epic #54 follows `docs/adr/adr-0002-privacy-and-sensitive-data-boundaries.md`. It defines
+engineering boundaries, not legal approval. Difficult moments are not modeled yet: their future
+implementation must extend every privacy checklist rather than treating an absent entity as covered.
+
+- **Encryption is at the EF boundary.** `Person.HowWeMet`, `Person.Details`, `Note.Text`,
+  `Interaction.Description`, `Reminder.Title`, Identity token values and `UserProfile.UnsubscribeToken`
+  use purpose-separated authenticated encryption. Names, contacts and indexed metadata remain
+  readable. Never query ciphertext for content matches or introduce a plaintext mirror. The shadow
+  `SensitiveDataProtectionVersion` is a concurrency token: metadata-only mutations must carry its
+  original value. Runtime reads never accept legacy plaintext. Startup validates external protected
+  keys and completes restartable backfill before serving traffic. Tests provision synthetic keys
+  outside the checkout; never commit key-ring entries, certificates or passwords.
+- **Portability includes the whole owned graph**, archived people included, through
+  `IUserDataPortabilityService`. Credentials, bearer tokens and token verifiers are excluded.
+  Contact-only vCard export never includes private narratives. Fresh-account JSON restore validates
+  the versioned document, remaps identifiers, preserves history through the context's scoped imported
+  audit hook, and saves once. It pauses reminder emails and never imports source analytics.
+  `UserDataPortabilityRestoreConcurrencyInterceptor` must be registered on SQL contexts: the
+  owner-only transaction lock (`Relio.UserDataRestore.v1.` plus uppercase SHA-256 of the exact
+  UTF-8 owner id) and in-transaction freshness check protect cross-context restores, not merely a
+  process-local gate. An unrelated owner or lifecycle lock must not block it.
+  See `docs/security/data-portability.md`.
+- **Erasure is one transactional tracked save**, reauthenticated with the current password and
+  explicit confirmation, selecting keys, foreign keys and protection versions rather than private
+  content. Foreign keys must be populated on deletion stubs so EF orders their deletes before
+  database cascades. Every owned type receives a required `NO ACTION` owner-to-Identity foreign key
+  through `OwnedEntityIdentityRelationships`; this rejects late writes instead of creating orphans.
+  The global session-owned `Relio.AccountLifecycle` lock covers fresh last-administrator checks
+  through the save for erasure and disabling accounts, separately from restore locks. Cookies check
+  current account availability on each request, and circuits on each inbound activity; the local
+  notifier redirects active local sessions. Confirmation email is post-commit and never changes
+  the deletion outcome. Backups remain an operator responsibility.
+  See `docs/security/account-erasure.md`.
+- **New owned entities extend all lifecycle surfaces together**: SQL isolation inventory, export,
+  restore, account erasure, owner-to-Identity relationship, and person delete/merge when applicable.
+  Administrative privileges never bypass ownership. SQL tests create real synthetic Identity
+  owners explicitly; never lazily recreate an owner or swallow a stale-write foreign-key failure.
+  SQL tests that exercise global account counts, foreign key-ring material, corruption or backfill
+  need isolated migrated databases, not the shared owner-scoped fixture. InMemory snapshots apply
+  converters to entire rows even for projections: prove metadata-only erasure and raw encryption
+  behavior against SQL Server, not by switching models or throwing converters on InMemory.
+- **Hosted product metrics are optional and off by default.** `ProductActivity` stores only one
+  bounded cohort summary per owner, no names, content, request addresses, IPs or event streams.
+  Activity collection uses the database lane and a collection/purge gate; retention expires after
+  90 days. Administrator reports are aggregates, not per-user drill-downs. Export includes the
+  owner's summary; restore excludes it. See `docs/security/product-metrics.md`.
+- **Framework logging also carries private data.** Keep the code-enforced privacy filters,
+  named account-endpoint rate limits, nonce-based script CSP and no-store responses intact.
+  Never log raw database or parser exceptions containing submitted values. Rate-limit partitions
+  use peer-derived process-local digests, not submitted account identifiers.
+- **Public policies require human review and operator configuration.** Hosted policy routes and
+  crawler indexing are disabled by default; no generated legal text is shipped. Reviewed external
+  documents, explicit review attestations and a configured canonical origin are required before
+  enabling them. The source-code link remains available on hosted and self-hosted instances.
+  See `docs/security/policy-hosting.md`.
 
 ## Required validation
 

@@ -20,7 +20,7 @@ public sealed class UserTimeZoneServiceSqlServerTests(SqlServerDatabaseFixture f
     public async Task GetTimeZoneAsync_defaults_to_UTC_when_no_profile_exists()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var service = CreateService(dbContext, TestDataFactory.NewOwnerId());
+        var service = CreateService(dbContext, await TestDataFactory.CreateOwnerAsync(fixture));
 
         var timeZone = await service.GetTimeZoneAsync();
 
@@ -31,7 +31,7 @@ public sealed class UserTimeZoneServiceSqlServerTests(SqlServerDatabaseFixture f
     public async Task SetTimeZoneAsync_then_GetTimeZoneAsync_round_trips_through_the_database()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var service = CreateService(dbContext, TestDataFactory.NewOwnerId());
+        var service = CreateService(dbContext, await TestDataFactory.CreateOwnerAsync(fixture));
 
         await service.SetTimeZoneAsync("Europe/Rome");
 
@@ -42,7 +42,7 @@ public sealed class UserTimeZoneServiceSqlServerTests(SqlServerDatabaseFixture f
     public async Task SetTimeZoneAsync_with_an_unknown_id_throws_and_creates_no_profile()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerId = TestDataFactory.NewOwnerId();
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
         var service = CreateService(dbContext, ownerId);
 
         var act = () => service.SetTimeZoneAsync("Not/AZone");
@@ -66,8 +66,8 @@ public sealed class UserTimeZoneServiceSqlServerTests(SqlServerDatabaseFixture f
     public async Task User_A_cannot_read_or_overwrite_user_Bs_time_zone()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         await CreateService(dbContext, ownerB).SetTimeZoneAsync("Pacific/Kiritimati");
 
         var serviceForA = CreateService(dbContext, ownerA);

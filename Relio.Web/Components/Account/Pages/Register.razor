@@ -9,6 +9,7 @@
 @using Microsoft.AspNetCore.WebUtilities
 @using Relio.Application.Time
 @using Relio.Data.Identity
+@using Relio.Web.Security
 
 @inject IAccountRegistrationService RegistrationService
 @inject UserManager<RelioUser> UserManager
@@ -100,12 +101,15 @@ else if (_eligibility.CanRegister)
         Already have an account? <MudLink Href="/Account/Login" data-enhance-nav="false">Sign in</MudLink>
     </MudText>
 
+    <RelioPolicyLinks CssClass="rl-policy-links rl-registration-policy-links"
+                      AriaLabel="Policies for this instance" />
+
     @* A plain, synchronous script - not type="module" importing wwwroot/js/timezone.js: a module
        import is an asynchronous network fetch, which races an automated (or simply fast) form
        submission on this static SSR page. A classic script tag runs synchronously as soon as the
        parser reaches it, i.e. immediately after the hidden input above already exists in the DOM and
        well before any submit can happen, at the cost of duplicating timezone.js's one-line body here. *@
-    <script>
+    <script nonce="@ContentSecurityPolicyNonce.Get(HttpContext)">
         (function () {
             var timeZoneInput = document.getElementById('register-timezone-input');
             if (!timeZoneInput) {

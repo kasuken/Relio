@@ -18,8 +18,8 @@ public sealed class TagServiceSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task ListWithUsageAsync_counts_people_per_tag()
     {
-        var owner = TestDataFactory.NewOwnerId();
-        var other = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
+        var other = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         var climbing = await TestDataFactory.CreateTagAsync(dbContext, owner, "Climbing");
         var chess = await TestDataFactory.CreateTagAsync(dbContext, owner, "Chess");
@@ -38,7 +38,7 @@ public sealed class TagServiceSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task CreateAsync_refuses_case_only_duplicates()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         await TestDataFactory.CreateTagAsync(dbContext, owner, "Climbing");
         dbContext.ChangeTracker.Clear();
@@ -51,7 +51,7 @@ public sealed class TagServiceSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task CreateAsync_reports_a_name_taken_at_the_same_moment_as_NameTaken_and_saves_nothing()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var interceptor = new InsertTagOnFirstSaveInterceptor(fixture, owner, "climbing");
         await using var dbContext = fixture.CreateDbContext(interceptor);
 
@@ -70,7 +70,7 @@ public sealed class TagServiceSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task RenameAsync_reports_a_name_taken_at_the_same_moment_as_NameTaken()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid id;
         await using (var setup = fixture.CreateDbContext())
         {
@@ -90,7 +90,7 @@ public sealed class TagServiceSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task RenameAsync_changes_the_tag_every_person_sees()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid climbing, ada, bo;
         await using (var setup = fixture.CreateDbContext())
         {
@@ -110,7 +110,7 @@ public sealed class TagServiceSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task RenameAsync_can_change_only_the_casing()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         var id = await TestDataFactory.CreateTagAsync(dbContext, owner, "chess");
         dbContext.ChangeTracker.Clear();
@@ -124,7 +124,7 @@ public sealed class TagServiceSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task DeleteAsync_removes_the_tag_and_its_links_but_not_the_people()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid climbing, chess, ada, bo;
         await using (var setup = fixture.CreateDbContext())
         {
@@ -148,7 +148,7 @@ public sealed class TagServiceSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task Deleting_a_tag_row_directly_cascades_to_person_links()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid climbing, ada;
         await using (var setup = fixture.CreateDbContext())
         {
@@ -165,8 +165,8 @@ public sealed class TagServiceSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task RenameAsync_and_DeleteAsync_for_another_owners_tag_return_false()
     {
-        var owner = TestDataFactory.NewOwnerId();
-        var other = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
+        var other = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         var foreign = await TestDataFactory.CreateTagAsync(dbContext, other, "Secret");
         dbContext.ChangeTracker.Clear();
@@ -182,7 +182,7 @@ public sealed class TagServiceSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task Tag_name_index_is_unique_and_named_as_the_service_expects()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         await TestDataFactory.CreateTagAsync(dbContext, owner, "Climbing");
 

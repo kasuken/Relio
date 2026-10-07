@@ -62,7 +62,7 @@ public sealed class OnboardingServiceTests
             .UseInMemoryDatabase(databaseName, databaseRoot)
             .Options;
 
-        await using (var seed = new RelioDbContext(seedOptions, TimeProvider.System))
+        await using (var seed = new RelioDbContext(seedOptions, TimeProvider.System, FieldProtector))
         {
             seed.UserProfiles.Add(new UserProfile { OwnerId = UserA, OnboardingDismissed = false });
             await seed.SaveChangesAsync();
@@ -72,7 +72,7 @@ public sealed class OnboardingServiceTests
             .UseInMemoryDatabase(databaseName, databaseRoot)
             .AddInterceptors(new FailOnceSaveChangesInterceptor())
             .Options;
-        await using var dbContext = new RelioDbContext(options, TimeProvider.System);
+        await using var dbContext = new RelioDbContext(options, TimeProvider.System, FieldProtector);
         var service = CreateService(dbContext, UserA);
 
         var act = () => service.DismissAsync();
@@ -103,7 +103,7 @@ public sealed class OnboardingServiceTests
         var options = new DbContextOptionsBuilder<RelioDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        return new RelioDbContext(options, TimeProvider.System);
+        return new RelioDbContext(options, TimeProvider.System, FieldProtector);
     }
 
     private static IOnboardingService CreateService(RelioDbContext dbContext, string userId) =>

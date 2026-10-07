@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Relio.Application.Administration;
 using Relio.Application.Security;
+using Relio.Data.Accounts;
 using Relio.Data.Identity;
 
 namespace Relio.Data.Administration;
@@ -66,11 +67,11 @@ public sealed class UserAdministrationService(
 
     /// <inheritdoc />
     public Task<AccountChangeResult> DisableAccountAsync(string userId, CancellationToken cancellationToken = default) =>
-        SetDisabledAsync(userId, disabled: true);
+        SetDisabledAsync(userId, disabled: true, cancellationToken);
 
     /// <inheritdoc />
     public Task<AccountChangeResult> EnableAccountAsync(string userId, CancellationToken cancellationToken = default) =>
-        SetDisabledAsync(userId, disabled: false);
+        SetDisabledAsync(userId, disabled: false, cancellationToken);
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<InvitationSummary>> ListPendingInvitationsAsync(
@@ -92,6 +93,7 @@ public sealed class UserAdministrationService(
     public async Task<CreateInvitationResult> CreateInvitationAsync(
         string email, CancellationToken cancellationToken = default)
     {
+        await using var lifecycleScope = await AccountLifecycleGate.EnterAsync(dbContext, cancellationToken);
         var administratorId = await RequireAdministratorAsync();
 
         if (options.Value.Mode != RegistrationMode.InviteOnly)
@@ -164,8 +166,13 @@ public sealed class UserAdministrationService(
         return true;
     }
 
-    private async Task<AccountChangeResult> SetDisabledAsync(string userId, bool disabled)
+    private async Task<AccountChangeResult> SetDisabledAsync(
+        string userId,
+        bool disabled,
+        CancellationToken cancellationToken)
     {
+        currentUser.RequireUserId();
+        await using var lifecycleScope = await AccountLifecycleGate.EnterAsync(dbContext, cancellationToken);
         var administratorId = await RequireAdministratorAsync();
 
         if (string.Equals(administratorId, userId, StringComparison.Ordinal))
@@ -182,7 +189,7 @@ public sealed class UserAdministrationService(
         // FindByIdAsync returns a copy this context already tracks without asking the database, and
         // a circuit's context is long-lived: reload, or a change made elsewhere since (a failed
         // sign-in bumps the concurrency stamp) would make the save below fail.
-        await dbContext.Entry(user).ReloadAsync();
+        await dbContext.Entry(user).ReloadAsync(cancellationToken);
         if (dbContext.Entry(user).State == EntityState.Detached)
         {
             return AccountChangeResult.NotFound;
@@ -191,6 +198,13 @@ public sealed class UserAdministrationService(
         if (user.IsDisabled == disabled)
         {
             return AccountChangeResult.Succeeded;
+        }
+
+        if (disabled
+            && await IsAdministratorAccountAsync(user.Id, cancellationToken)
+            && await CountActiveAdministratorsAsync(cancellationToken) <= 1)
+        {
+            return AccountChangeResult.LastActiveAdministrator;
         }
 
         // The flag is set first: UpdateSecurityStampAsync saves the whole user, so the flag and the
@@ -229,6 +243,34 @@ public sealed class UserAdministrationService(
         // provider the unit tests use, and an instance has a handful of invitations at most.
         dbContext.RegistrationInvitations.RemoveRange(expired);
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<bool> IsAdministratorAccountAsync(string userId, CancellationToken cancellationToken)
+    {
+        var administratorRoleId = await dbContext.Roles
+            .AsNoTracking()
+            .Where(role => role.Name == RelioRoles.Administrator)
+            .Select(role => role.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return administratorRoleId is not null
+            && await dbContext.UserRoles
+                .AsNoTracking()
+                .AnyAsync(
+                    userRole => userRole.UserId == userId && userRole.RoleId == administratorRoleId,
+                    cancellationToken);
+    }
+
+    private async Task<int> CountActiveAdministratorsAsync(CancellationToken cancellationToken)
+    {
+        var activeAdministratorIds =
+            from userRole in dbContext.UserRoles.AsNoTracking()
+            join role in dbContext.Roles.AsNoTracking() on userRole.RoleId equals role.Id
+            join user in dbContext.Users.AsNoTracking() on userRole.UserId equals user.Id
+            where role.Name == RelioRoles.Administrator && !user.IsDisabled
+            select userRole.UserId;
+
+        return await activeAdministratorIds.Distinct().CountAsync(cancellationToken);
     }
 
     private async Task<string> RequireAdministratorAsync()

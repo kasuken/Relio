@@ -1,0 +1,41 @@
+@page "/Account/AccountDeleted"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+<PageTitle>Account deleted - Relio</PageTitle>
+
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-4" data-testid="account-deleted-heading">
+    Your account has been deleted
+</MudText>
+
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-4" data-testid="account-deleted-message">
+    Your account and its data have been permanently deleted from the live database. Backups are
+    managed separately by the person who runs this Relio instance.
+</MudText>
+
+@if (Delivery == "sent")
+{
+    <MudText Typo="Typo.body1" Class="mb-6" data-testid="account-deleted-email">
+        A confirmation email was sent to the address on your account.
+    </MudText>
+}
+else if (Delivery == "failed")
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-6" data-testid="account-deleted-email">
+        Your account was deleted, but the confirmation email could not be delivered.
+    </MudAlert>
+}
+else if (Delivery == "not-configured")
+{
+    <MudText Typo="Typo.body1" Class="mud-text-secondary mb-6" data-testid="account-deleted-email">
+        No confirmation email was sent because email is not configured on this instance.
+    </MudText>
+}
+
+<MudLink Href="/Account/Login" data-testid="account-deleted-login">Return to sign in</MudLink>
+
+@code {
+    [SupplyParameterFromQuery]
+    private string? Delivery { get; set; }
+}

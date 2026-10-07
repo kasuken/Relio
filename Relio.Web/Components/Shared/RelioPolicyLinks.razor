@@ -1,0 +1,22 @@
+@using Relio.Web.Configuration
+@inject IHostedPolicyDocumentProvider PolicyDocuments
+
+@if (PolicyDocuments.EnabledDocuments.Count > 0)
+{
+    <nav class="@CssClass" aria-label="@AriaLabel">
+        @foreach (var document in PolicyDocuments.EnabledDocuments)
+        {
+            <a href="@document.CanonicalPath" data-enhance-nav="false">@document.LinkLabel</a>
+        }
+    </nav>
+}
+
+@code {
+    /// <summary>Gets or sets the CSS class applied to the policy navigation landmark.</summary>
+    [Parameter]
+    public string CssClass { get; set; } = "rl-policy-links";
+
+    /// <summary>Gets or sets the accessible name of this navigation landmark.</summary>
+    [Parameter]
+    public string AriaLabel { get; set; } = "Policies for this instance";
+}

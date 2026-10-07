@@ -1,0 +1,15 @@
+@using Relio.Web.Configuration
+@inject IHostedPolicyDocumentProvider PolicyDocuments
+@inject TimeProvider TimeProvider
+
+<footer class="rl-public-footer">
+    @if (PolicyDocuments.IsEnabled)
+    {
+        <RelioPolicyLinks />
+    }
+
+    <div class="rl-public-footer-meta">
+        <span class="rl-public-footer-year" aria-label="Current year">@TimeProvider.GetUtcNow().Year</span>
+        <SourceCodeLink />
+    </div>
+</footer>

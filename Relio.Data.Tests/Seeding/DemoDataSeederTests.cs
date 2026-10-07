@@ -229,7 +229,7 @@ public class DemoDataSeederTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
 
-        var dbContext = new RelioDbContext(options, TimeProvider.System);
+        var dbContext = new RelioDbContext(options, TimeProvider.System, FieldProtector);
 
         // Applies the seeded Administrator role (HasData), which AddToRoleAsync needs - InMemory has no migrations.
         dbContext.Database.EnsureCreated();

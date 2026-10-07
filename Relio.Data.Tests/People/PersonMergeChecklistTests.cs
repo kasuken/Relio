@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Relio.Data.Encryption;
 using Relio.Domain;
 
 namespace Relio.Data.Tests.People;
@@ -29,8 +30,8 @@ public class PersonMergeChecklistTests
     ];
 
     /// <summary>
-    /// Every mapped column of <see cref="Person"/> except the identity and audit columns, each with a rule in
-    /// <c>PersonMergeRules.Combine</c>.
+    /// Every profile column of <see cref="Person"/> except identity, audit and context-managed
+    /// storage-protection metadata, each with a rule in <c>PersonMergeRules.Combine</c>.
     /// </summary>
     private static readonly string[] HandledByCombine =
     [
@@ -71,7 +72,10 @@ public class PersonMergeChecklistTests
         var columns = Model().FindEntityType(typeof(Person))!
             .GetProperties()
             .Select(property => property.Name)
-            .Except([nameof(Person.Id), nameof(Person.OwnerId), nameof(Person.CreatedAtUtc), nameof(Person.UpdatedAtUtc)])
+            .Except([
+                nameof(Person.Id), nameof(Person.OwnerId), nameof(Person.CreatedAtUtc), nameof(Person.UpdatedAtUtc),
+                FieldProtectionSchema.VersionPropertyName,
+            ])
             .ToList();
 
         var undecided = columns.Except(HandledByCombine).ToList();
@@ -94,9 +98,7 @@ public class PersonMergeChecklistTests
 
     private static IModel Model()
     {
-        using var dbContext = new RelioDbContext(
-            new DbContextOptionsBuilder<RelioDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
-            TimeProvider.System);
+        using var dbContext = new RelioDbContext(new DbContextOptionsBuilder<RelioDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options, TimeProvider.System, FieldProtector);
 
         return dbContext.Model;
     }

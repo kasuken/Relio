@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Relio.Application.Notes;
 using Relio.Application.Ownership;
+using Relio.Data.Encryption;
 using Relio.Data.IntegrationTests.Infrastructure;
 using Relio.Data.Notes;
 using Relio.Domain;
@@ -36,7 +37,7 @@ public sealed class NoteSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task Note_creation_and_reads_round_trip_with_sql_server()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid personId;
         Guid noteId;
         await using (var setup = fixture.CreateDbContext())
@@ -59,14 +60,16 @@ public sealed class NoteSqlServerTests(SqlServerDatabaseFixture fixture)
         note.Should().NotBeNull();
         note!.Text.Should().Be("Remember the kind gesture.\nAnd the follow-up.");
         pinned.Select(item => item.Id).Should().Equal(noteId);
-        (await fresh.Database.SqlQuery<string>($"SELECT [Text] AS [Value] FROM dbo.Notes WHERE [Id] = {noteId}")
-            .SingleAsync()).Should().Be(note.Text);
+        var storedText = await fresh.Database.SqlQuery<string>(
+            $"SELECT [Text] AS [Value] FROM dbo.Notes WHERE [Id] = {noteId}").SingleAsync();
+        storedText.Should().NotContain(note.Text);
+        FieldProtector.Unprotect(storedText, ProtectedFieldPurposes.NoteText).Should().Be(note.Text);
     }
 
     [SqlServerFact]
     public async Task Deleting_a_person_directly_in_sql_server_cascades_to_notes()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid personId;
         Guid noteId;
         await using (var setup = fixture.CreateDbContext())
@@ -90,8 +93,8 @@ public sealed class NoteSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task Notes_are_isolated_by_owner_for_all_reads_and_mutations()
     {
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid personA;
         Guid personB;
         Guid noteA;

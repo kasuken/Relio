@@ -6,6 +6,22 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Privacy, trust and data ownership (epic #54; issues #55-#62). Purpose-separated authenticated
+  encryption protects private narratives, reminder titles and Identity/unsubscribe credentials,
+  backed by mandatory durable external protected keys and restartable legacy-data backfill.
+  Settings offers full-fidelity JSON export and atomic fresh-account restore, contact-only vCard
+  export, and password-confirmed permanent account erasure with an export-first prompt. Required
+  owner-to-Identity foreign keys reject stale writes; serialized lifecycle changes preserve an
+  active administrator, and erased sessions are rejected on their next request or circuit activity.
+  Hardened account endpoints add configurable rate limits, nonce-based script CSP, security headers
+  and framework-log privacy filters. An always-available source link and optional reviewed policy
+  hosting ship without generated legal text; public indexing and content-free aggregate metrics
+  remain off by default. Metrics retain only a bounded per-owner contribution for 90 days.
+  Real SQL Server ownership, ciphertext, transaction, lifecycle and retention proofs extend the
+  fast unit and browser coverage. Migrations `ProtectSensitiveFieldsAndAddProductMetrics` and
+  `EnforceOwnedAccountLifetimes`; protected-storage downgrade is refused in favor of restoring a
+  pre-upgrade backup with matching keys. Difficult moments are not yet modeled.
+
 - Dashboard, first-run onboarding and global quick log (epic #46; issues #47–#50).
   The dashboard shows upcoming reminders and birthdays, people to reach out to, recent interactions
   and recently added people, with helpful empty states and up to five entries per section. Upcoming

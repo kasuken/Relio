@@ -31,7 +31,7 @@ public sealed class DatabaseSchemaSqlServerTests(SqlServerDatabaseFixture fixtur
     public async Task A_tag_name_is_unique_per_owner()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerId = TestDataFactory.NewOwnerId();
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
         await TestDataFactory.CreateTagAsync(dbContext, ownerId, "family");
 
         dbContext.Tags.Add(new Tag { OwnerId = ownerId, Name = "family" });
@@ -47,8 +47,8 @@ public sealed class DatabaseSchemaSqlServerTests(SqlServerDatabaseFixture fixtur
     public async Task Different_owners_can_each_have_a_tag_with_the_same_name()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         await TestDataFactory.CreateTagAsync(dbContext, ownerA, "family");
 
         dbContext.Tags.Add(new Tag { OwnerId = ownerB, Name = "family" });

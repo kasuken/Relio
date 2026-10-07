@@ -30,6 +30,19 @@
 <MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-8 mb-2">Sign-in and security</MudText>
 <SignInSecuritySettings />
 
+<MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-8 mb-2">Your data</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-4">
+    Download your private data or restore a complete export into a fresh account.
+</MudText>
+<MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="/settings/data"
+           data-testid="settings-data-link">
+    Export or restore your data
+</MudButton>
+<MudButton Variant="Variant.Outlined" Href="/Account/Manage/DeleteAccount"
+           Class="ml-2" data-testid="settings-delete-account-link">
+    Delete your account
+</MudButton>
+
 <MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-8 mb-2">Reminder emails</MudText>
 <MudText Typo="Typo.body1" Class="mud-text-secondary mb-4">
     Choose which reminders Relio emails you. This arrives with email reminders.

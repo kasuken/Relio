@@ -49,5 +49,8 @@ public class PersonModelTests
     }
 
     private static RelioDbContext CreateDbContext() =>
-        new(new DbContextOptionsBuilder<RelioDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options, TimeProvider.System);
+        new(
+            new DbContextOptionsBuilder<RelioDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
+            TimeProvider.System,
+            FieldProtector);
 }

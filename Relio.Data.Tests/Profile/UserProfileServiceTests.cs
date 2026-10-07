@@ -195,7 +195,7 @@ public class UserProfileServiceTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .AddInterceptors(failing)
             .Options;
-        await using var dbContext = new RelioDbContext(options, TimeProvider.System);
+        await using var dbContext = new RelioDbContext(options, TimeProvider.System, FieldProtector);
         var service = CreateService(dbContext, UserA);
 
         var act = () => service.SetDisplayNameAsync("Ada");
@@ -214,7 +214,7 @@ public class UserProfileServiceTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
 
-        return new RelioDbContext(options, TimeProvider.System);
+        return new RelioDbContext(options, TimeProvider.System, FieldProtector);
     }
 
     private static UserProfileService CreateService(RelioDbContext dbContext, string? userId) =>

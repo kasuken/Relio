@@ -224,7 +224,7 @@ public class TagServiceManagementTests
         new DbContextOptionsBuilder<RelioDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
 
     internal static RelioDbContext CreateDbContext(DbContextOptions<RelioDbContext> database) =>
-        new(database, TimeProvider.System);
+        new(database, TimeProvider.System, FieldProtector);
 
     internal static TagService CreateService(RelioDbContext dbContext, string? ownerId) =>
         new(dbContext, new FakeCurrentUser(ownerId));

@@ -152,7 +152,7 @@ public class UserTimeZoneServiceTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .AddInterceptors(new FailOnceSaveChangesInterceptor())
             .Options;
-        await using var dbContext = new RelioDbContext(options, TimeProvider.System);
+        await using var dbContext = new RelioDbContext(options, TimeProvider.System, FieldProtector);
         var service = CreateService(dbContext, UserA, new FakeTimeProvider());
 
         var act = () => service.SetTimeZoneAsync("Europe/Rome");
@@ -171,7 +171,7 @@ public class UserTimeZoneServiceTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
 
-        return new RelioDbContext(options, TimeProvider.System);
+        return new RelioDbContext(options, TimeProvider.System, FieldProtector);
     }
 
     private static UserTimeZoneService CreateService(RelioDbContext dbContext, string? userId, TimeProvider timeProvider) =>

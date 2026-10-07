@@ -2,8 +2,10 @@
 @implements IDisposable
 @inject ThemeModeState ThemeState
 @inject IJSRuntime JS
+@using Relio.Web.Components.Account.Shared
 
 <MudThemeProvider @ref="_themeProvider" Theme="RelioTheme.Theme" IsDarkMode="ThemeState.IsDark" />
+<AccountSessionBoundary />
 
 <div class="rl-app">
     <a href="#main-content" class="rl-skip-link"
@@ -69,6 +71,7 @@
             </main>
         </MudMainContent>
     </MudLayout>
+    <RelioPublicFooter />
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>

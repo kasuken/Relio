@@ -2,8 +2,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Relio.Data.Encryption;
 using Relio.Data.DependencyInjection;
 using Relio.Web.Identity;
+using Relio.Web.Tests.Infrastructure;
 using DataServiceCollectionExtensions = Relio.Data.DependencyInjection.ServiceCollectionExtensions;
 using IdentityServiceCollectionExtensions = Relio.Web.Identity.ServiceCollectionExtensions;
 
@@ -32,7 +34,8 @@ internal static class IdentityServicesFactory
 
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddDataProtection();
+        DataProtectionTestHarness.ConfigureDataProtection(services);
+        services.AddRelioFieldProtection();
         // A plain accessor, not the default AsyncLocal one: tests set the context inside async helpers,
         // whose AsyncLocal changes do not flow back to the calling test method.
         services.AddSingleton<IHttpContextAccessor, PlainHttpContextAccessor>();

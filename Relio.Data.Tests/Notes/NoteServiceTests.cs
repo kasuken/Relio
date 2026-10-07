@@ -206,7 +206,7 @@ public class NoteServiceTests
             .UseInMemoryDatabase(databaseName)
             .AddInterceptors(interceptors)
             .Options;
-        return new RelioDbContext(options, timeProvider);
+        return new RelioDbContext(options, timeProvider, FieldProtector);
     }
 
     private static async Task<Guid> AddPersonAsync(

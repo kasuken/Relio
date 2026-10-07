@@ -56,6 +56,9 @@ public sealed class RelioWebAppFactory(Action<IServiceCollection>? configureTest
 
     protected override IHost CreateHost(IHostBuilder builder)
     {
+        using var protectionEnvironment =
+            Relio.Web.Tests.Infrastructure.DataProtectionTestHarness.ConfigureHostEnvironment();
+
         // NOT builder.ConfigureAppConfiguration: Relio.Web/Program.cs reads Database:Provider (via
         // AddRelioData) with a plain top-level statement, synchronously, before its own
         // `builder.Build()` call. WebApplicationFactory only splices ConfigureAppConfiguration's
@@ -74,6 +77,13 @@ public sealed class RelioWebAppFactory(Action<IServiceCollection>? configureTest
         {
             Environment.SetEnvironmentVariable(providerVariable, ServiceCollectionExtensions.InMemoryProvider);
         }
+
+        // These synthetic test hosts share a loopback peer across many account flows; keep their
+        // budgets explicitly high without changing the secure application defaults. Variants can
+        // set lower values before Build (VariantApp restores these values afterwards).
+        SetDefaultTestRateLimit("Security__RateLimiting__LoginPermitLimit", "100000");
+        SetDefaultTestRateLimit("Security__RateLimiting__RegistrationPermitLimit", "100000");
+        SetDefaultTestRateLimit("Security__RateLimiting__PasswordResetPermitLimit", "100000");
 
         // Same timing constraint as Database:Provider above - Program.cs reads this (via
         // DemoDataSeeder's options) before builder.Build(), so it must already be set as an
@@ -117,6 +127,14 @@ public sealed class RelioWebAppFactory(Action<IServiceCollection>? configureTest
         dummyHost.Start();
 
         return dummyHost;
+    }
+
+    private static void SetDefaultTestRateLimit(string name, string value)
+    {
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(name)))
+        {
+            Environment.SetEnvironmentVariable(name, value);
+        }
     }
 
     /// <summary>

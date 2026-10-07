@@ -96,7 +96,7 @@ public class PersonMergeServiceOwnershipTests
         new DbContextOptionsBuilder<RelioDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
 
     private static RelioDbContext CreateDbContext(DbContextOptions<RelioDbContext> database) =>
-        new(database, new FakeTimeProvider(Now));
+        new(database, new FakeTimeProvider(Now), FieldProtector);
 
     private static PersonMergeService CreateService(RelioDbContext dbContext, string userId) =>
         new(dbContext, new FakeCurrentUser(userId), new FakeTimeProvider(Now));

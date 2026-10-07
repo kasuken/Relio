@@ -39,6 +39,14 @@ public sealed class TwoFactorSqlServerTests(SqlServerDatabaseFixture fixture)
             key = (await userManager.GetAuthenticatorKeyAsync(user))!;
             codes = (await userManager.TurnOnTwoFactorAsync(user))!;
             userId = user.Id;
+
+            var rawTokenValues = await writeContext.Database.SqlQueryRaw<string>(
+                    "SELECT [Value] AS [Value] FROM [AspNetUserTokens] WHERE [UserId] = {0}",
+                    userId)
+                .ToListAsync();
+            rawTokenValues.Should().HaveCount(2);
+            rawTokenValues.Should().NotContain(key);
+            rawTokenValues.Should().NotContain(string.Join(";", codes));
         }
 
         // A brand new context and manager: nothing is served from memory.
@@ -87,7 +95,7 @@ public sealed class TwoFactorSqlServerTests(SqlServerDatabaseFixture fixture)
         var services = new ServiceCollection();
         services.AddSingleton(dbContext);
         services.AddLogging();
-        services.AddDataProtection();
+        ConfigureDataProtection(services);
         services.AddIdentityCore<RelioUser>(options => options.User.RequireUniqueEmail = true)
             // Before the stores (like AddRelioIdentity): otherwise role calls throw NotSupportedException.
             .AddRoles<IdentityRole>()

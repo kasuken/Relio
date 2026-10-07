@@ -6,6 +6,7 @@ using Relio.Application.Security;
 using Relio.Data.Administration;
 using Relio.Data.Concurrency;
 using Relio.Data.DependencyInjection;
+using Relio.Data.Encryption;
 using Relio.Data.Identity;
 using Relio.Data.Seeding;
 using Relio.Data.Tests.People;
@@ -68,6 +69,7 @@ public class DataServiceRegistrationTests
         services.AddLogging();
         services.AddSingleton<ICurrentUser>(new FakeCurrentUser("user"));
         services.AddSingleton<IReminderEmailSender>(new Reminders.FakeReminderEmailSender());
+        services.AddSingleton<IDataProtectionFieldProtector>(FieldProtector);
         services.AddIdentityCore<RelioUser>().AddRoles<IdentityRole>().AddEntityFrameworkStores<RelioDbContext>();
         var before = services.ToList();
 

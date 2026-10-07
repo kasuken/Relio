@@ -20,7 +20,7 @@ public sealed class PeopleImportSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task ImportAsync_saves_people_and_contact_methods_and_they_read_back_in_order()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
 
         var created = await TestDataFactory.CreatePeopleImportService(dbContext, owner).ImportAsync(
@@ -47,7 +47,7 @@ public sealed class PeopleImportSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task ImportAsync_rolls_back_everything_when_a_command_fails()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var failure = new FailOnNthInsertInterceptor(failOn: 4);
         await using var dbContext = CreateOneStatementPerCommandContext(failure);
 
@@ -67,7 +67,7 @@ public sealed class PeopleImportSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task ImportAsync_runs_every_write_in_one_transaction()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var recorder = new FailOnNthInsertInterceptor(failOn: int.MaxValue);
         await using var dbContext = CreateOneStatementPerCommandContext(recorder);
 
@@ -82,7 +82,7 @@ public sealed class PeopleImportSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task ImportAsync_of_2000_people_with_three_contact_methods_each_completes()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         var requests = Enumerable.Range(0, ImportLimits.MaxPeople).Select(i => Request(
             $"Person{i}",
@@ -107,7 +107,7 @@ public sealed class PeopleImportSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task ImportAsync_respects_the_birthday_check_constraints_for_yearless_birthdays()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
 
         await TestDataFactory.CreatePeopleImportService(dbContext, owner).ImportAsync(
@@ -130,7 +130,7 @@ public sealed class PeopleImportSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task PreviewAsync_matches_emails_case_insensitively_and_phones_by_last_eight_digits()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         var peopleService = TestDataFactory.CreateService(dbContext, owner);
         var mail = await peopleService.CreateAsync(new CreatePersonRequest
@@ -166,8 +166,8 @@ public sealed class PeopleImportSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task PreviewAsync_never_reads_another_owners_rows()
     {
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         await TestDataFactory.CreateService(dbContext, ownerB).CreateAsync(new CreatePersonRequest
         {
@@ -185,8 +185,8 @@ public sealed class PeopleImportSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task Imported_people_are_invisible_to_another_owner()
     {
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         await TestDataFactory.CreatePeopleImportService(dbContext, ownerA).ImportAsync([Request("Ada", null, contacts: [new ContactMethodInput(null, ContactMethodKind.Email, null, "ada@example.com")])]);
         await using var verify = fixture.CreateDbContext();
@@ -223,7 +223,7 @@ public sealed class PeopleImportSqlServerTests(SqlServerDatabaseFixture fixture)
             .UseSqlServer(fixture.ConnectionString, sqlServer => sqlServer.MaxBatchSize(1))
             .AddInterceptors(interceptors)
             .Options;
-        return new RelioDbContext(options, TimeProvider.System);
+        return new RelioDbContext(options, TimeProvider.System, FieldProtector);
     }
 
     /// <summary>Counts INSERT commands (and the transaction each ran in); throws on the <c>failOn</c>-th.</summary>

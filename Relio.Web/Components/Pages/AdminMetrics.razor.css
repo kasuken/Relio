@@ -1,0 +1,100 @@
+.product-metrics-page {
+    max-width: 900px;
+}
+
+.product-metrics-intro {
+    max-width: var(--measure);
+}
+
+.metrics-retention {
+    display: grid;
+    grid-template-columns: minmax(210px, 0.8fr) minmax(0, 1.2fr);
+    gap: var(--space-8);
+    align-items: start;
+    padding: var(--space-6) 0;
+    border-block: 1px solid var(--line);
+}
+
+.metrics-retention-result {
+    min-width: 0;
+}
+
+.metrics-rate {
+    margin: var(--space-3) 0 var(--space-1);
+    color: var(--pen);
+    font-family: var(--font-serif);
+    font-size: clamp(3.25rem, 9vw, 5rem);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.metrics-no-data {
+    max-width: 18rem;
+    margin: var(--space-3) 0 0;
+    font-family: var(--font-serif);
+    font-size: 1.5rem;
+    line-height: 1.2;
+}
+
+.metrics-definition {
+    max-width: var(--measure);
+}
+
+.metrics-section {
+    padding: var(--space-8) 0 0;
+}
+
+.metrics-list {
+    margin: 0;
+    max-width: 760px;
+}
+
+.metrics-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-1) var(--space-4);
+    align-items: baseline;
+    padding: var(--space-4) var(--space-2);
+    border-bottom: 1px solid var(--line);
+}
+
+.metrics-row dt {
+    min-width: 0;
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-weight: 600;
+}
+
+.metrics-row dd {
+    margin: 0;
+    color: var(--text);
+    font-family: var(--font-serif);
+    font-size: 1.25rem;
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+}
+
+.metrics-row dd.metrics-note {
+    grid-column: 1 / -1;
+    max-width: var(--measure);
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    line-height: 1.5;
+    text-align: start;
+}
+
+@media (max-width: 599.98px) {
+    .metrics-retention {
+        grid-template-columns: 1fr;
+        gap: var(--space-4);
+    }
+
+    .metrics-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-1);
+    }
+
+    .metrics-row dd {
+        text-align: start;
+    }
+}
