@@ -6,6 +6,24 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Merge duplicate person profiles (issue #28), epic #21. A profile's **More** menu has **Merge with…**,
+  and the possible-duplicate warning in edit mode has **Merge instead**; both open
+  `/people/{id}/merge`, where the profile you came from is the one you **keep**. First you choose the other
+  profile (the suggested duplicates first, then a search over all your people, archived ones included, that
+  ignores case and accents), then you see the two side by side and choose what to keep **only where they
+  disagree** (name, nickname, relationship, birthday, how you met, details, status; the texts also offer
+  **Keep both**; a profile that is archived while the other is active defaults to active). Contact methods
+  are united with repeats combined (the same email in different capitals is one email, and a label the kept
+  one lacked is taken from the repeat), tags are united, and the later "last contacted" date wins. A preview
+  shows exactly what you will get. A confirmation names both people and says it can't be undone; then
+  everything recorded about the other profile moves to the one you keep and the other is removed, in a
+  single transaction (`IPersonMergeService`, one save), and you land on the merged profile ("Profiles
+  merged"). Merging profiles that together have more than 20 contact methods or tags, or two texts too long
+  to keep both, is refused with an explanation and changes nothing. A profile that isn't yours, or that
+  disappeared meanwhile, is reported like one that doesn't exist. No migration. Future things that belong to
+  a person (interactions, notes, reminders, difficult moments) must add a line to
+  `PersonMergeService.MoveDependentsAsync`: `PersonMergeChecklistTests` and a SQL Server foreign-key test fail
+  until they do, and `Every_person_column_has_a_merge_rule` does the same for a new column on `Person`.
 - Detect possible duplicate people (issue #27), epic #21. Adding a person, or renaming one, now checks
   your own list when you press Save and warns when up to five profiles look like the same person: the
   same or a similar name (ignoring case, accents, punctuation and spacing - "Jon Smith" finds "John

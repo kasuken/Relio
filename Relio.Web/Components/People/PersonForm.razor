@@ -187,7 +187,9 @@
     @if (_duplicates.Count > 0)
     {
         @* Next to the Save button that was just pressed (on a phone too). *@
-        <PossibleDuplicateWarning Matches="_duplicates" Busy="_saving" OnSaveAnyway="SaveAnywayAsync" />
+        @* In edit mode only: a person being created has no saved profile to merge into. "Merge instead"
+           opens in the same tab on purpose - merging instead of saving the rename is the point. *@
+        <PossibleDuplicateWarning Matches="_duplicates" Busy="_saving" OnSaveAnyway="SaveAnywayAsync" ItemActions="@MergeInstead" />
     }
 
     <div class="rl-form-actions">
@@ -241,6 +243,23 @@
     public EventCallback OnNotFound { get; set; }
 
     private bool IsEditing => Person is not null;
+
+    // "Merge instead" next to each possible duplicate, when editing (issue #28). The address carries two
+    // opaque ids: the person being edited (the one that is kept) and the match.
+    private RenderFragment<PossibleDuplicate>? MergeInstead
+    {
+        get
+        {
+            if (Person is not { } person)
+            {
+                return null;
+            }
+
+            return match => @<MudLink Href="@($"/people/{person.Id}/merge?with={match.Id}")"
+                                       Class="rl-duplicate-merge"
+                                       data-testid="person-duplicate-merge">Merge instead</MudLink>;
+        }
+    }
 
     private string CancelHref => Person is { } person ? $"/people/{person.Id}" : "/people";
 

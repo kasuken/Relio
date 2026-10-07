@@ -58,6 +58,8 @@
                     {
                         <MudMenuItem Icon="@Icons.Material.Outlined.Inventory2" OnClick="ArchiveAsync" data-testid="person-archive">Archive</MudMenuItem>
                     }
+                    @* A link, not a handler: the merge page does its own work (issue #28). *@
+                    <MudMenuItem Icon="@Icons.Material.Outlined.CallMerge" Href="@($"/people/{_person.Id}/merge")" data-testid="person-merge">Merge with…</MudMenuItem>
                     <MudDivider />
                     <MudMenuItem Icon="@Icons.Material.Outlined.DeleteOutline" OnClick="DeleteAsync" data-testid="person-delete">Delete</MudMenuItem>
                 </MudMenu>

@@ -83,6 +83,16 @@ public class CrossUserIsolationTests(RelioAppFixture fixture)
         (await demoPeopleService.ListAsync()).Select(p => p.Id).Should().BeEquivalentTo(demoPeopleBefore.Select(p => p.Id));
         (await demoPeopleService.GetAsync(demoPersonId))!.IsArchived.Should().BeFalse();
 
+        // Issue #28: the new user cannot list merge candidates for, or merge, one of the demo account's people.
+        var newUserMergeService = new PersonMergeService(dbContext, new FixedCurrentUser(newUser.Id), timeProvider);
+        (await newUserMergeService.ListCandidatesAsync(demoPersonId)).Should().BeNull();
+        (await newUserMergeService.MergeAsync(new MergePeopleRequest { PrimaryId = newUsersPerson.Id, DuplicateId = demoPersonId }))
+            .Should().Be(MergeOutcome.NotFound);
+        (await newUserMergeService.MergeAsync(new MergePeopleRequest { PrimaryId = demoPersonId, DuplicateId = newUsersPerson.Id }))
+            .Should().Be(MergeOutcome.NotFound);
+        (await demoPeopleService.ListAsync()).Select(p => p.Id).Should().BeEquivalentTo(demoPeopleBefore.Select(p => p.Id));
+        (await newUserPeopleService.GetAsync(newUsersPerson.Id)).Should().NotBeNull();
+
         // Relationship types are per user too: registering seeded the new account its own six,
         // and they are not the demo account's rows.
         var demoTypes = await new RelationshipTypeService(dbContext, new FixedCurrentUser(demoUser.Id)).ListAsync();

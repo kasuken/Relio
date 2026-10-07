@@ -90,6 +90,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
 
         AddDataService<IPeopleService, PeopleService>(services);
+        AddDataService<IPersonMergeService, PersonMergeService>(services);
         AddDataService<IRelationshipTypeService, RelationshipTypeService>(services);
         AddDataService<ITagService, TagService>(services);
         AddDataService<IUserTimeZoneService, UserTimeZoneService>(services);

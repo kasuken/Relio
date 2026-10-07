@@ -109,16 +109,53 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
         await using var scope = provider.CreateAsyncScope();
         var types = scope.ServiceProvider.GetRequiredService<IRelationshipTypeService>();
         var people = scope.ServiceProvider.GetRequiredService<IPeopleService>();
+        var merge = scope.ServiceProvider.GetRequiredService<IPersonMergeService>();
 
         // PersonForm loads relationship types while a Save from an earlier form is still running.
         var act = async () => await Task.WhenAll(
             types.ListAsync(),
             people.ListAsync(),
+            merge.ListCandidatesAsync(Guid.NewGuid()),
             people.FindPossibleDuplicatesAsync(new PossibleDuplicateQuery { FirstName = "Ada" }),
             people.CreateAsync(new CreatePersonRequest { FirstName = "Grace" }));
 
         await act.Should().NotThrowAsync();
         (await people.ListAsync()).Should().ContainSingle(p => p.FirstName == "Grace");
+    }
+
+    [SqlServerFact]
+    public async Task The_merge_page_loading_while_a_merge_runs_does_not_collide()
+    {
+        var ownerId = await SeedProfileAsync("Europe/Rome", "Ada");
+        await using var provider = BuildProvider(ownerId);
+        await using var scope = provider.CreateAsyncScope();
+        var people = scope.ServiceProvider.GetRequiredService<IPeopleService>();
+        var merge = scope.ServiceProvider.GetRequiredService<IPersonMergeService>();
+        var primary = await people.CreateAsync(new CreatePersonRequest { FirstName = "John", LastName = "Smith" });
+        var duplicate = await people.CreateAsync(new CreatePersonRequest
+        {
+            FirstName = "Jon",
+            LastName = "Smith",
+            ContactMethods = [new ContactMethodInput(null, ContactMethodKind.Email, null, "jon@example.com")],
+        });
+        var other = await people.CreateAsync(new CreatePersonRequest { FirstName = "Grace" });
+
+        // The merge page loads both profiles and the candidates one after the other, but a second tab's
+        // save, or a double click, can reach the shared context while the merge is still on its way.
+        Task<MergeOutcome>? merged = null;
+        Task<MergeCandidates?>? candidates = null;
+        var act = async () =>
+        {
+            merged = merge.MergeAsync(new MergePeopleRequest { PrimaryId = primary.Id, DuplicateId = duplicate.Id });
+            candidates = merge.ListCandidatesAsync(other.Id);
+            await Task.WhenAll(merged, candidates, people.GetAsync(primary.Id), people.GetAsync(other.Id));
+        };
+
+        await act.Should().NotThrowAsync();
+        (await merged!).Should().Be(MergeOutcome.Merged);
+        (await candidates!).Should().NotBeNull();
+        (await people.GetAsync(primary.Id))!.ContactMethods.Should().ContainSingle();
+        (await people.GetAsync(duplicate.Id)).Should().BeNull();
     }
 
     [SqlServerFact]

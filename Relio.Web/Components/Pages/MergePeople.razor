@@ -1,0 +1,558 @@
+@page "/people/{PersonId:guid}/merge"
+@using Relio.Application.People
+@using Relio.Application.Time
+@using Relio.Domain
+@using Relio.Web.Time
+@inject IPeopleService PeopleService
+@inject IPersonMergeService MergeService
+@inject IUserTimeZoneService UserTimeZone
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+@* The page title is generic on purpose: titles land in browser history and tab lists, and a person's
+   name is private (see the gdpr-compliant skill). The address carries opaque ids only: the route
+   person is the one that is KEPT, and ?with= is the one merged into it and removed.
+
+   Two steps on one page, so reload and Back work: choose the other profile (suggested duplicates
+   first, then a search), then choose what to keep where the two disagree and confirm. What the preview
+   shows is PersonMergeRules.Combine, the very function the service applies, so the page never
+   re-implements a default, a dedupe or a limit. *@
+<PageTitle>Merge profiles - Relio</PageTitle>
+
+@if (_loaded)
+{
+    @if (_primary is null)
+    {
+        @* A person that does not exist and one that belongs to someone else look exactly the same. *@
+        <PersonNotFound />
+    }
+    else
+    {
+        <MudLink Href="@ProfileHref" Class="mb-4 d-inline-block" data-testid="merge-back">Back to profile</MudLink>
+
+        <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-6">@PersonMergeText.Heading</MudText>
+
+        @if (_other is null)
+        {
+            @* Step 1: choose the other profile. *@
+            <p class="rl-merge-intro">
+                Combine two profiles of the same person. You keep this one, and everything from the other moves into it.
+            </p>
+            <p class="rl-meta rl-merge-keeping">
+                Keeping
+                <span class="rl-entry-text" data-testid="merge-primary-name">@_primary.DisplayName</span>
+            </p>
+
+            @if (_otherMissing)
+            {
+                <MudAlert Severity="Severity.Info" Class="rl-merge-alert" data-testid="merge-other-missing">
+                    That profile isn't in your list. Choose another one.
+                </MudAlert>
+            }
+
+            @if (Others.Count == 0)
+            {
+                <div data-testid="merge-no-candidates">
+                    <EmptyState HeadingTag="h2"
+                                Title="No other profiles yet"
+                                Message="Merging combines two profiles of the same person."
+                                ActionLabel="Back to profile"
+                                OnAction="BackToProfile" />
+                </div>
+            }
+            else
+            {
+                @if (Suggestions.Count > 0)
+                {
+                    <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-2">Possible duplicates</MudText>
+                    <ul class="rl-merge-suggestions" data-testid="merge-suggestions">
+                        @foreach (var suggestion in Suggestions)
+                        {
+                            <li @key="suggestion.Id">
+                                <MudButton Variant="Variant.Text"
+                                           Color="Color.Primary"
+                                           Class="rl-entry-text"
+                                           OnClick="@(() => Choose(suggestion.Id))"
+                                           data-testid="merge-suggestion">
+                                    @suggestion.DisplayName
+                                </MudButton>
+                                <span class="rl-meta" data-testid="merge-suggestion-reason">@PossibleDuplicateText.Describe(suggestion)</span>
+                            </li>
+                        }
+                    </ul>
+                }
+
+                <div class="rl-merge-picker" data-testid="merge-picker-field">
+                    <MudAutocomplete T="PersonSummary"
+                                     Label="Find the other profile"
+                                     Variant="Variant.Outlined"
+                                     SearchFunc="Search"
+                                     ToStringFunc="@(person => person?.DisplayName)"
+                                     MinCharacters="0"
+                                     CoerceText="false"
+                                     CoerceValue="false"
+                                     ValueChanged="Choose">
+                        <ItemTemplate Context="person">
+                            <span class="rl-entry-text">@person.DisplayName</span>
+                            @if (person.IsArchived)
+                            {
+                                <span class="rl-meta"> · @PersonMergeText.Archived</span>
+                            }
+                        </ItemTemplate>
+                    </MudAutocomplete>
+                </div>
+            }
+        }
+        else
+        {
+            @* Step 2: compare, choose and confirm. *@
+            <div class="rl-merge-heads" data-testid="merge-heads">
+                <div>
+                    <span class="rl-meta">@PersonMergeText.ThisProfile</span>
+                    <p class="rl-entry-text rl-merge-head-name" data-testid="merge-primary-name">@_primary.DisplayName</p>
+                    @if (HeadMeta(_primary) is { Length: > 0 } primaryMeta)
+                    {
+                        <span class="rl-meta">@primaryMeta</span>
+                    }
+                    <a class="rl-contact-link" href="@ProfileHref" target="_blank" rel="noopener" data-testid="merge-primary-open">
+                        Open profile<span class="rl-visually-hidden"> @PossibleDuplicateText.NewTabHint</span>
+                    </a>
+                </div>
+                <div>
+                    <span class="rl-meta">@PersonMergeText.OtherProfile</span>
+                    <p class="rl-entry-text rl-merge-head-name" data-testid="merge-other-name">@_other.DisplayName</p>
+                    @if (HeadMeta(_other) is { Length: > 0 } otherMeta)
+                    {
+                        <span class="rl-meta">@otherMeta</span>
+                    }
+                    <a class="rl-contact-link" href="@($"/people/{_other.Id}")" target="_blank" rel="noopener" data-testid="merge-other-open">
+                        Open profile<span class="rl-visually-hidden"> @PossibleDuplicateText.NewTabHint</span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="rl-merge-switch">
+                <MudButton Variant="Variant.Text"
+                           Color="Color.Primary"
+                           Href="@($"/people/{_other.Id}/merge?with={PersonId}")"
+                           data-testid="merge-swap">
+                    Keep the other profile instead
+                </MudButton>
+                <MudButton Variant="Variant.Text"
+                           Color="Color.Primary"
+                           OnClick="ChooseAnother"
+                           data-testid="merge-change">
+                    Choose a different profile
+                </MudButton>
+            </div>
+
+            <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-2">Choose what to keep</MudText>
+
+            @if (_conflicts.Count == 0)
+            {
+                <p class="rl-merge-intro" data-testid="merge-no-conflicts">@PersonMergeText.NoConflicts</p>
+            }
+
+            @foreach (var field in _conflicts)
+            {
+                var current = field;
+                <fieldset class="rl-merge-field" data-testid="merge-field" data-field="@current" @key="current">
+                    <legend>@PersonMergeText.FieldLabel(current)</legend>
+                    <MudRadioGroup T="MergeFieldChoice"
+                                   Value="ChoiceFor(current)"
+                                   ValueChanged="@(choice => SetChoice(current, choice))"
+                                   Class="rl-merge-options">
+                        <MudRadio T="MergeFieldChoice" Value="MergeFieldChoice.Primary" Color="Color.Primary" data-testid="merge-choice-primary">
+                            <span class="@ValueClass(current)">@ValueText(current, _primary)</span>
+                            <span class="rl-meta">@PersonMergeText.ThisProfile</span>
+                        </MudRadio>
+                        <MudRadio T="MergeFieldChoice" Value="MergeFieldChoice.Duplicate" Color="Color.Primary" data-testid="merge-choice-duplicate">
+                            <span class="@ValueClass(current)">@ValueText(current, _other)</span>
+                            <span class="rl-meta">@PersonMergeText.OtherProfile</span>
+                        </MudRadio>
+                        @if (current is MergeField.HowWeMet or MergeField.Details)
+                        {
+                            <MudRadio T="MergeFieldChoice"
+                                      Value="MergeFieldChoice.Both"
+                                      Color="Color.Primary"
+                                      Disabled="@(!PersonMergeRules.CanKeepBoth(current, _primary, _other))"
+                                      data-testid="merge-choice-both">
+                                <span class="rl-merge-value-plain">@PersonMergeText.KeepBoth</span>
+                            </MudRadio>
+                        }
+                    </MudRadioGroup>
+                </fieldset>
+            }
+
+            var merged = PersonMergeRules.Combine(_primary, _other, _choices);
+            var repeated = merged.ContactMethodSteps.Count(step => step.Action == ContactMethodMergeAction.DropDuplicate);
+            <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-2 mt-6">After merging</MudText>
+            <dl class="rl-facts" data-testid="merge-preview">
+                <div>
+                    <dt>Name</dt>
+                    <dd class="rl-entry-text" data-testid="merge-preview-name">@Person.FormatDisplayName(merged.FirstName, merged.LastName)</dd>
+                </div>
+                @if (merged.Nickname is not null)
+                {
+                    <div>
+                        <dt>Nickname</dt>
+                        <dd class="rl-entry-text" data-testid="merge-preview-nickname">@merged.Nickname</dd>
+                    </div>
+                }
+                @if (TypeName(merged.RelationshipTypeId) is { } relationship)
+                {
+                    <div>
+                        <dt>Relationship</dt>
+                        <dd class="rl-entry-text" data-testid="merge-preview-relationship">@relationship</dd>
+                    </div>
+                }
+                @if (merged.BirthdayMonth is int month && merged.BirthdayDay is int day && Birthday.TryCreate(month, day, merged.BirthdayYear, out var birthday))
+                {
+                    <div>
+                        <dt>Birthday</dt>
+                        <dd data-testid="merge-preview-birthday">@BirthdayDisplay.Format(birthday)</dd>
+                    </div>
+                }
+                @if (merged.HowWeMet is not null)
+                {
+                    <div>
+                        <dt>How you met</dt>
+                        <dd class="rl-entry-text rl-multiline" data-testid="merge-preview-how-we-met">@merged.HowWeMet</dd>
+                    </div>
+                }
+                @if (merged.Details is not null)
+                {
+                    <div>
+                        <dt>Details</dt>
+                        <dd class="rl-entry-text rl-multiline" data-testid="merge-preview-details">@merged.Details</dd>
+                    </div>
+                }
+                <div>
+                    <dt>Status</dt>
+                    <dd data-testid="merge-preview-status">@(merged.IsArchived ? PersonMergeText.Archived : PersonMergeText.Active)</dd>
+                </div>
+                @if (merged.LastContactedOn is DateOnly lastContacted)
+                {
+                    <div>
+                        <dt>Last contacted</dt>
+                        <dd data-testid="merge-preview-last-contacted">@DateDisplay.FormatRelative(lastContacted, _today)</dd>
+                    </div>
+                }
+                @if (merged.ContactMethodSteps.Any(step => step.Action != ContactMethodMergeAction.DropDuplicate))
+                {
+                    <div>
+                        <dt>Contact methods</dt>
+                        <dd>
+                            @foreach (var step in merged.ContactMethodSteps.Where(step => step.Action != ContactMethodMergeAction.DropDuplicate))
+                            {
+                                <span class="rl-merge-contact" data-testid="merge-preview-contact-method" @key="step.Row.Id">
+                                    <span class="rl-meta">@ContactMethodDisplay.Heading(step.Row.Kind, step.LabelToFill ?? step.Row.Label)</span>
+                                    <span class="rl-entry-text rl-multiline">@step.Row.Value</span>
+                                </span>
+                            }
+                            @if (repeated > 0)
+                            {
+                                <span class="rl-meta" data-testid="merge-preview-repeated">@PersonMergeText.RepeatedCombined(repeated)</span>
+                            }
+                        </dd>
+                    </div>
+                }
+                @if (merged.Tags.Count > 0)
+                {
+                    <div>
+                        <dt>Tags</dt>
+                        <dd>
+                            <div class="rl-tag-list">
+                                @foreach (var tag in merged.Tags.OrderBy(tag => tag.Name, StringComparer.CurrentCultureIgnoreCase))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="rl-tag" Text="@tag.Name" data-testid="merge-preview-tag" @key="tag.Id" />
+                                }
+                            </div>
+                        </dd>
+                    </div>
+                }
+            </dl>
+
+            <p class="rl-meta rl-merge-moves">@PersonMergeText.EverythingMoves</p>
+
+            @if (_problems.Count > 0)
+            {
+                <MudAlert Severity="Severity.Warning" Class="rl-merge-alert" data-testid="merge-problem">
+                    @foreach (var problem in _problems)
+                    {
+                        <p class="rl-merge-problem">@problem</p>
+                    }
+                </MudAlert>
+            }
+
+            <div class="rl-form-actions rl-merge-actions">
+                <MudButton ButtonType="ButtonType.Button"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           DropShadow="false"
+                           Disabled="_busy"
+                           OnClick="MergeAsync"
+                           data-testid="merge-submit">
+                    @PersonMergeText.ConfirmLabel
+                </MudButton>
+                <MudButton Variant="Variant.Text" Href="@ProfileHref" data-testid="merge-cancel">Cancel</MudButton>
+            </div>
+        }
+    }
+}
+
+@code {
+    private Person? _primary;
+    private Person? _other;
+    private MergeCandidates? _candidates;
+    private IReadOnlyList<MergeField> _conflicts = [];
+    private readonly Dictionary<MergeField, MergeFieldChoice> _choices = [];
+    private IReadOnlyList<string> _problems = [];
+    private DateOnly _today;
+    private bool _loaded;
+    private bool _otherMissing;
+    private bool _busy;
+
+    // The address (person and ?with=) the data on screen was loaded for, or is being loaded for. A
+    // parameter set that asks for the same thing again (a re-render) is ignored.
+    private string? _requestedKey;
+
+    // The scoped DbContext lives as long as the circuit and refuses two queries at once, and a
+    // navigation can arrive while the previous load is still running. The gate makes loads take turns;
+    // the version lets a load that has been overtaken throw its result away. Not disposed on purpose:
+    // it never exposes a wait handle, and disposing it under a load that is still waiting would only
+    // make that load throw.
+    private readonly SemaphoreSlim _loadGate = new(1, 1);
+    private int _loadVersion;
+
+    [Parameter]
+    public Guid PersonId { get; set; }
+
+    // A string on purpose: a Guid? parameter throws on a value it cannot read, and an address is
+    // editable by anyone. It is an opaque id, never a name.
+    [SupplyParameterFromQuery(Name = "with")]
+    private string? WithValue { get; set; }
+
+    private string ProfileHref => $"/people/{PersonId}";
+
+    private IReadOnlyList<PossibleDuplicate> Suggestions => _candidates?.Suggestions ?? [];
+
+    private IReadOnlyList<PersonSummary> Others => _candidates?.Others ?? [];
+
+    private Guid? WithId => Guid.TryParse(WithValue, out var id) && id != PersonId ? id : null;
+
+    // OnParametersSetAsync, not OnInitializedAsync: choosing the other profile only changes the query
+    // string, which re-uses this component, and a link from one merge page to another changes the
+    // route parameter. Read-only on purpose - prerendering runs it twice.
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{PersonId}|{WithId}";
+        if (key == _requestedKey)
+        {
+            return;
+        }
+
+        _requestedKey = key;
+        await LoadAsync(PersonId, WithId);
+    }
+
+    private async Task LoadAsync(Guid personId, Guid? withId)
+    {
+        var version = ++_loadVersion;
+        await _loadGate.WaitAsync();
+        try
+        {
+            if (version != _loadVersion)
+            {
+                return;
+            }
+
+            // One after the other, never Task.WhenAll: one context, one operation at a time.
+            var primary = await PeopleService.GetAsync(personId);
+            Person? other = null;
+            var otherMissing = false;
+            MergeCandidates? candidates = null;
+            var today = _today;
+            if (primary is not null)
+            {
+                if (withId is Guid id)
+                {
+                    other = await PeopleService.GetAsync(id);
+                    otherMissing = other is null;
+                }
+
+                if (other is null)
+                {
+                    candidates = await MergeService.ListCandidatesAsync(personId);
+                }
+                else
+                {
+                    today = await UserTimeZone.GetTodayAsync();
+                }
+            }
+
+            if (version != _loadVersion)
+            {
+                return;
+            }
+
+            _primary = primary;
+            _other = other;
+            _otherMissing = otherMissing;
+            _candidates = candidates;
+            _today = today;
+            _problems = [];
+
+            _choices.Clear();
+            _conflicts = [];
+            if (primary is not null && other is not null)
+            {
+                _conflicts = PersonMergeRules.ConflictingFields(primary, other);
+                foreach (var field in _conflicts)
+                {
+                    _choices[field] = PersonMergeRules.DefaultChoice(field, primary, other);
+                }
+            }
+
+            _loaded = true;
+        }
+        finally
+        {
+            _loadGate.Release();
+        }
+    }
+
+    private Task<IEnumerable<PersonSummary>> Search(string? text, CancellationToken cancellationToken) =>
+        Task.FromResult<IEnumerable<PersonSummary>>(MergeCandidateSearch.Filter(Others, text));
+
+    // Handlers that move between the steps only navigate (a push, so Back restores the step); the page
+    // reloads because the address changed, never from here.
+    private void Choose(PersonSummary? person)
+    {
+        if (person is not null)
+        {
+            Choose(person.Id);
+        }
+    }
+
+    private void Choose(Guid id) => Navigation.NavigateTo($"/people/{PersonId}/merge?with={id}");
+
+    private void ChooseAnother() => Navigation.NavigateTo($"/people/{PersonId}/merge");
+
+    private void BackToProfile() => Navigation.NavigateTo(ProfileHref);
+
+    private MergeFieldChoice ChoiceFor(MergeField field) => _choices.GetValueOrDefault(field);
+
+    private void SetChoice(MergeField field, MergeFieldChoice choice)
+    {
+        _choices[field] = choice;
+        _problems = [];
+    }
+
+    private async Task MergeAsync()
+    {
+        if (_busy || _primary is null || _other is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        _problems = [];
+        try
+        {
+            // The one place a name appears outside the profiles themselves: the dialog has to be
+            // unmistakable about who goes. Nothing is merged until "Merge profiles".
+            var confirmed = await DialogService.ShowConfirmAsync(
+                PersonMergeText.ConfirmTitle(_other.DisplayName, _primary.DisplayName),
+                PersonMergeText.ConfirmMessage(_other.DisplayName, _primary.DisplayName),
+                confirmLabel: PersonMergeText.ConfirmLabel,
+                cancelLabel: "Cancel",
+                destructive: true);
+            if (!confirmed)
+            {
+                return;
+            }
+
+            var outcome = await MergeService.MergeAsync(new MergePeopleRequest
+            {
+                PrimaryId = PersonId,
+                DuplicateId = _other.Id,
+                FieldChoices = new Dictionary<MergeField, MergeFieldChoice>(_choices),
+            });
+
+            if (outcome == MergeOutcome.Merged)
+            {
+                Snackbar.Saved(PersonMergeText.Merged);
+
+                // replace: true takes this address out of the history: it carries the id of a profile that
+                // no longer exists, so Back from the profile must not land on it. Nothing here touches
+                // state afterwards: the page is going away.
+                Navigation.NavigateTo(ProfileHref, replace: true);
+                return;
+            }
+
+            // Either profile is gone (removed elsewhere in the meantime). Load the address again: a gone
+            // primary shows "not in your list", a gone other profile goes back to choosing one.
+            Snackbar.Problem(PersonMergeText.Gone);
+            await LoadAsync(PersonId, WithId);
+        }
+        catch (PersonValidationException exception)
+        {
+            _problems = exception.Errors.Select(PersonMergeText.Problem).Distinct().ToList();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // The name of the relationship type with this id: both profiles were loaded with theirs, and an id
+    // that merging kept is always one of those two. Null when there is none.
+    private string? TypeName(Guid? id)
+    {
+        if (id is not Guid typeId)
+        {
+            return null;
+        }
+
+        var type = _primary?.RelationshipType?.Id == typeId ? _primary.RelationshipType : _other?.RelationshipType;
+        return type?.Name;
+    }
+
+    private static string? HeadMeta(Person person)
+    {
+        var parts = new List<string>();
+        if (person.RelationshipType is not null)
+        {
+            parts.Add(person.RelationshipType.Name);
+        }
+
+        if (person.IsArchived)
+        {
+            parts.Add(PersonMergeText.Archived);
+        }
+
+        return string.Join(" · ", parts);
+    }
+
+    private static bool IsUserText(MergeField field) =>
+        field is MergeField.Name or MergeField.Nickname or MergeField.RelationshipType or MergeField.HowWeMet or MergeField.Details;
+
+    // User text is always set in the serif; Relio's own words (a date, a status) in the sans.
+    private static string ValueClass(MergeField field) => IsUserText(field)
+        ? "rl-merge-value rl-entry-text rl-multiline"
+        : "rl-merge-value rl-merge-value-plain";
+
+    private static string ValueText(MergeField field, Person person) => field switch
+    {
+        MergeField.Name => person.DisplayName,
+        MergeField.Nickname => person.Nickname ?? string.Empty,
+        MergeField.RelationshipType => person.RelationshipType?.Name ?? string.Empty,
+        MergeField.Birthday => person.Birthday is { } birthday ? BirthdayDisplay.Format(birthday) : string.Empty,
+        MergeField.HowWeMet => person.HowWeMet ?? string.Empty,
+        MergeField.Details => person.Details ?? string.Empty,
+        MergeField.ArchivedState => person.IsArchived ? PersonMergeText.Archived : PersonMergeText.Active,
+        _ => string.Empty,
+    };
+}

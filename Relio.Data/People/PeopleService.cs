@@ -460,7 +460,7 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
     /// </summary>
     private async Task ValidateAsync(string ownerId, IPersonProfileInput input, CancellationToken cancellationToken)
     {
-        var today = await GetUserTodayAsync(ownerId, cancellationToken);
+        var today = await UserToday.GetAsync(dbContext, ownerId, timeProvider, cancellationToken);
 
         var errors = PersonProfileRules.Validate(input, today);
         var contactMethodProblems = PersonProfileRules.ValidateContactMethods(input);
@@ -528,22 +528,6 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
         contactMethod.Value = value;
         contactMethod.NormalizedValue = ContactMethodRules.ToNormalizedValue(input.Kind, value);
         contactMethod.SortOrder = sortOrder;
-    }
-
-    /// <summary>
-    /// Today's date in <paramref name="ownerId"/>'s time zone. A missing profile or an
-    /// unreadable stored zone falls back to UTC rather than refusing to save a person.
-    /// </summary>
-    private async Task<DateOnly> GetUserTodayAsync(string ownerId, CancellationToken cancellationToken)
-    {
-        var timeZoneId = await dbContext.UserProfiles
-            .AsNoTracking()
-            .Where(p => p.OwnerId == ownerId)
-            .Select(p => p.TimeZoneId)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        var timeZone = TimeZoneIds.TryParse(timeZoneId, out var parsed) ? parsed : TimeZoneInfo.Utc;
-        return UserCalendar.Today(timeProvider, timeZone);
     }
 
     /// <summary>Writes every profile field of <paramref name="input"/> onto <paramref name="person"/>, normalized.</summary>

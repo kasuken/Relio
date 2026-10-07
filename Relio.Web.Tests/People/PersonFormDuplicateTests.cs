@@ -266,6 +266,45 @@ public class PersonFormDuplicateTests
     }
 
     [Fact]
+    public async Task In_edit_mode_each_match_offers_Merge_instead_linking_to_the_merge_page()
+    {
+        var person = new Person { FirstName = "Ada", LastName = "Byron" };
+        var john = John();
+        var grace = new PossibleDuplicate(Guid.NewGuid(), "Grace", "Hopper", false, [PossibleDuplicateReason.SameEmail]);
+        var people = PeopleFinding(john, grace);
+        await using var context = CreateContext(people, out _);
+        var cut = context.Render<PersonForm>(parameters => parameters.Add(p => p.Person, person));
+        Type(cut, "person-first-name-field", "Jon");
+        Type(cut, "person-last-name-field", "Smith");
+
+        Save(cut);
+
+        cut.WaitForElement("[data-testid='person-duplicate-warning']");
+        var links = cut.FindAll("[data-testid='person-duplicate-merge']");
+        links.Select(link => link.GetAttribute("href")).Should().Equal(
+            $"/people/{person.Id}/merge?with={john.Id}",
+            $"/people/{person.Id}/merge?with={grace.Id}");
+        links.Should().OnlyContain(link => link.TextContent.Trim() == "Merge instead");
+        links.Should().OnlyContain(link => link.GetAttribute("target") == null, "it opens in the same tab: merging instead of saving is the point");
+    }
+
+    [Fact]
+    public async Task In_create_mode_no_merge_link_is_shown()
+    {
+        var people = PeopleFinding(John());
+        await using var context = CreateContext(people, out _);
+        var cut = context.Render<PersonForm>();
+        Type(cut, "person-first-name-field", "Jon");
+        Type(cut, "person-last-name-field", "Smith");
+
+        Save(cut);
+
+        cut.WaitForElement("[data-testid='person-duplicate-warning']");
+        cut.FindAll("[data-testid='person-duplicate-merge']").Should().BeEmpty("a person being created has no profile to merge into");
+        cut.FindAll("[data-testid='person-duplicate-link']").Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task The_warning_sits_directly_above_the_form_actions()
     {
         var people = PeopleFinding(John());

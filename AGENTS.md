@@ -60,6 +60,18 @@ for every new owned entity and service; do not invent new plumbing per feature.
   *tracked* dependents, and the database cascade is the SQL Server backstop (see "Archive, restore and
   delete" under People). `ContactMethod` (#24) is the first child, handled there; **#59's account deletion
   must include `ContactMethods` too**.
+- **The merge checklist (#28), next to the delete checklist.** Merging two profiles moves everything that
+  belongs to the duplicate to the primary in one private `PersonMergeService.MoveDependentsAsync`. Every
+  new entity with a `PersonId` must, in the same pull request: (1) cascade on delete (it is the backstop for
+  anything the merge did not load), (2) add its line to `PeopleService.RemoveDependentsAsync`, (3) add its
+  line to `PersonMergeService.MoveDependentsAsync` saying how its rows move (reassign `PersonId`; for
+  participant or link rows, remove the duplicate's row when the primary already has one, so nothing is
+  repeated), (4) be added to `PersonDeleteChecklistTests` **and** `PersonMergeChecklistTests` and to the
+  SQL Server foreign-key lists in `PersonDeleteSqlServerTests` and `PersonMergeSqlServerTests`, and (5)
+  extend the E2E `PersonMergeTests` merge test so the merged profile shows the new entries. A new column on
+  `Person` also needs a rule in `PersonMergeRules.Combine` (`Every_person_column_has_a_merge_rule` fails
+  until it is listed). Load rows with `OwnerId == ownerId && PersonId == duplicate.Id`, tracked; never
+  `ExecuteUpdate`.
 - **New children are added with `DbSet.Add` explicitly.** `OwnedEntity` gives every instance a non-empty
   `Guid` up front, so an entity that is merely *reachable* from a tracked parent (added to its collection)
   is discovered by EF Core as an existing row, tracked `Modified`, and the save fails with a
@@ -1021,11 +1033,74 @@ Established by issue #22 under epic #21. The routes are pages, not dialogs: `/pe
   email/phone key checks again. A blank first name is not checked, so the service's validation message
   shows. In **edit** mode only a rename (a different `DuplicateProbe.NameKey` from the loaded person) is
   checked, and `ExcludePersonId` is always the person's id. `PossibleDuplicateWarning.ItemActions` is the
-  hook #28 uses for "Merge instead". Wording lives in `PossibleDuplicateText`.
+  hook #28 uses for "Merge instead" (edit mode only). Wording lives in `PossibleDuplicateText`.
 - **Tests.** Every `IPeopleService` fake must implement the new method (`FakePeopleService` records
   `DuplicateQueries` and returns `Duplicates`). `PeopleTestHelpers.ListPeopleAsync` and
   `FindPossibleDuplicatesAsync` read through the real service in E2E tests. SQL Server translation of the
   three candidate queries is proven in `PossibleDuplicateSqlServerTests`.
+
+### Merging profiles (issue #28)
+
+- **Routes and entry points.** `/people/{PersonId:guid}/merge` (`Components/Pages/MergePeople.razor`) and
+  `?with={otherId}`. **The route person is always the primary**: the profile that is kept, whose id, URL and
+  `CreatedAtUtc` survive; `with` is the duplicate, merged in and removed. "Keep the other profile instead"
+  just links to the other profile's merge page. Two entry points: **Merge with…** in the profile's More menu
+  (`person-merge`, a plain link) and **Merge instead** on the #27 warning, **in edit mode only**
+  (`PersonForm` passes `ItemActions`; create mode has no saved profile to merge into). The address carries
+  opaque ids only, never a name; `with` is a `string?` parameter parsed with `Guid.TryParse` (anything else,
+  or the person's own id, is ignored). The page title is the generic `Merge profiles - Relio`.
+- **One page, two steps** (so reload and Back work): (1) choose the other profile - the #27 suggestions as
+  quick picks plus a `MudAutocomplete` over every other person, archived included, filtered in memory with
+  `PersonNameNormalizer` (`MergeCandidateSearch`), loaded once by `IPersonMergeService.ListCandidatesAsync`;
+  choosing pushes `?with=`; (2) compare, choose and confirm. It loads in `OnParametersSetAsync` behind a
+  `SemaphoreSlim` and a version counter, one call after another, like the list.
+- **`IPersonMergeService`** (`Relio.Application.People`; `PersonMergeService` in `Relio.Data`, registered
+  with `AddDataService`). `MergeAsync(MergePeopleRequest { PrimaryId, DuplicateId, FieldChoices })` returns
+  `MergeOutcome.Merged` or `NotFound` (either id missing **or** not the user's, indistinguishable, nothing
+  changes); the same ids or a malformed choice are `ArgumentException`s thrown before any database work; a
+  merged profile that breaks a limit throws `PersonValidationException` and saves nothing.
+- **`PersonMergeRules` is shared by the page and the service** (pure, in Application): `ConflictingFields`,
+  `DefaultChoice`, `CanKeepBoth`, `ValidateChoices` and `Combine`, which returns a `MergedProfile` (also an
+  `IPersonProfileInput`, so `PersonProfileRules.Validate` checks the limits like any save). The page previews
+  `Combine` and the service applies it, so a default, a dedupe or a limit is never re-implemented in Razor.
+  **Only the fields the two profiles disagree on are asked** (a `MudRadioGroup` each: name, nickname,
+  relationship, birthday, how you met, details, status); a field only one side has is kept without asking. The
+  name is chosen as a whole (first and last together), the birthday as a whole (day, month, year), except that
+  the same day and month with a year on one side only keeps the year. How you met and Details also offer
+  **Keep both** (primary first, a blank line, the duplicate), disabled when the joined text would be too long.
+  Defaults: the primary's value, except the **archived state, which defaults to active**; if both are archived the
+  primary's `ArchivedAtUtc` is kept. `LastContactedOn` is the later date.
+- **Contact methods are united and deduplicated by `(Kind, NormalizedValue)`**, not by the normalized value
+  alone (normalization is per kind): the primary's rows stay in order (and take a label they lacked from the
+  repeated row), the duplicate's new rows are appended after them in their own order, and repeats (also within
+  the duplicate) are deleted. **Tags are a union by id**; only join rows change, the `Tag` rows are never removed.
+  The union can break the 20 contact method and 20 tag limits, and **an over-limit merge is rejected**, never
+  truncated: the page words it (`PersonMergeText.Problem`) and nothing changes.
+- **One tracked save, one transaction.** `MergeAsync` loads both people in **one** tracked query (so a shared
+  tag is one instance), combines and validates **before** any mutation, moves the dependents
+  (`MoveDependentsAsync`, see the checklist above), calls `ChangeTracker.DetectChanges()` and then
+  `Remove(duplicate)`, and saves once; `ChangeTracker.Clear()` runs in `finally` on every path. EF Core cascades a
+  removed principal's delete to the dependents it tracks *immediately*, so a row has to have left the duplicate
+  first; current EF Core runs change detection inside `Remove` too, so the explicit call is a pinned safety net
+  (the moved-row tests prove the rows survive on InMemory and SQL Server). A `DbUpdateConcurrencyException` (a side
+  was deleted between the load and the save) is `NotFound`; the transaction rolled back, and a child added to the
+  duplicate in that tiny window goes with it by the database cascade, the same as when a person is deleted.
+  `PersonMergeSqlServerTests` proves the transaction (every write shares one, a failure in the middle rolls
+  everything back, and a second save would fail those tests).
+- **The confirmation names both people** (`Merge {duplicate} into {primary}?`, a destructive `ConfirmDialog`,
+  button "Merge profiles"); nothing is merged before it. Afterwards the snackbar says "Profiles merged" (no
+  names) and the page goes to the primary with `replace: true`, so the address that carries the removed
+  profile's id is no longer in the history (Back reaches at most the first step, `/merge` without `with`).
+  A profile gone in the meantime shows "One of these profiles is no longer in your list." and the page reloads.
+  Nothing here logs.
+- **Tests.** `PersonMergeRulesTests` (pure), `PersonMergeServiceTests` and `PersonMergeServiceOwnershipTests`
+  (InMemory), `PersonMergeChecklistTests` (the model-based guards), `PersonMergeSqlServerTests`, the
+  `MergePeoplePageTests`/`MergeCandidateSearchTests`/`PersonMergeTextTests` bUnit tests (a
+  `FakePersonMergeService` must implement every member) and the E2E `PersonMergeTests`. bUnit puts a MudRadio's
+  `data-testid` on its `<input>` and a `MudRadioGroup`'s class on an outer wrapper (the radios sit in
+  `.mud-radio-group`, whose own rule needs a three-class selector to override). The full timeline of both
+  profiles can only be proven for contact methods, tags and fields until interactions, notes, reminders and
+  difficult moments exist: each of those issues extends `MoveDependentsAsync` and the E2E merge test.
 
 ## End-to-end tests
 
