@@ -427,7 +427,7 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
     /// <item><description>[x] Tag links (the <c>PersonTags</c> join): <c>person.Tags.Clear()</c> deletes the join rows only. The <c>Tag</c> rows stay, and so do other people's links to them.</description></item>
     /// <item><description>[ ] Interactions (#31) and their participants (#35): remove this person's participant rows; delete an interaction only when this person is its last participant.</description></item>
     /// <item><description>[ ] Notes (#32).</description></item>
-    /// <item><description>[ ] Reminders (#37, #38), if they are stored as rows. The cadence (#41) is a column on <c>Person</c>.</description></item>
+    /// <item><description>[x] Reminders (#37, #38): removed below. The cadence (#41) is a column on <c>Person</c>.</description></item>
     /// <item><description>[ ] Difficult moments (#43). Their status (#44) is a column.</description></item>
     /// </list>
     /// A table with two foreign keys to <c>People</c> cannot cascade both on SQL Server (multiple cascade
@@ -445,6 +445,11 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
             .Where(c => c.OwnerId == ownerId && c.PersonId == person.Id)
             .ToListAsync(cancellationToken);
         dbContext.ContactMethods.RemoveRange(contactMethods);
+
+        var reminders = await dbContext.Reminders
+            .Where(r => r.OwnerId == ownerId && r.PersonId == person.Id)
+            .ToListAsync(cancellationToken);
+        dbContext.Reminders.RemoveRange(reminders);
     }
 
     /// <summary>

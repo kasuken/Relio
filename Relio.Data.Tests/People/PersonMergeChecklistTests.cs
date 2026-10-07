@@ -21,6 +21,7 @@ public class PersonMergeChecklistTests
     [
         "PersonTag",
         typeof(ContactMethod).FullName!,
+        typeof(Reminder).FullName!,
     ];
 
     /// <summary>
@@ -41,6 +42,9 @@ public class PersonMergeChecklistTests
         nameof(Person.IsArchived),
         nameof(Person.ArchivedAtUtc),
         nameof(Person.LastContactedOn),
+        nameof(Person.StayInTouchCadenceDays),
+        nameof(Person.BirthdayReminderDisabled),
+        nameof(Person.BirthdayReminderLeadDays),
     ];
 
     [Fact]

@@ -157,7 +157,7 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
             """).ToListAsync();
 
         foreignKeys.Should().BeEquivalentTo(
-            ["FK_PersonTags_People_PeopleId", "FK_ContactMethods_People_PersonId"],
+            ["FK_PersonTags_People_PeopleId", "FK_ContactMethods_People_PersonId", "FK_Reminders_People_PersonId"],
             "a new foreign key to People needs a line in PersonMergeService.MoveDependentsAsync (and in "
             + "PeopleService.RemoveDependentsAsync), and an entry here and in PersonMergeChecklistTests");
     }

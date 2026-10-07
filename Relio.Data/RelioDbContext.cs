@@ -55,6 +55,9 @@ public sealed class RelioDbContext(DbContextOptions<RelioDbContext> options, Tim
     /// <summary>The current user's relationship types ("Friend", "Colleague", ...), seeded per user at registration.</summary>
     public DbSet<RelationshipType> RelationshipTypes => Set<RelationshipType>();
 
+    /// <summary>The current user's reconnect reminders (epic #36).</summary>
+    public DbSet<Reminder> Reminders => Set<Reminder>();
+
     /// <summary>User profiles (currently just the user's time zone, see epic #12), one per user.</summary>
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
 

@@ -64,4 +64,13 @@ public sealed record MergedProfile : IPersonProfileInput
 
     /// <summary>Always <see langword="null"/>: a merge never creates a tag.</summary>
     public IReadOnlyCollection<string>? NewTagNames => null;
+
+    /// <summary>Optional stay-in-touch cadence in days (issue #41).</summary>
+    public int? StayInTouchCadenceDays { get; init; }
+
+    /// <summary>Whether birthday reminders are disabled specifically for this person (issue #38).</summary>
+    public bool BirthdayReminderDisabled { get; init; }
+
+    /// <summary>Per-person lead time override for birthday reminders in days (issue #38).</summary>
+    public int? BirthdayReminderLeadDays { get; init; }
 }

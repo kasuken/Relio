@@ -41,4 +41,13 @@ public interface IPersonProfileInput
 
     /// <summary>Names of tags to attach, created for the user when none of theirs has that name. Null or empty means none.</summary>
     IReadOnlyCollection<string>? NewTagNames { get; }
+
+    /// <summary>Optional stay-in-touch cadence in days. When null, no cadence is enforced.</summary>
+    int? StayInTouchCadenceDays => null;
+
+    /// <summary>Whether birthday reminders are disabled specifically for this person.</summary>
+    bool BirthdayReminderDisabled => false;
+
+    /// <summary>Per-person lead time override for birthday reminders in days. When null, global lead time is used.</summary>
+    int? BirthdayReminderLeadDays => null;
 }

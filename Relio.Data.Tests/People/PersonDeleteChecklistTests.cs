@@ -21,6 +21,7 @@ public class PersonDeleteChecklistTests
     [
         "PersonTag",
         typeof(ContactMethod).FullName!,
+        typeof(Reminder).FullName!,
     ];
 
     [Fact]

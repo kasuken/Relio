@@ -366,3 +366,98 @@ internal sealed class FakeTagService : ITagService
         return normalized!;
     }
 }
+
+/// <summary>
+/// An in-memory <see cref="IReminderService"/> for component tests.
+/// </summary>
+internal sealed class FakeReminderService : Relio.Application.Reminders.IReminderService
+{
+    public List<Relio.Application.Reminders.ReminderDto> Reminders { get; } = [];
+
+    public Task<Relio.Application.Reminders.ReminderDto?> GetAsync(Guid id, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Reminders.FirstOrDefault(r => r.Id == id));
+
+    public Task<IReadOnlyList<Relio.Application.Reminders.ReminderDto>> ListAsync(bool includeCompleted = false, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<Relio.Application.Reminders.ReminderDto>>(
+            Reminders.Where(r => includeCompleted || !r.IsCompleted).ToList());
+
+    public Task<IReadOnlyList<Relio.Application.Reminders.ReminderDto>> ListForPersonAsync(Guid personId, bool includeCompleted = false, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<Relio.Application.Reminders.ReminderDto>>(
+            Reminders.Where(r => r.PersonId == personId && (includeCompleted || !r.IsCompleted)).ToList());
+
+    public Task<IReadOnlyList<Relio.Application.Reminders.ReminderDto>> ListDueAsync(DateOnly onOrBeforeDate, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<Relio.Application.Reminders.ReminderDto>>(
+            Reminders.Where(r => !r.IsCompleted && r.EffectiveDueDate <= onOrBeforeDate).ToList());
+
+    public Task<Relio.Application.Reminders.ReminderDto> CreateAsync(Relio.Application.Reminders.CreateReminderRequest request, CancellationToken cancellationToken = default)
+    {
+        var dto = new Relio.Application.Reminders.ReminderDto(
+            Guid.NewGuid(),
+            request.PersonId,
+            "Person",
+            request.Title,
+            request.DueDate,
+            request.Frequency,
+            request.CustomIntervalMonths,
+            null,
+            request.DueDate,
+            false,
+            null,
+            null);
+        Reminders.Add(dto);
+        return Task.FromResult(dto);
+    }
+
+    public Task<Relio.Application.Reminders.ReminderDto?> UpdateAsync(Guid id, Relio.Application.Reminders.UpdateReminderRequest request, CancellationToken cancellationToken = default)
+    {
+        var existing = Reminders.FirstOrDefault(r => r.Id == id);
+        if (existing is null)
+        {
+            return Task.FromResult<Relio.Application.Reminders.ReminderDto?>(null);
+        }
+
+        Reminders.Remove(existing);
+        var updated = existing with
+        {
+            Title = request.Title,
+            DueDate = request.DueDate,
+            Frequency = request.Frequency,
+            CustomIntervalMonths = request.CustomIntervalMonths,
+            EffectiveDueDate = existing.SnoozedUntilDate ?? request.DueDate,
+        };
+        Reminders.Add(updated);
+        return Task.FromResult<Relio.Application.Reminders.ReminderDto?>(updated);
+    }
+
+    public Task<bool> CompleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var existing = Reminders.FirstOrDefault(r => r.Id == id);
+        if (existing is null)
+        {
+            return Task.FromResult(false);
+        }
+
+        Reminders.Remove(existing);
+        Reminders.Add(existing with { IsCompleted = true, CompletedAtUtc = DateTime.UtcNow });
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> SnoozeAsync(Guid id, DateOnly snoozedUntilDate, CancellationToken cancellationToken = default)
+    {
+        var existing = Reminders.FirstOrDefault(r => r.Id == id);
+        if (existing is null)
+        {
+            return Task.FromResult(false);
+        }
+
+        Reminders.Remove(existing);
+        Reminders.Add(existing with { SnoozedUntilDate = snoozedUntilDate, EffectiveDueDate = snoozedUntilDate });
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var removed = Reminders.RemoveAll(r => r.Id == id);
+        return Task.FromResult(removed > 0);
+    }
+}

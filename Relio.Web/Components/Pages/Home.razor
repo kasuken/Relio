@@ -1,6 +1,189 @@
 @page "/"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Relio.Application.People
+@using Relio.Application.Reminders
+@using Relio.Application.Time
+@using Relio.Domain
+@using Relio.Web.Components.Reminders
+@using Relio.Web.Components.Shared
+@inject IPeopleService PeopleService
+@inject IReminderService ReminderService
+@inject IUserTimeZoneService UserTimeZone
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
 
-<PageTitle>Relio</PageTitle>
+<PageTitle>Dashboard - Relio</PageTitle>
 
-<EmptyState Title="No one here yet"
-            Message="Relio is a private notebook about the people in your life. Adding people comes next." />
+@if (!_loaded)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+}
+else if (_peopleCount == 0)
+{
+    <div data-testid="dashboard-empty">
+        <EmptyState Title="No one here yet"
+                    Message="Relio is a private notebook about the people in your life. Adding people comes next."
+                    ActionLabel="Add person"
+                    OnAction="@(() => NavigationManager.NavigateTo("/people/new"))" />
+    </div>
+}
+else
+{
+    <div class="d-flex justify-space-between align-center mb-6">
+        <div>
+            <MudText Typo="Typo.h2" HtmlTag="h1">Dashboard</MudText>
+            <MudText Typo="Typo.body1" Class="mud-text-secondary">
+                @_today.ToString("dddd, d MMMM yyyy")
+            </MudText>
+        </div>
+        <div class="d-flex gap-2">
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Outlined.Add"
+                       Href="/people/new"
+                       data-testid="dashboard-add-person">
+                Add person
+            </MudButton>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Outlined.AddAlert"
+                       OnClick="AddReminderAsync"
+                       data-testid="dashboard-add-reminder">
+                New reminder
+            </MudButton>
+        </div>
+    </div>
+
+    @* Reminders Section *@
+    <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-3">Due reminders</MudText>
+
+    @if (_dueReminders.Count == 0)
+    {
+        <MudCard Elevation="0" Outlined="true" Class="pa-4 mb-6" data-testid="dashboard-reminders-caught-up">
+            <div class="d-flex align-center gap-3">
+                <MudIcon Icon="@Icons.Material.Outlined.CheckCircle" Color="Color.Success" />
+                <div>
+                    <MudText Typo="Typo.subtitle1">You're all caught up!</MudText>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                        No reminders are due today. View upcoming reminders in the <MudLink Href="/reminders">reminders tab</MudLink>.
+                    </MudText>
+                </div>
+            </div>
+        </MudCard>
+    }
+    else
+    {
+        <div class="d-flex flex-column gap-3 mb-6" data-testid="dashboard-due-reminders-list">
+            @foreach (var reminder in _dueReminders)
+            {
+                var isOverdue = reminder.EffectiveDueDate < _today;
+                <MudCard Elevation="1" Class="pa-2" data-testid="@($"dashboard-reminder-{reminder.Id}")">
+                    <MudCardContent Class="d-flex align-center justify-space-between pa-2">
+                        <div class="d-flex align-center gap-3">
+                            <MudIconButton Icon="@Icons.Material.Outlined.CheckCircleOutline"
+                                           Color="Color.Primary"
+                                           Size="Size.Medium"
+                                           aria-label="Mark as completed"
+                                           OnClick="() => CompleteAsync(reminder)"
+                                           data-testid="@($"dashboard-complete-{reminder.Id}")" />
+                            <div>
+                                <div class="d-flex align-center gap-2">
+                                    <MudLink Href="@($"/people/{reminder.PersonId}")"
+                                             Typo="Typo.h4"
+                                             Color="Color.Primary"
+                                             Class="text-decoration-none">
+                                        @reminder.PersonDisplayName
+                                    </MudLink>
+                                    @if (reminder.Frequency != ReminderFrequency.Once)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                                            @reminder.Frequency
+                                        </MudChip>
+                                    }
+                                </div>
+                                <MudText Typo="Typo.body1" Class="mt-1">
+                                    @reminder.Title
+                                </MudText>
+                                <MudText Typo="Typo.caption"
+                                         Color="@(isOverdue ? Color.Error : Color.Warning)"
+                                         Class="font-weight-bold">
+                                    @(isOverdue ? $"Overdue ({_today.DayNumber - reminder.EffectiveDueDate.DayNumber} days ago)" : "Due today")
+                                </MudText>
+                            </div>
+                        </div>
+                        <div class="d-flex align-center gap-1">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Snooze"
+                                           Size="Size.Small"
+                                           aria-label="Snooze"
+                                           OnClick="() => SnoozeAsync(reminder)"
+                                           data-testid="@($"dashboard-snooze-{reminder.Id}")" />
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </div>
+    }
+}
+
+@code {
+    private bool _loaded;
+    private DateOnly _today;
+    private int _peopleCount;
+    private IReadOnlyList<ReminderDto> _dueReminders = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+        _loaded = true;
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _today = await UserTimeZone.GetTodayAsync();
+        var peopleResult = await PeopleService.ListAsync();
+        _peopleCount = peopleResult.Count;
+
+        if (_peopleCount > 0)
+        {
+            _dueReminders = await ReminderService.ListDueAsync(_today);
+        }
+    }
+
+    private async Task AddReminderAsync()
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ReminderFormDialog>("New reminder", options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task SnoozeAsync(ReminderDto reminder)
+    {
+        var parameters = new DialogParameters<SnoozeDialog>
+        {
+            { x => x.ReminderId, reminder.Id },
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraSmall };
+        var dialog = await DialogService.ShowAsync<SnoozeDialog>("Snooze reminder", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task CompleteAsync(ReminderDto reminder)
+    {
+        var success = await ReminderService.CompleteAsync(reminder.Id);
+        if (success)
+        {
+            Snackbar.Add("Reminder completed", Severity.Success);
+            await LoadDataAsync();
+        }
+    }
+}

@@ -1,9 +1,12 @@
 @page "/people/{PersonId:guid}"
 @using Relio.Application.People
+@using Relio.Application.Reminders
 @using Relio.Application.Time
 @using Relio.Domain
+@using Relio.Web.Components.Reminders
 @using Relio.Web.Time
 @inject IPeopleService PeopleService
+@inject IReminderService ReminderService
 @inject IUserTimeZoneService UserTimeZone
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
@@ -149,6 +152,67 @@
                 </div>
             }
         </dl>
+
+        <div class="mt-8">
+            <div class="d-flex justify-space-between align-center mb-3">
+                <MudText Typo="Typo.h3" HtmlTag="h2">Reminders</MudText>
+                @if (!_person.IsArchived)
+                {
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               Size="Size.Small"
+                               StartIcon="@Icons.Material.Outlined.Add"
+                               OnClick="AddReminderAsync"
+                               data-testid="person-add-reminder">
+                        Add reminder
+                    </MudButton>
+                }
+            </div>
+
+            @if (_reminders.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Class="mud-text-secondary" data-testid="person-reminders-empty">
+                    No active reminders for @_person.FirstName.
+                </MudText>
+            }
+            else
+            {
+                <div class="d-flex flex-column gap-2" data-testid="person-reminders-list">
+                    @foreach (var reminder in _reminders)
+                    {
+                        <MudCard Elevation="0" Outlined="true" Class="pa-2" data-testid="@($"person-reminder-{reminder.Id}")">
+                            <div class="d-flex justify-space-between align-center">
+                                <div class="d-flex align-center gap-2">
+                                    <MudIconButton Icon="@Icons.Material.Outlined.CheckCircleOutline"
+                                                   Color="Color.Primary"
+                                                   Size="Size.Small"
+                                                   OnClick="() => CompleteReminderAsync(reminder)"
+                                                   data-testid="@($"person-reminder-complete-{reminder.Id}")" />
+                                    <div>
+                                        <MudText Typo="Typo.body1" Class="font-weight-bold">@reminder.Title</MudText>
+                                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                            Due @reminder.EffectiveDueDate.ToString("d MMM yyyy")
+                                            @if (reminder.Frequency != ReminderFrequency.Once)
+                                            {
+                                                <span> • @reminder.Frequency</span>
+                                            }
+                                            @if (reminder.SnoozedUntilDate.HasValue)
+                                            {
+                                                <span> • Snoozed</span>
+                                            }
+                                        </MudText>
+                                    </div>
+                                </div>
+                                <MudIconButton Icon="@Icons.Material.Outlined.Snooze"
+                                               Size="Size.Small"
+                                               OnClick="() => SnoozeReminderAsync(reminder)"
+                                               data-testid="@($"person-reminder-snooze-{reminder.Id}")" />
+                            </div>
+                        </MudCard>
+                    }
+                </div>
+            }
+        </div>
     }
 }
 
@@ -156,6 +220,7 @@
     private Person? _person;
     private bool _loaded;
     private string _archivedText = string.Empty;
+    private IReadOnlyList<ReminderDto> _reminders = [];
 
     // True while an archive, restore or delete is in flight: a second click (or a second menu item)
     // must not start another one, and the menu and the Restore button are disabled meanwhile.
@@ -183,6 +248,10 @@
     private async Task LoadAsync()
     {
         _person = await PeopleService.GetAsync(PersonId);
+        if (_person is not null)
+        {
+            _reminders = await ReminderService.ListForPersonAsync(PersonId);
+        }
         if (_person is { IsArchived: true })
         {
             var zone = await UserTimeZone.GetTimeZoneAsync();
@@ -285,6 +354,46 @@
         finally
         {
             _busy = false;
+        }
+    }
+
+    private async Task AddReminderAsync()
+    {
+        var parameters = new DialogParameters<ReminderFormDialog>
+        {
+            { x => x.PersonId, PersonId },
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ReminderFormDialog>("New reminder", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task CompleteReminderAsync(ReminderDto reminder)
+    {
+        var success = await ReminderService.CompleteAsync(reminder.Id);
+        if (success)
+        {
+            Snackbar.Add("Reminder completed", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task SnoozeReminderAsync(ReminderDto reminder)
+    {
+        var parameters = new DialogParameters<SnoozeDialog>
+        {
+            { x => x.ReminderId, reminder.Id },
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraSmall };
+        var dialog = await DialogService.ShowAsync<SnoozeDialog>("Snooze reminder", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await LoadAsync();
         }
     }
 }

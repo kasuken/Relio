@@ -1,0 +1,219 @@
+@using Relio.Application.Ownership
+@using Relio.Application.People
+@using Relio.Application.Reminders
+@using Relio.Domain
+@inject IReminderService ReminderService
+@inject IPeopleService PeopleService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h3">@(_isEdit ? "Edit reminder" : "New reminder")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <div class="d-flex flex-column gap-4" style="min-width: 320px;">
+            @if (!_isEdit && PersonId is null)
+            {
+                <MudSelect T="Guid"
+                           Label="Person"
+                           @bind-Value="_personId"
+                           Variant="Variant.Outlined"
+                           Required="true"
+                           data-testid="reminder-form-person">
+                    @foreach (var person in _people)
+                    {
+                        <MudSelectItem Value="@person.Id">@person.DisplayName</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+
+            <MudTextField T="string"
+                          Label="Title"
+                          @bind-Value="_title"
+                          MaxLength="@Reminder.TitleMaxLength"
+                          Immediate="true"
+                          Variant="Variant.Outlined"
+                          Required="true"
+                          Error="@(_error is not null)"
+                          ErrorText="@_error"
+                          data-testid="reminder-form-title" />
+
+            <MudDatePicker Label="Due date"
+                           @bind-Date="_dueDate"
+                           DateFormat="yyyy-MM-dd"
+                           Variant="Variant.Outlined"
+                           Required="true"
+                           data-testid="reminder-form-due-date" />
+
+            <MudSelect T="ReminderFrequency"
+                       Label="Frequency"
+                       @bind-Value="_frequency"
+                       Variant="Variant.Outlined"
+                       data-testid="reminder-form-frequency">
+                <MudSelectItem Value="@ReminderFrequency.Once">Once (no repeat)</MudSelectItem>
+                <MudSelectItem Value="@ReminderFrequency.Weekly">Weekly</MudSelectItem>
+                <MudSelectItem Value="@ReminderFrequency.Monthly">Monthly</MudSelectItem>
+                <MudSelectItem Value="@ReminderFrequency.EveryThreeMonths">Every 3 months</MudSelectItem>
+                <MudSelectItem Value="@ReminderFrequency.EverySixMonths">Every 6 months</MudSelectItem>
+                <MudSelectItem Value="@ReminderFrequency.Yearly">Yearly</MudSelectItem>
+                <MudSelectItem Value="@ReminderFrequency.CustomMonths">Custom months</MudSelectItem>
+            </MudSelect>
+
+            @if (_frequency == ReminderFrequency.CustomMonths)
+            {
+                <MudNumericField T="int?"
+                                 Label="Every N months"
+                                 @bind-Value="_customIntervalMonths"
+                                 Min="1"
+                                 Max="120"
+                                 Variant="Variant.Outlined"
+                                 data-testid="reminder-form-custom-interval" />
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" data-testid="reminder-form-cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="_saving"
+                   OnClick="SaveAsync"
+                   data-testid="reminder-form-save">
+            @(_isEdit ? "Save changes" : "Create reminder")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public Guid? ReminderId { get; set; }
+
+    [Parameter]
+    public Guid? PersonId { get; set; }
+
+    [Parameter]
+    public string? InitialTitle { get; set; }
+
+    [Parameter]
+    public DateOnly? InitialDueDate { get; set; }
+
+    [Parameter]
+    public ReminderFrequency? InitialFrequency { get; set; }
+
+    [Parameter]
+    public int? InitialCustomIntervalMonths { get; set; }
+
+    private bool _isEdit => ReminderId.HasValue;
+    private Guid _personId;
+    private string? _title;
+    private DateTime? _dueDate;
+    private ReminderFrequency _frequency = ReminderFrequency.Once;
+    private int? _customIntervalMonths = 1;
+    private string? _error;
+    private bool _saving;
+    private IReadOnlyList<Person> _people = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _personId = PersonId ?? Guid.Empty;
+        _title = InitialTitle ?? string.Empty;
+        _dueDate = InitialDueDate.HasValue
+            ? new DateTime(InitialDueDate.Value.Year, InitialDueDate.Value.Month, InitialDueDate.Value.Day)
+            : DateTime.Today;
+        _frequency = InitialFrequency ?? ReminderFrequency.Once;
+        _customIntervalMonths = InitialCustomIntervalMonths ?? 1;
+
+        if (!_isEdit && PersonId is null)
+        {
+            _people = await PeopleService.ListAsync();
+            if (_people.Count > 0 && _personId == Guid.Empty)
+            {
+                _personId = _people[0].Id;
+            }
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_title))
+        {
+            _error = "Please enter a title.";
+            return;
+        }
+
+        if (_dueDate is null)
+        {
+            _error = "Please select a due date.";
+            return;
+        }
+
+        if (!_isEdit && _personId == Guid.Empty)
+        {
+            _error = "Please select a person.";
+            return;
+        }
+
+        var dueDateOnly = DateOnly.FromDateTime(_dueDate.Value);
+
+        _saving = true;
+        try
+        {
+            if (_isEdit)
+            {
+                var updated = await ReminderService.UpdateAsync(ReminderId!.Value, new UpdateReminderRequest
+                {
+                    Title = _title,
+                    DueDate = dueDateOnly,
+                    Frequency = _frequency,
+                    CustomIntervalMonths = _frequency == ReminderFrequency.CustomMonths ? _customIntervalMonths : null,
+                });
+
+                if (updated is null)
+                {
+                    _error = "Reminder not found.";
+                    return;
+                }
+
+                Snackbar.Add("Reminder updated", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(updated));
+            }
+            else
+            {
+                var created = await ReminderService.CreateAsync(new CreateReminderRequest
+                {
+                    PersonId = _personId,
+                    Title = _title,
+                    DueDate = dueDateOnly,
+                    Frequency = _frequency,
+                    CustomIntervalMonths = _frequency == ReminderFrequency.CustomMonths ? _customIntervalMonths : null,
+                });
+
+                Snackbar.Add("Reminder created", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(created));
+            }
+        }
+        catch (ReminderValidationException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (ForeignEntityNotOwnedException)
+        {
+            _error = "Person could not be found.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

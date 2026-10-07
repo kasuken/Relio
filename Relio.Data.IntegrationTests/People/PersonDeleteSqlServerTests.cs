@@ -94,6 +94,7 @@ public sealed class PersonDeleteSqlServerTests(SqlServerDatabaseFixture fixture)
             "a child that does not cascade would block deleting its person on SQL Server (or be orphaned)");
         foreignKeys.Should().Contain("FK_PersonTags_People_PeopleId:CASCADE");
         foreignKeys.Should().Contain("FK_ContactMethods_People_PersonId:CASCADE");
+        foreignKeys.Should().Contain("FK_Reminders_People_PersonId:CASCADE");
     }
 
     [SqlServerFact]

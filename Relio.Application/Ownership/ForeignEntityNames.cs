@@ -15,4 +15,7 @@ public static class ForeignEntityNames
 
     /// <summary>A person's contact methods.</summary>
     public const string ContactMethods = "contact methods";
+
+    /// <summary>A referenced person.</summary>
+    public const string People = "people";
 }

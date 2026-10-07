@@ -6,6 +6,7 @@ using Relio.Application.Accounts;
 using Relio.Application.Administration;
 using Relio.Application.People;
 using Relio.Application.People.Import;
+using Relio.Application.Reminders;
 using Relio.Data.Administration;
 using Relio.Data.Concurrency;
 using Relio.Data.Identity;
@@ -13,6 +14,7 @@ using Relio.Application.Profile;
 using Relio.Application.Time;
 using Relio.Data.People;
 using Relio.Data.Profile;
+using Relio.Data.Reminders;
 using Relio.Data.Seeding;
 using Relio.Data.Time;
 
@@ -95,6 +97,7 @@ public static class ServiceCollectionExtensions
         AddDataService<IPersonMergeService, PersonMergeService>(services);
         AddDataService<IRelationshipTypeService, RelationshipTypeService>(services);
         AddDataService<ITagService, TagService>(services);
+        AddDataService<IReminderService, ReminderService>(services);
         AddDataService<IUserTimeZoneService, UserTimeZoneService>(services);
         AddDataService<IUserProfileService, UserProfileService>(services);
         AddDataService<ITwoFactorStatusService, TwoFactorStatusService>(services);

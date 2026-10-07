@@ -92,6 +92,27 @@ public sealed class Person : OwnedEntity
     /// </summary>
     public ICollection<ContactMethod> ContactMethods { get; set; } = new List<ContactMethod>();
 
+    /// <summary>
+    /// Reminders scheduled for this person (epic #36). Deleted with the person.
+    /// </summary>
+    public ICollection<Reminder> Reminders { get; set; } = new List<Reminder>();
+
+    /// <summary>
+    /// Optional stay-in-touch cadence in days (issue #41), e.g. 30 days. When null, no cadence is enforced.
+    /// </summary>
+    public int? StayInTouchCadenceDays { get; set; }
+
+    /// <summary>
+    /// Whether birthday reminders are disabled specifically for this person (issue #38).
+    /// </summary>
+    public bool BirthdayReminderDisabled { get; set; }
+
+    /// <summary>
+    /// Per-person lead time override for birthday reminders in days (issue #38).
+    /// When null, the user's global lead time is used.
+    /// </summary>
+    public int? BirthdayReminderLeadDays { get; set; }
+
     /// <summary>A display-friendly name composed from <see cref="FirstName"/> and <see cref="LastName"/>.</summary>
     public string DisplayName => FormatDisplayName(FirstName, LastName);
 

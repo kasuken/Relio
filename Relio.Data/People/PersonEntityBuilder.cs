@@ -70,5 +70,9 @@ internal static class PersonEntityBuilder
         person.BirthdayDay = hasBirthday ? input.BirthdayDay : null;
         person.BirthdayMonth = hasBirthday ? input.BirthdayMonth : null;
         person.BirthdayYear = hasBirthday ? input.BirthdayYear : null;
+
+        person.StayInTouchCadenceDays = input.StayInTouchCadenceDays;
+        person.BirthdayReminderDisabled = input.BirthdayReminderDisabled;
+        person.BirthdayReminderLeadDays = input.BirthdayReminderLeadDays;
     }
 }

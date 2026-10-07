@@ -29,4 +29,24 @@ public sealed class UserProfile : OwnedEntity
     /// trims and normalizes it before it is assigned.
     /// </summary>
     public string? DisplayName { get; set; }
+
+    /// <summary>
+    /// Whether birthday reminders are enabled for this user (epic #36, issue #38). Defaults to true.
+    /// </summary>
+    public bool BirthdayRemindersEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Default lead time in days for birthday reminders (issue #38). Defaults to 0 (on the day).
+    /// </summary>
+    public int DefaultBirthdayLeadDays { get; set; } = 0;
+
+    /// <summary>
+    /// How the user receives reminder emails (issue #40). Defaults to <see cref="ReminderEmailDelivery.DailyDigest"/>.
+    /// </summary>
+    public ReminderEmailDelivery ReminderEmailDelivery { get; set; } = ReminderEmailDelivery.DailyDigest;
+
+    /// <summary>
+    /// Secure token for one-click unsubscribe links in reminder emails (issue #40).
+    /// </summary>
+    public string? UnsubscribeToken { get; set; }
 }

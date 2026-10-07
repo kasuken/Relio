@@ -28,6 +28,7 @@ public class PersonProfilePageTests
         context.UseMudBlazor();
         context.Services.AddSingleton<IPeopleService>(people);
         context.Services.AddSingleton<IUserTimeZoneService>(new FakeUserTimeZoneService(timeZoneId, Today));
+        context.Services.AddSingleton<Relio.Application.Reminders.IReminderService>(new FakeReminderService());
         providers = new ProfileProviders(
             context.Render<MudPopoverProvider>(),
             context.Render<MudDialogProvider>(),
