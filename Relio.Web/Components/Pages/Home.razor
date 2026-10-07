@@ -56,6 +56,54 @@ else
         </div>
     </div>
 
+    @if (_overdueReachOuts.Count > 0)
+    {
+        <div class="mb-6" data-testid="dashboard-reach-out">
+            <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-3">Reach out</MudText>
+            <div class="d-flex flex-column gap-3" data-testid="dashboard-reach-out-list">
+                @foreach (var reachOut in _overdueReachOuts)
+                {
+                    <MudCard Elevation="1" Class="pa-2" data-testid="@($"dashboard-reach-out-{reachOut.PersonId}")">
+                        <MudCardContent Class="d-flex align-center justify-space-between pa-2">
+                            <div class="d-flex align-center gap-3">
+                                <MudIcon Icon="@Icons.Material.Outlined.People" Color="Color.Primary" Size="Size.Medium" Class="ml-2" />
+                                <div>
+                                    <div class="d-flex align-center gap-2">
+                                        <MudLink Href="@($"/people/{reachOut.PersonId}")"
+                                                 Typo="Typo.h4"
+                                                 Color="Color.Primary"
+                                                 Class="text-decoration-none"
+                                                 data-testid="@($"reach-out-person-{reachOut.PersonId}")">
+                                            @reachOut.PersonDisplayName
+                                        </MudLink>
+                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                                            Every @(reachOut.CadenceDays == 1 ? "day" : $"{reachOut.CadenceDays} days")
+                                        </MudChip>
+                                    </div>
+                                    <MudText Typo="Typo.caption"
+                                             Color="Color.Error"
+                                             Class="font-weight-bold"
+                                             data-testid="@($"reach-out-overdue-{reachOut.PersonId}")">
+                                        Overdue (@reachOut.DaysOverdue @(reachOut.DaysOverdue == 1 ? "day" : "days") overdue)
+                                    </MudText>
+                                </div>
+                            </div>
+                            <div class="d-flex align-center gap-1">
+                                <MudButton Variant="Variant.Outlined"
+                                           Color="Color.Primary"
+                                           Size="Size.Small"
+                                           OnClick="() => MarkContactedAsync(reachOut.PersonId)"
+                                           data-testid="@($"reach-out-contacted-{reachOut.PersonId}")">
+                                    Mark contacted
+                                </MudButton>
+                            </div>
+                        </MudCardContent>
+                    </MudCard>
+                }
+            </div>
+        </div>
+    }
+
     @* Reminders Section *@
     <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-3">Due reminders</MudText>
 
@@ -168,6 +216,7 @@ else
     private int _peopleCount;
     private IReadOnlyList<ReminderDto> _dueReminders = [];
     private IReadOnlyList<BirthdayReminderDto> _dueBirthdays = [];
+    private IReadOnlyList<ReachOutDto> _overdueReachOuts = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -185,6 +234,17 @@ else
         {
             _dueReminders = await ReminderService.ListDueAsync(_today);
             _dueBirthdays = await ReminderService.ListDueBirthdaysAsync();
+            _overdueReachOuts = await ReminderService.ListOverdueReachOutsAsync();
+        }
+    }
+
+    private async Task MarkContactedAsync(Guid personId)
+    {
+        var success = await ReminderService.MarkContactedAsync(personId);
+        if (success)
+        {
+            Snackbar.Add("Marked as contacted", Severity.Success);
+            await LoadDataAsync();
         }
     }
 

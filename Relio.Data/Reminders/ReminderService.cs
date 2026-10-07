@@ -367,6 +367,55 @@ public sealed class ReminderService(
             .ToList();
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ReachOutDto>> ListOverdueReachOutsAsync(CancellationToken cancellationToken = default)
+    {
+        var ownerId = currentUser.RequireUserId();
+
+        var today = await userTimeZoneService.GetTodayAsync(cancellationToken);
+        var timeZone = await userTimeZoneService.GetTimeZoneAsync(cancellationToken);
+
+        var people = await dbContext.People
+            .AsNoTracking()
+            .Where(p => p.OwnerId == ownerId && !p.IsArchived && p.StayInTouchCadenceDays != null)
+            .ToListAsync(cancellationToken);
+
+        return people
+            .Select(p => ReachOutCalculator.Calculate(p, today, timeZone))
+            .Where(r => r is not null)
+            .Select(r => r!)
+            .OrderByDescending(r => r.DaysOverdue)
+            .ThenBy(r => r.PersonDisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> MarkContactedAsync(Guid personId, DateOnly? contactedOn = null, CancellationToken cancellationToken = default)
+    {
+        var ownerId = currentUser.RequireUserId();
+
+        try
+        {
+            var person = await dbContext.People
+                .SingleOrDefaultAsync(p => p.OwnerId == ownerId && p.Id == personId, cancellationToken);
+
+            if (person is null)
+            {
+                return false;
+            }
+
+            var userToday = await userTimeZoneService.GetTodayAsync(cancellationToken);
+            person.LastContactedOn = contactedOn ?? userToday;
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        finally
+        {
+            dbContext.ChangeTracker.Clear();
+        }
+    }
+
     private static ReminderDto ToDto(Reminder reminder) => new(
         reminder.Id,
         reminder.PersonId,

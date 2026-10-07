@@ -144,6 +144,32 @@
                     </div>
                 }
             }
+            @if (_person.StayInTouchCadenceDays is { } cadenceDays)
+            {
+                <div data-testid="person-cadence">
+                    <dt><MudIcon Icon="@Icons.Material.Outlined.Schedule" Size="Size.Small" />Stay in touch</dt>
+                    <dd class="d-flex align-center gap-2 flex-wrap" data-testid="person-cadence-setting">
+                        <span>Every @(cadenceDays == 1 ? "day" : $"{cadenceDays} days")</span>
+                        @if (_reachOut is not null)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled" data-testid="person-cadence-overdue">
+                                Overdue by @(_reachOut.DaysOverdue == 1 ? "1 day" : $"{_reachOut.DaysOverdue} days")
+                            </MudChip>
+                        }
+                        @if (!_person.IsArchived)
+                        {
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Primary"
+                                       Size="Size.Small"
+                                       OnClick="MarkContactedAsync"
+                                       Disabled="_busy"
+                                       data-testid="person-mark-contacted">
+                                Mark as contacted
+                            </MudButton>
+                        }
+                    </dd>
+                </div>
+            }
             @if (_person.HowWeMet is not null)
             {
                 <div>
@@ -228,6 +254,7 @@
     private bool _loaded;
     private string _archivedText = string.Empty;
     private IReadOnlyList<ReminderDto> _reminders = [];
+    private ReachOutDto? _reachOut;
 
     // True while an archive, restore or delete is in flight: a second click (or a second menu item)
     // must not start another one, and the menu and the Restore button are disabled meanwhile.
@@ -258,12 +285,50 @@
         if (_person is not null)
         {
             _reminders = await ReminderService.ListForPersonAsync(PersonId);
+            if (_person.StayInTouchCadenceDays is not null)
+            {
+                var zone = await UserTimeZone.GetTimeZoneAsync();
+                var today = await UserTimeZone.GetTodayAsync();
+                _reachOut = ReachOutCalculator.Calculate(_person, today, zone);
+            }
+            else
+            {
+                _reachOut = null;
+            }
         }
+        else
+        {
+            _reachOut = null;
+        }
+
         if (_person is { IsArchived: true })
         {
             var zone = await UserTimeZone.GetTimeZoneAsync();
             var today = await UserTimeZone.GetTodayAsync();
             _archivedText = PersonArchiveText.ArchivedOn(_person.ArchivedAtUtc, zone, today);
+        }
+    }
+
+    private async Task MarkContactedAsync()
+    {
+        if (_busy || _person is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var success = await ReminderService.MarkContactedAsync(_person.Id);
+            if (success)
+            {
+                Snackbar.Add("Marked as contacted", Severity.Success);
+                await LoadAsync();
+            }
+        }
+        finally
+        {
+            _busy = false;
         }
     }
 

@@ -33,6 +33,55 @@ else
 {
     <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pt-4" @bind-ActivePanelIndex="_activeTab">
         <MudTabPanel Text="@($"Active ({_activeReminders.Count})")" data-testid="reminders-tab-active">
+            @if (_overdueReachOuts.Count > 0)
+            {
+                <div class="mb-6" data-testid="reminders-reach-out">
+                    <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-3">Reach out</MudText>
+                    <div class="d-flex flex-column gap-3" data-testid="reminders-reach-out-list">
+                        @foreach (var reachOut in _overdueReachOuts)
+                        {
+                            <MudCard Elevation="1" Class="pa-2" data-testid="@($"reach-out-card-{reachOut.PersonId}")">
+                                <MudCardContent Class="d-flex align-center justify-space-between pa-2">
+                                    <div class="d-flex align-center gap-3">
+                                        <MudIcon Icon="@Icons.Material.Outlined.People" Color="Color.Primary" />
+                                        <div>
+                                            <div class="d-flex align-center gap-2 flex-wrap">
+                                                <MudLink Href="@($"/people/{reachOut.PersonId}")"
+                                                         Typo="Typo.h4"
+                                                         Color="Color.Primary"
+                                                         Class="text-decoration-none"
+                                                         data-testid="@($"reach-out-person-{reachOut.PersonId}")">
+                                                    @reachOut.PersonDisplayName
+                                                </MudLink>
+                                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default">
+                                                    Every @(reachOut.CadenceDays == 1 ? "day" : $"{reachOut.CadenceDays} days")
+                                                </MudChip>
+                                                <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Color="Color.Warning" data-testid="@($"reach-out-due-{reachOut.PersonId}")">
+                                                    @reachOut.DaysOverdue @(reachOut.DaysOverdue == 1 ? "day" : "days") overdue
+                                                </MudChip>
+                                            </div>
+                                            <MudText Typo="Typo.caption"
+                                                     Color="Color.Secondary"
+                                                     Class="mt-1 font-weight-bold"
+                                                     data-testid="@($"reach-out-last-contacted-{reachOut.PersonId}")">
+                                                Last contacted @reachOut.DaysSinceContact @(reachOut.DaysSinceContact == 1 ? "day" : "days") ago
+                                            </MudText>
+                                        </div>
+                                    </div>
+                                    <MudButton Variant="Variant.Outlined"
+                                               Color="Color.Primary"
+                                               Size="Size.Small"
+                                               OnClick="() => MarkContactedAsync(reachOut.PersonId)"
+                                               data-testid="@($"reach-out-contacted-{reachOut.PersonId}")">
+                                        Mark contacted
+                                    </MudButton>
+                                </MudCardContent>
+                            </MudCard>
+                        }
+                    </div>
+                </div>
+            }
+
             @if (_upcomingBirthdays.Count > 0)
             {
                 <div class="mb-6" data-testid="upcoming-birthdays-section">
@@ -213,6 +262,7 @@ else
     private IReadOnlyList<ReminderDto> _activeReminders = [];
     private IReadOnlyList<ReminderDto> _completedReminders = [];
     private IReadOnlyList<BirthdayReminderDto> _upcomingBirthdays = [];
+    private IReadOnlyList<ReachOutDto> _overdueReachOuts = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -227,6 +277,17 @@ else
         _activeReminders = all.Where(r => !r.IsCompleted).ToList();
         _completedReminders = all.Where(r => r.IsCompleted).OrderByDescending(r => r.CompletedAtUtc).ToList();
         _upcomingBirthdays = await ReminderService.ListUpcomingBirthdaysAsync(30);
+        _overdueReachOuts = await ReminderService.ListOverdueReachOutsAsync();
+    }
+
+    private async Task MarkContactedAsync(Guid personId)
+    {
+        var success = await ReminderService.MarkContactedAsync(personId);
+        if (success)
+        {
+            Snackbar.Add("Marked as contacted", Severity.Success);
+            await LoadDataAsync();
+        }
     }
 
     private async Task AddReminderAsync()

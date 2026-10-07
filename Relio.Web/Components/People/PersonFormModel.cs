@@ -64,6 +64,9 @@ public sealed class PersonFormModel
     /// <summary>Per-person lead time override for birthday reminders in days (issue #38).</summary>
     public int? BirthdayReminderLeadDays { get; set; }
 
+    /// <summary>Optional stay-in-touch cadence in days (issue #41), e.g. 30 days. When null, no cadence is enforced.</summary>
+    public int? StayInTouchCadenceDays { get; set; }
+
     /// <summary>"How you met", as typed.</summary>
     public string? HowWeMet { get; set; }
 
@@ -96,6 +99,7 @@ public sealed class PersonFormModel
             BirthdayYear = person.BirthdayYear,
             BirthdayReminderDisabled = person.BirthdayReminderDisabled,
             BirthdayReminderLeadDays = person.BirthdayReminderLeadDays,
+            StayInTouchCadenceDays = person.StayInTouchCadenceDays,
             HowWeMet = person.HowWeMet,
             Details = person.Details,
         };
@@ -136,6 +140,7 @@ public sealed class PersonFormModel
         BirthdayYear = BirthdayYear,
         BirthdayReminderDisabled = BirthdayReminderDisabled,
         BirthdayReminderLeadDays = BirthdayReminderLeadDays,
+        StayInTouchCadenceDays = StayInTouchCadenceDays,
         HowWeMet = HowWeMet,
         Details = Details,
         ContactMethods = BuildContactMethods(out sentRows),
@@ -158,6 +163,7 @@ public sealed class PersonFormModel
         BirthdayYear = BirthdayYear,
         BirthdayReminderDisabled = BirthdayReminderDisabled,
         BirthdayReminderLeadDays = BirthdayReminderLeadDays,
+        StayInTouchCadenceDays = StayInTouchCadenceDays,
         HowWeMet = HowWeMet,
         Details = Details,
         ContactMethods = BuildContactMethods(out sentRows),

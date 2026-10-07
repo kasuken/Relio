@@ -310,6 +310,109 @@ public class ReminderServiceTests
         upcoming.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task ListOverdueReachOutsAsync_returns_people_overdue_for_contact()
+    {
+        await using var dbContext = CreateDbContext();
+        var today = new DateOnly(2026, 10, 7);
+
+        // Grace: 30-day cadence, contacted 31 days ago -> overdue
+        var graceId = await CreatePersonAsync(dbContext, UserA, "Grace",
+            stayInTouchCadenceDays: 30, lastContactedOn: today.AddDays(-31));
+
+        // Ada: 30-day cadence, contacted 30 days ago -> not overdue
+        await CreatePersonAsync(dbContext, UserA, "Ada",
+            stayInTouchCadenceDays: 30, lastContactedOn: today.AddDays(-30));
+
+        // Alan: 30-day cadence, contacted 40 days ago, but archived -> ignored
+        await CreatePersonAsync(dbContext, UserA, "Alan", isArchived: true,
+            stayInTouchCadenceDays: 30, lastContactedOn: today.AddDays(-40));
+
+        // Margaret: no cadence -> ignored
+        await CreatePersonAsync(dbContext, UserA, "Margaret",
+            stayInTouchCadenceDays: null, lastContactedOn: today.AddDays(-100));
+
+        var service = CreateService(dbContext, UserA);
+        var reachOuts = await service.ListOverdueReachOutsAsync();
+
+        reachOuts.Should().ContainSingle();
+        var reachOut = reachOuts.Single();
+        reachOut.PersonId.Should().Be(graceId);
+        reachOut.PersonDisplayName.Should().Be("Grace");
+        reachOut.CadenceDays.Should().Be(30);
+        reachOut.DaysSinceContact.Should().Be(31);
+        reachOut.DaysOverdue.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task MarkContactedAsync_updates_last_contacted_and_removes_from_reach_out()
+    {
+        await using var dbContext = CreateDbContext();
+        var today = new DateOnly(2026, 10, 7);
+        var personId = await CreatePersonAsync(dbContext, UserA, "Grace",
+            stayInTouchCadenceDays: 30, lastContactedOn: today.AddDays(-35));
+
+        var service = CreateService(dbContext, UserA);
+        var before = await service.ListOverdueReachOutsAsync();
+        before.Should().ContainSingle();
+
+        var marked = await service.MarkContactedAsync(personId);
+        marked.Should().BeTrue();
+
+        var after = await service.ListOverdueReachOutsAsync();
+        after.Should().BeEmpty();
+
+        var person = await dbContext.People.AsNoTracking().SingleAsync(p => p.Id == personId);
+        person.LastContactedOn.Should().Be(today);
+    }
+
+    [Fact]
+    public async Task MarkContactedAsync_with_explicit_date_sets_provided_date()
+    {
+        await using var dbContext = CreateDbContext();
+        var today = new DateOnly(2026, 10, 7);
+        var personId = await CreatePersonAsync(dbContext, UserA, "Grace",
+            stayInTouchCadenceDays: 30, lastContactedOn: today.AddDays(-35));
+
+        var explicitDate = new DateOnly(2026, 10, 5);
+        var service = CreateService(dbContext, UserA);
+        var marked = await service.MarkContactedAsync(personId, explicitDate);
+        marked.Should().BeTrue();
+
+        var person = await dbContext.People.AsNoTracking().SingleAsync(p => p.Id == personId);
+        person.LastContactedOn.Should().Be(explicitDate);
+    }
+
+    [Fact]
+    public async Task MarkContactedAsync_returns_false_when_person_not_found_or_not_owned()
+    {
+        await using var dbContext = CreateDbContext();
+        var personId = await CreatePersonAsync(dbContext, UserA, "Grace",
+            stayInTouchCadenceDays: 30);
+
+        var serviceA = CreateService(dbContext, UserA);
+        var nonexistent = await serviceA.MarkContactedAsync(Guid.NewGuid());
+        nonexistent.Should().BeFalse();
+
+        var serviceB = CreateService(dbContext, UserB);
+        var notOwned = await serviceB.MarkContactedAsync(personId);
+        notOwned.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task User_isolation_User_B_cannot_read_User_A_reach_outs()
+    {
+        await using var dbContext = CreateDbContext();
+        var today = new DateOnly(2026, 10, 7);
+        await CreatePersonAsync(dbContext, UserA, "Grace",
+            stayInTouchCadenceDays: 30, lastContactedOn: today.AddDays(-40));
+
+        var serviceB = CreateService(dbContext, UserB);
+        var reachOuts = await serviceB.ListOverdueReachOutsAsync();
+
+        reachOuts.Should().BeEmpty();
+    }
+
     private static RelioDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<RelioDbContext>()
@@ -335,7 +438,9 @@ public class ReminderServiceTests
         int? birthdayMonth = null,
         int? birthdayYear = null,
         bool birthdayReminderDisabled = false,
-        int? birthdayReminderLeadDays = null)
+        int? birthdayReminderLeadDays = null,
+        int? stayInTouchCadenceDays = null,
+        DateOnly? lastContactedOn = null)
     {
         var person = new Person
         {
@@ -347,6 +452,8 @@ public class ReminderServiceTests
             BirthdayYear = birthdayYear,
             BirthdayReminderDisabled = birthdayReminderDisabled,
             BirthdayReminderLeadDays = birthdayReminderLeadDays,
+            StayInTouchCadenceDays = stayInTouchCadenceDays,
+            LastContactedOn = lastContactedOn,
         };
         dbContext.People.Add(person);
         await dbContext.SaveChangesAsync();

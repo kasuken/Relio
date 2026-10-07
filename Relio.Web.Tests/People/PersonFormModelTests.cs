@@ -25,6 +25,7 @@ public class PersonFormModelTests
             BirthdayYear = 1815,
             BirthdayReminderDisabled = true,
             BirthdayReminderLeadDays = 7,
+            StayInTouchCadenceDays = 30,
             HowWeMet = "At a talk.",
             Details = "Writes letters.",
             ContactMethods = { second, first },
@@ -40,6 +41,7 @@ public class PersonFormModelTests
         (model.BirthdayDay, model.BirthdayMonth, model.BirthdayYear).Should().Be((10, 12, 1815));
         model.BirthdayReminderDisabled.Should().BeTrue();
         model.BirthdayReminderLeadDays.Should().Be(7);
+        model.StayInTouchCadenceDays.Should().Be(30);
         model.HowWeMet.Should().Be("At a talk.");
         model.Details.Should().Be("Writes letters.");
         model.ContactMethods.Select(r => (r.Id, r.Kind, r.Label, r.Value)).Should().Equal(
@@ -152,5 +154,21 @@ public class PersonFormModelTests
         var update = model.ToUpdateRequest();
         update.BirthdayReminderDisabled.Should().BeTrue();
         update.BirthdayReminderLeadDays.Should().Be(14);
+    }
+
+    [Fact]
+    public void ToCreateRequest_and_ToUpdateRequest_carry_stay_in_touch_cadence()
+    {
+        var model = new PersonFormModel
+        {
+            FirstName = "Ada",
+            StayInTouchCadenceDays = 30,
+        };
+
+        var create = model.ToCreateRequest();
+        create.StayInTouchCadenceDays.Should().Be(30);
+
+        var update = model.ToUpdateRequest();
+        update.StayInTouchCadenceDays.Should().Be(30);
     }
 }

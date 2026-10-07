@@ -179,6 +179,38 @@
         </div>
     </fieldset>
 
+    <div class="mt-4" data-testid="person-cadence-field">
+        <MudSelect T="int?"
+                   Value="_selectedCadenceOption"
+                   ValueChanged="OnCadenceOptionChanged"
+                   Label="Stay-in-touch cadence"
+                   HelperText="How often you want to reach out to this person."
+                   Variant="Variant.Outlined"
+                   Clearable="true"
+                   data-testid="person-cadence-select">
+            <MudSelectItem T="int?" Value="@((int?)null)">None</MudSelectItem>
+            <MudSelectItem T="int?" Value="@((int?)7)">Every week (7 days)</MudSelectItem>
+            <MudSelectItem T="int?" Value="@((int?)14)">Every 2 weeks (14 days)</MudSelectItem>
+            <MudSelectItem T="int?" Value="@((int?)30)">Every month (30 days)</MudSelectItem>
+            <MudSelectItem T="int?" Value="@((int?)60)">Every 2 months (60 days)</MudSelectItem>
+            <MudSelectItem T="int?" Value="@((int?)90)">Every 3 months (90 days)</MudSelectItem>
+            <MudSelectItem T="int?" Value="@((int?)180)">Every 6 months (180 days)</MudSelectItem>
+            <MudSelectItem T="int?" Value="@((int?)-1)">Custom days</MudSelectItem>
+        </MudSelect>
+
+        @if (_isCustomCadence)
+        {
+            <div class="mt-2" data-testid="person-cadence-custom">
+                <MudNumericField T="int?"
+                                 @bind-Value="_model.StayInTouchCadenceDays"
+                                 Label="Custom cadence (days)"
+                                 Min="1"
+                                 Variant="Variant.Outlined"
+                                 data-testid="person-cadence-custom-input" />
+            </div>
+        }
+    </div>
+
     <div data-testid="person-how-we-met-field">
         <MudTextField T="string"
                       @bind-Value="_model.HowWeMet"
@@ -253,6 +285,8 @@
     private string? _shownProbeKey;
     private string? _acknowledgedProbeKey;
     private string? _originalNameKey;
+    private int? _selectedCadenceOption;
+    private bool _isCustomCadence;
 
     // A foreach, not a for: the item content is rendered later, and a for loop variable would be 13 by then.
     private static readonly int[] Months = Enumerable.Range(1, 12).ToArray();
@@ -296,6 +330,22 @@
         // replace it (the edit page keys the form on the person, so another person is a new form).
         _model = Person is null ? new PersonFormModel() : PersonFormModel.FromPerson(Person);
 
+        if (_model.StayInTouchCadenceDays is null)
+        {
+            _selectedCadenceOption = null;
+            _isCustomCadence = false;
+        }
+        else if (_model.StayInTouchCadenceDays is 7 or 14 or 30 or 60 or 90 or 180)
+        {
+            _selectedCadenceOption = _model.StayInTouchCadenceDays;
+            _isCustomCadence = false;
+        }
+        else
+        {
+            _selectedCadenceOption = -1;
+            _isCustomCadence = true;
+        }
+
         // What the names were when the form opened, so an edit is only checked when it renames.
         _originalNameKey = Person is null
             ? null
@@ -305,6 +355,20 @@
                 LastName = Person.LastName,
                 Nickname = Person.Nickname,
             }).NameKey;
+    }
+
+    private void OnCadenceOptionChanged(int? value)
+    {
+        _selectedCadenceOption = value;
+        if (value == -1)
+        {
+            _isCustomCadence = true;
+        }
+        else
+        {
+            _isCustomCadence = false;
+            _model.StayInTouchCadenceDays = value;
+        }
     }
 
     protected override async Task OnInitializedAsync()

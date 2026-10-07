@@ -300,4 +300,42 @@ public class PersonFormTests
         request.FirstName.Should().Be("Grace");
         request.BirthdayReminderDisabled.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task Cadence_field_renders_and_can_be_configured_in_form()
+    {
+        var people = new FakePeopleService();
+        await using var context = CreateContext(people, DefaultTypes(), out _, out _);
+        var cut = context.Render<PersonForm>();
+
+        cut.Find("[data-testid='person-cadence-field']").Should().NotBeNull();
+
+        Type(cut, "person-first-name-field", "Grace");
+
+        var cadenceSelect = cut.FindComponents<MudSelect<int?>>()
+            .First(s => s.Instance.Label == "Stay-in-touch cadence");
+        await cut.InvokeAsync(() => cadenceSelect.Instance.ValueChanged.InvokeAsync(30));
+
+        Save(cut);
+
+        cut.WaitForAssertion(() => people.Created.Should().ContainSingle());
+        var request = people.Created.Single();
+        request.FirstName.Should().Be("Grace");
+        request.StayInTouchCadenceDays.Should().Be(30);
+    }
+
+    [Fact]
+    public async Task Custom_cadence_option_shows_custom_days_input()
+    {
+        var people = new FakePeopleService();
+        await using var context = CreateContext(people, DefaultTypes(), out _, out _);
+        var cut = context.Render<PersonForm>();
+
+        var cadenceSelect = cut.FindComponents<MudSelect<int?>>()
+            .First(s => s.Instance.Label == "Stay-in-touch cadence");
+        await cut.InvokeAsync(() => cadenceSelect.Instance.ValueChanged.InvokeAsync(-1));
+
+        cut.Find("[data-testid='person-cadence-custom']").Should().NotBeNull();
+        cut.Find("[data-testid='person-cadence-custom-input']").Should().NotBeNull();
+    }
 }

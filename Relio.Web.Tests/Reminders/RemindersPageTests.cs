@@ -123,4 +123,51 @@ public class RemindersPageTests
         cut.Markup.Should().Contain("In 5 days");
         cut.Markup.Should().Contain("Due");
     }
+
+    [Fact]
+    public async Task Reminders_page_renders_overdue_reach_outs_when_present()
+    {
+        var reminders = new FakeReminderService();
+        var personId = Guid.NewGuid();
+        reminders.OverdueReachOuts.Add(new ReachOutDto(
+            personId,
+            "Grace Hopper",
+            30,
+            Today.AddDays(-35),
+            35,
+            5));
+
+        await using var context = CreateContext(reminders);
+        var cut = context.Render<Relio.Web.Components.Pages.Reminders>();
+
+        cut.Find("[data-testid='reminders-reach-out']").Should().NotBeNull();
+        cut.Find($"[data-testid='reach-out-card-{personId}']").Should().NotBeNull();
+        cut.Find($"[data-testid='reach-out-contacted-{personId}']").Should().NotBeNull();
+        cut.Markup.Should().Contain("Grace Hopper");
+        cut.Markup.Should().Contain("Every 30 days");
+        cut.Markup.Should().Contain("5 days overdue");
+    }
+
+    [Fact]
+    public async Task Reminders_page_mark_contacted_removes_person_from_reach_out()
+    {
+        var reminders = new FakeReminderService();
+        var personId = Guid.NewGuid();
+        reminders.OverdueReachOuts.Add(new ReachOutDto(
+            personId,
+            "Grace Hopper",
+            30,
+            Today.AddDays(-35),
+            35,
+            5));
+
+        await using var context = CreateContext(reminders);
+        var cut = context.Render<Relio.Web.Components.Pages.Reminders>();
+
+        var button = cut.Find($"[data-testid='reach-out-contacted-{personId}']");
+        await button.ClickAsync();
+
+        reminders.ContactedPersonIds.Should().Contain(personId);
+        cut.WaitForAssertion(() => cut.FindAll("[data-testid='reminders-reach-out']").Should().BeEmpty());
+    }
 }

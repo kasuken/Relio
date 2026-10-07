@@ -40,4 +40,10 @@ public interface IReminderService
 
     /// <summary>Lists upcoming birthday reminders for active people owned by the current user within a given number of days.</summary>
     Task<IReadOnlyList<BirthdayReminderDto>> ListUpcomingBirthdaysAsync(int daysAhead = 30, CancellationToken cancellationToken = default);
+
+    /// <summary>Lists overdue reach-out suggestions for people with a stay-in-touch cadence (epic #36, issue #41).</summary>
+    Task<IReadOnlyList<ReachOutDto>> ListOverdueReachOutsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Marks a person as contacted, resetting their stay-in-touch cadence. Returns false if not found or not owned.</summary>
+    Task<bool> MarkContactedAsync(Guid personId, DateOnly? contactedOn = null, CancellationToken cancellationToken = default);
 }

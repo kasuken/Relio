@@ -110,4 +110,55 @@ public class HomePageTests
         cut.Markup.Should().Contain("Turning 36");
         cut.Markup.Should().Contain("Birthday is today!");
     }
+
+    [Fact]
+    public async Task Dashboard_renders_overdue_reach_outs_when_present()
+    {
+        var people = new FakePeopleService();
+        var person = new Person { Id = Guid.NewGuid(), FirstName = "Ada", LastName = "Lovelace" };
+        people.Known.Add(person);
+        var reminders = new FakeReminderService();
+        reminders.OverdueReachOuts.Add(new ReachOutDto(
+            person.Id,
+            "Ada Lovelace",
+            30,
+            Today.AddDays(-35),
+            35,
+            5));
+
+        await using var context = CreateContext(people, reminders);
+        var cut = context.Render<Home>();
+
+        cut.Find("[data-testid='dashboard-reach-out']").Should().NotBeNull();
+        cut.Find($"[data-testid='dashboard-reach-out-{person.Id}']").Should().NotBeNull();
+        cut.Find($"[data-testid='reach-out-contacted-{person.Id}']").Should().NotBeNull();
+        cut.Markup.Should().Contain("Ada Lovelace");
+        cut.Markup.Should().Contain("Every 30 days");
+        cut.Markup.Should().Contain("5 days overdue");
+    }
+
+    [Fact]
+    public async Task Dashboard_mark_contacted_button_calls_service_and_removes_from_reach_out()
+    {
+        var people = new FakePeopleService();
+        var person = new Person { Id = Guid.NewGuid(), FirstName = "Ada", LastName = "Lovelace" };
+        people.Known.Add(person);
+        var reminders = new FakeReminderService();
+        reminders.OverdueReachOuts.Add(new ReachOutDto(
+            person.Id,
+            "Ada Lovelace",
+            30,
+            Today.AddDays(-35),
+            35,
+            5));
+
+        await using var context = CreateContext(people, reminders);
+        var cut = context.Render<Home>();
+
+        var button = cut.Find($"[data-testid='reach-out-contacted-{person.Id}']");
+        await button.ClickAsync();
+
+        reminders.ContactedPersonIds.Should().Contain(person.Id);
+        cut.WaitForAssertion(() => cut.FindAll("[data-testid='dashboard-reach-out']").Should().BeEmpty());
+    }
 }

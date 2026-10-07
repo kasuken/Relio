@@ -370,7 +370,7 @@ internal sealed class FakeTagService : ITagService
 /// <summary>
 /// An in-memory <see cref="IReminderService"/> for component tests.
 /// </summary>
-internal sealed class FakeReminderService : Relio.Application.Reminders.IReminderService
+internal sealed class FakeReminderService(FakePeopleService? peopleService = null) : Relio.Application.Reminders.IReminderService
 {
     public List<Relio.Application.Reminders.ReminderDto> Reminders { get; } = [];
 
@@ -470,4 +470,22 @@ internal sealed class FakeReminderService : Relio.Application.Reminders.IReminde
     public Task<IReadOnlyList<Relio.Application.Reminders.BirthdayReminderDto>> ListUpcomingBirthdaysAsync(int daysAhead = 30, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<Relio.Application.Reminders.BirthdayReminderDto>>(
             BirthdayReminders.Where(b => b.DaysUntilBirthday >= 0 && b.DaysUntilBirthday <= daysAhead).ToList());
+
+    public List<Relio.Application.Reminders.ReachOutDto> OverdueReachOuts { get; } = [];
+
+    public List<Guid> ContactedPersonIds { get; } = [];
+
+    public Task<IReadOnlyList<Relio.Application.Reminders.ReachOutDto>> ListOverdueReachOutsAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<Relio.Application.Reminders.ReachOutDto>>(OverdueReachOuts);
+
+    public Task<bool> MarkContactedAsync(Guid personId, DateOnly? contactedOn = null, CancellationToken cancellationToken = default)
+    {
+        ContactedPersonIds.Add(personId);
+        OverdueReachOuts.RemoveAll(r => r.PersonId == personId);
+        if (peopleService?.Known.FirstOrDefault(p => p.Id == personId) is { } person)
+        {
+            person.LastContactedOn = contactedOn ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        }
+        return Task.FromResult(true);
+    }
 }
