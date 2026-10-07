@@ -47,7 +47,7 @@
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
-    // Pages marked [ExcludeFromInteractiveRouting] (the account pages) must render as plain static
+    // Pages marked [ExcludeFromInteractiveRouting] (account and marketing pages) render as plain static
     // SSR so SignInManager/UserManager can write the auth cookie to the HTTP response. That only
     // works if the router itself is not interactive for those requests: with an unconditional
     // InteractiveServer render mode, the circuit that starts after the page loads can not find the

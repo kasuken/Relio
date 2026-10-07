@@ -94,6 +94,8 @@ when policy hosting is enabled. Neither switch allows crawling outside Productio
 The sitemap explicitly lists `/`, `/features`, `/pricing`, `/changelog` and enabled policy
 routes only. No entries come from user data. Account, private, error, health and token-bearing
 routes are never listed; private/account/error responses carry `noindex, nofollow`.
+When production indexing is enabled, crawler rules also allow the public stylesheets, fonts,
+scripts and local images needed to render those pages. These assets are not sitemap entries.
 The protected workspace lives at `/dashboard`; public pages use static SSR. Site name,
 description and the local PNG social preview are configurable through `Seo:SiteName`,
 `Seo:Description` and `Seo:SocialPreviewPath` (a PNG under `/img/`).

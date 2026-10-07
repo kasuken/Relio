@@ -173,7 +173,7 @@ public sealed class OnboardingPageTests
 
         var cut = context.Render<OnboardingPage>();
 
-        cut.WaitForAssertion(() => navigation.Uri.Should().Be("http://localhost/"));
+        cut.WaitForAssertion(() => navigation.Uri.Should().Be("http://localhost/dashboard"));
         cut.FindAll("[data-testid='onboarding-timezone-step']").Should().BeEmpty();
         cut.FindAll("[data-testid='onboarding-skip']").Should().BeEmpty();
         onboarding.Dismissals.Should().Be(0);

@@ -124,7 +124,7 @@ All notable changes to this project are documented in this file.
   reversible, so they happen at once and say "Person archived" / "Person restored"; an archived person
   shows a quiet note under their name ("Archived on 3 March", in your time zone, "Hidden from your lists
   and reminders. Everything you recorded is kept.") with a **Restore** button, and archiving never touches
-  anything recorded about them. **Delete** asks first ("Delete Ada Lovelace? ... It can't be undone.",
+  anything recorded about them. **Delete** asks first ("Delete [person]? ... It can't be undone.",
   button "Delete permanently") and is permanent: `IPeopleService.DeleteAsync` removes the person, their
   contact methods, notes and interaction participation in one save, deleting a shared interaction only
   when no participant remains. It keeps your tags (and other people's links to them) and relationship
@@ -327,7 +327,7 @@ All notable changes to this project are documented in this file.
   resolving the signed-in user after a Blazor Server circuit's SignalR connection takes over - see
   the new "Accounts and authentication" section of AGENTS.md. Also adds
   `Relio.Data.Seeding.DemoDataSeeder` (`DemoData:Enabled`, off by default and refused outside
-  Production), seeding a `demo@relio.local` account with realistic sample people, for exploring
+  Production), seeding a synthetic demo account with fictional sample people, for exploring
   Relio without registering first - see the README's "Run locally without SQL Server" section.
 - EF Core InMemory database mode for tests/local dev: `Database:Provider=InMemory` (vs. the
   default `SqlServer`) in `Relio.Data.DependencyInjection.ServiceCollectionExtensions.AddRelioData`

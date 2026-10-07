@@ -47,6 +47,17 @@ public static class MarketingEndpointRouteBuilderExtensions
                     lines.AddRange(["User-agent: *", "Disallow: /", "Disallow: /Account/", "Disallow: /dashboard", "Disallow: /people", "Disallow: /settings", "Disallow: /admin/", "Disallow: /onboarding", "Disallow: /interactions/", "Disallow: /unsubscribe", "Disallow: /health/", "Disallow: /Error", "Disallow: /not-found"]);
                     lines.AddRange(PublicRoutes.Concat(enabledDocuments.Select(document => document.CanonicalPath))
                         .Select(route => $"Allow: {route}$"));
+                    lines.AddRange([
+                        "Allow: /app*.css$",
+                        "Allow: /marketing*.css$",
+                        "Allow: /Relio.Web*.styles.css$",
+                        "Allow: /fonts/",
+                        "Allow: /img/",
+                        "Allow: /js/",
+                        "Allow: /_framework/",
+                        "Allow: /_content/MudBlazor/",
+                        "Allow: /Components/",
+                    ]);
                     foreach (var kind in Enum.GetValues<PolicyDocumentKind>())
                     {
                         if (!enabledDocuments.Any(document => document.Kind == kind))
