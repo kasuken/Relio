@@ -15,9 +15,9 @@ public class PersonMergeChecklistTests
 {
     /// <summary>
     /// The entities that reference a person, each handled by <c>PersonMergeService.MoveDependentsAsync</c>:
-    /// the tag links (the <c>PersonTags</c> join), contact methods, and interaction participant
-    /// links (reassigned to the primary unless that interaction already has the primary), and notes
-    /// (reassigned to the primary while retaining their text, pin state and audit dates).
+    /// the tag links (the <c>PersonTags</c> join), contact methods, reminders, notes (reassigned to
+    /// the primary while retaining their text, pin state and audit dates), and interaction participant
+    /// links (reassigned to the primary unless that interaction already has the primary).
     /// </summary>
     private static readonly string[] HandledByMoveDependents =
     [
@@ -25,6 +25,7 @@ public class PersonMergeChecklistTests
         typeof(ContactMethod).FullName!,
         typeof(Note).FullName!,
         typeof(InteractionParticipant).FullName!,
+        typeof(Reminder).FullName!,
     ];
 
     /// <summary>
@@ -45,6 +46,9 @@ public class PersonMergeChecklistTests
         nameof(Person.IsArchived),
         nameof(Person.ArchivedAtUtc),
         nameof(Person.LastContactedOn),
+        nameof(Person.StayInTouchCadenceDays),
+        nameof(Person.BirthdayReminderDisabled),
+        nameof(Person.BirthdayReminderLeadDays),
     ];
 
     [Fact]

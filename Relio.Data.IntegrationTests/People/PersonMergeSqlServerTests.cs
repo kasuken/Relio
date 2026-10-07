@@ -27,6 +27,17 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
             await TestDataFactory.CreateNoteAsync(notes, owner, seeded.PrimaryId, "Primary note.", isPinned: true);
             await TestDataFactory.CreateNoteAsync(notes, owner, seeded.DuplicateId, "Duplicate note.");
         }
+        await using (var reminders = fixture.CreateDbContext())
+        {
+            reminders.Reminders.Add(new Reminder
+            {
+                OwnerId = owner,
+                PersonId = seeded.DuplicateId,
+                Title = "Call after the trip",
+                DueDate = new DateOnly(2026, 10, 10),
+            });
+            await reminders.SaveChangesAsync();
+        }
 
         await using var dbContext = fixture.CreateDbContext();
 
@@ -53,6 +64,10 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
         notesAfterMerge.Should().OnlyContain(note => note.PersonId == seeded.PrimaryId);
         notesAfterMerge.Single(note => note.IsPinned).Text.Should().Be("Primary note.");
         notesAfterMerge.Single(note => !note.IsPinned).Text.Should().Be("Duplicate note.");
+        var remindersAfterMerge = await verify.Reminders.Where(reminder => reminder.OwnerId == owner).ToListAsync();
+        remindersAfterMerge.Should().ContainSingle();
+        (remindersAfterMerge[0].PersonId, remindersAfterMerge[0].Title)
+            .Should().Be((seeded.PrimaryId, "Call after the trip"));
         var sharedParticipants = await verify.InteractionParticipants
             .Where(participant => participant.InteractionId == seeded.SharedInteractionId)
             .Select(participant => participant.PersonId)
@@ -184,6 +199,7 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
                 "FK_ContactMethods_People_PersonId",
                 "FK_InteractionParticipants_People_PersonId",
                 "FK_Notes_People_PersonId",
+                "FK_Reminders_People_PersonId",
             ],
             "a new foreign key to People needs a line in PersonMergeService.MoveDependentsAsync (and in "
             + "PeopleService.RemoveDependentsAsync), and an entry here and in PersonMergeChecklistTests");

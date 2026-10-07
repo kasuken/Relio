@@ -39,6 +39,7 @@ public class PersonProfilePageTests
         context.Services.AddSingleton<INoteService>(notes ?? new FakeNoteService());
         context.Services.AddSingleton<IPersonTimelineService>(timeline ?? new FakePersonTimelineService());
         context.Services.AddSingleton<IUserTimeZoneService>(new FakeUserTimeZoneService(timeZoneId, Today));
+        context.Services.AddSingleton<Relio.Application.Reminders.IReminderService>(new FakeReminderService());
         providers = new ProfileProviders(
             context.Render<MudPopoverProvider>(),
             context.Render<MudDialogProvider>(),
@@ -138,6 +139,99 @@ public class PersonProfilePageTests
     }
 
     [Fact]
+    public async Task Shows_birthday_reminder_preference_when_lead_days_set()
+    {
+        var person = new Person
+        {
+            FirstName = "Ada",
+            BirthdayDay = 10,
+            BirthdayMonth = 12,
+            BirthdayReminderLeadDays = 7,
+        };
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people);
+
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        cut.Find("[data-testid='person-birthday-reminder-setting']").TextContent.Should().Be("Remind 7 days before");
+    }
+
+    [Fact]
+    public async Task Shows_birthday_reminder_disabled_when_preference_disabled()
+    {
+        var person = new Person
+        {
+            FirstName = "Ada",
+            BirthdayDay = 10,
+            BirthdayMonth = 12,
+            BirthdayReminderDisabled = true,
+        };
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people);
+
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        cut.Find("[data-testid='person-birthday-reminder-setting']").TextContent.Should().Be("Reminder disabled");
+    }
+
+    [Fact]
+    public async Task Shows_cadence_setting_and_overdue_status_when_set()
+    {
+        var person = new Person
+        {
+            FirstName = "Ada",
+            StayInTouchCadenceDays = 30,
+            LastContactedOn = Today.AddDays(-35),
+        };
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people);
+
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        var setting = cut.Find("[data-testid='person-cadence-setting']");
+        setting.TextContent.Should().Contain("Every 30 days");
+        setting.TextContent.Should().Contain("Overdue by 5 days");
+        cut.Find("[data-testid='person-mark-contacted']").Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Mark_as_contacted_button_calls_service_and_clears_overdue_status()
+    {
+        var person = new Person
+        {
+            FirstName = "Ada",
+            StayInTouchCadenceDays = 30,
+            LastContactedOn = Today.AddDays(-35),
+        };
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        var reminders = new FakeReminderService(people);
+        await using var context = new BunitContext();
+        context.UseMudBlazor();
+        context.Services.AddSingleton<IPeopleService>(people);
+        context.Services.AddSingleton<IInteractionService>(new FakeInteractionService());
+        context.Services.AddSingleton<INoteService>(new FakeNoteService());
+        context.Services.AddSingleton<IPersonTimelineService>(new FakePersonTimelineService());
+        context.Services.AddSingleton<IUserTimeZoneService>(new FakeUserTimeZoneService("Europe/Rome", Today));
+        context.Services.AddSingleton<Relio.Application.Reminders.IReminderService>(reminders);
+        context.Render<MudPopoverProvider>();
+        context.Render<MudDialogProvider>();
+        context.Render<MudSnackbarProvider>();
+
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        cut.Find("[data-testid='person-cadence-overdue']").Should().NotBeNull();
+        var button = cut.Find("[data-testid='person-mark-contacted']");
+        await button.ClickAsync();
+
+        reminders.ContactedPersonIds.Should().Contain(person.Id);
+        cut.WaitForAssertion(() => cut.FindAll("[data-testid='person-cadence-overdue']").Should().BeEmpty());
+    }
+
+    [Fact]
     public async Task Leaves_out_everything_that_is_not_set()
     {
         var person = new Person { FirstName = "Grace" };
@@ -148,7 +242,7 @@ public class PersonProfilePageTests
         var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
 
         cut.Find("[data-testid='person-name']").TextContent.Should().Be("Grace");
-        foreach (var field in new[] { "person-relationship", "person-nickname", "person-birthday", "person-how-we-met", "person-details" })
+        foreach (var field in new[] { "person-relationship", "person-nickname", "person-birthday", "person-how-we-met", "person-details", "person-cadence" })
         {
             cut.FindAll($"[data-testid='{field}']").Should().BeEmpty($"{field} is not set");
         }

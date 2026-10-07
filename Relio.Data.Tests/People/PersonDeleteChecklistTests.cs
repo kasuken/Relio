@@ -16,8 +16,8 @@ public class PersonDeleteChecklistTests
     /// <summary>
     /// The entities that reference a person, each handled by <c>PeopleService.RemoveDependentsAsync</c>:
     /// the tag links (the <c>PersonTags</c> join, cleared with <c>person.Tags.Clear()</c>), contact
-    /// methods, notes, and interaction participant links (which preserve a shared interaction for its
-    /// other participants and delete it when the last link goes).
+    /// methods, notes, reminders, and interaction participant links (which preserve a shared interaction
+    /// for its other participants and delete it when the last link goes).
     /// </summary>
     private static readonly string[] HandledByRemoveDependents =
     [
@@ -25,6 +25,7 @@ public class PersonDeleteChecklistTests
         typeof(ContactMethod).FullName!,
         typeof(Note).FullName!,
         typeof(InteractionParticipant).FullName!,
+        typeof(Reminder).FullName!,
     ];
 
     [Fact]

@@ -148,6 +148,7 @@ public sealed class PersonDeleteSqlServerTests(SqlServerDatabaseFixture fixture)
         foreignKeys.Should().Contain("FK_ContactMethods_People_PersonId:CASCADE");
         foreignKeys.Should().Contain("FK_InteractionParticipants_People_PersonId:CASCADE");
         foreignKeys.Should().Contain("FK_Notes_People_PersonId:CASCADE");
+        foreignKeys.Should().Contain("FK_Reminders_People_PersonId:CASCADE");
     }
 
     [SqlServerFact]

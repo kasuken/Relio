@@ -91,6 +91,13 @@ public class PersonMergeTests(RelioAppFixture fixture)
             fixture.App, ownerId, john, "Remember John's observatory story.", isPinned: true);
         await PeopleTestHelpers.CreateNoteAsync(
             fixture.App, ownerId, jon, "Remember Jon's gallery opening.");
+        var reminderTitle = "Call Jon after the trip";
+        var reminderId = await PeopleTestHelpers.CreateReminderAsync(
+            fixture.App,
+            ownerId,
+            jon,
+            reminderTitle,
+            DateOnly.FromDateTime(TimeProvider.System.GetUtcNow().UtcDateTime).AddDays(3));
 
         await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, $"/people/{john}");
         await page.Locator("[data-testid='person-actions']").GetByRole(AriaRole.Button, new() { Name = "More", Exact = true }).ClickAsync();
@@ -150,6 +157,7 @@ public class PersonMergeTests(RelioAppFixture fixture)
                 "Remember Jon's gallery opening.",
             ]);
         await Expect(page.GetByTestId("pinned-note-text")).ToHaveTextAsync("Remember John's observatory story.");
+        await Expect(page.GetByTestId($"person-reminder-{reminderId}")).ToContainTextAsync(reminderTitle);
 
         // One Smith in the list.
         await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/people");
@@ -173,6 +181,11 @@ public class PersonMergeTests(RelioAppFixture fixture)
         mergedNotes.Should().OnlyContain(note => note.PersonId == john, "both notes move to the kept profile");
         mergedNotes.Single(note => note.IsPinned).Text.Should().Be("Remember John's observatory story.");
         mergedNotes.Should().ContainSingle(note => !note.IsPinned && note.Text == "Remember Jon's gallery opening.");
+        var mergedReminders = await interactionDb.Reminders.AsNoTracking()
+            .Where(reminder => reminder.OwnerId == ownerId)
+            .ToListAsync();
+        mergedReminders.Should().ContainSingle();
+        (mergedReminders[0].PersonId, mergedReminders[0].Title).Should().Be((john, reminderTitle));
         var sharedParticipants = await interactionDb.InteractionParticipants.AsNoTracking()
             .Where(participant => participant.InteractionId == sharedInteractionId)
             .Select(participant => participant.PersonId)

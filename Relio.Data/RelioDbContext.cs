@@ -64,6 +64,9 @@ public sealed class RelioDbContext(DbContextOptions<RelioDbContext> options, Tim
     /// <summary>The current user's notes about people.</summary>
     public DbSet<Note> Notes => Set<Note>();
 
+    /// <summary>The current user's reconnect reminders (epic #36).</summary>
+    public DbSet<Reminder> Reminders => Set<Reminder>();
+
     /// <summary>User profiles (currently just the user's time zone, see epic #12), one per user.</summary>
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
 

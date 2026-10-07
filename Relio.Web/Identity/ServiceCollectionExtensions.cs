@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Relio.Application.Administration;
+using Relio.Application.Reminders;
 using Relio.Data;
 using Relio.Data.Identity;
 using Relio.Web.Email;
@@ -180,10 +181,12 @@ public static class ServiceCollectionExtensions
         if (requireConfirmedAccount)
         {
             services.AddScoped<IEmailSender<RelioUser>, SmtpEmailSender>();
+            services.AddScoped<IReminderEmailSender, SmtpReminderEmailSender>();
         }
         else
         {
             services.AddScoped<IEmailSender<RelioUser>, NullEmailSender>();
+            services.AddScoped<IReminderEmailSender, NullReminderEmailSender>();
         }
 
         return services;

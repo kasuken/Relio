@@ -164,6 +164,28 @@ public static class PeopleTestHelpers
         return note.Id;
     }
 
+    /// <summary>Seeds a reminder for <paramref name="personId"/> owned by <paramref name="ownerId"/>.</summary>
+    public static async Task<Guid> CreateReminderAsync(
+        RelioWebAppFactory app,
+        string ownerId,
+        Guid personId,
+        string title,
+        DateOnly dueDate)
+    {
+        using var scope = app.CreateRealScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<RelioDbContext>();
+        var reminder = new Reminder
+        {
+            OwnerId = ownerId,
+            PersonId = personId,
+            Title = title,
+            DueDate = dueDate,
+        };
+        dbContext.Reminders.Add(reminder);
+        await dbContext.SaveChangesAsync();
+        return reminder.Id;
+    }
+
     /// <summary>Seeds many interactions in one database save for timeline pagination tests.</summary>
     public static async Task SeedInteractionsAsync(
         RelioWebAppFactory app,

@@ -1,0 +1,114 @@
+@using Relio.Application.Reminders
+@using Relio.Application.Time
+@inject IReminderService ReminderService
+@inject IUserTimeZoneService UserTimeZone
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h3">Snooze reminder</MudText>
+    </TitleContent>
+    <DialogContent>
+        <div class="d-flex flex-column gap-3" style="min-width: 280px;">
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                Choose when you want to be reminded again:
+            </MudText>
+
+            <MudButton Variant="Variant.Outlined" OnClick="() => SnoozeRelative(1)" data-testid="snooze-tomorrow">
+                Tomorrow (@_today.AddDays(1).ToString("d MMM"))
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="() => SnoozeRelative(3)" data-testid="snooze-3-days">
+                In 3 days (@_today.AddDays(3).ToString("d MMM"))
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="() => SnoozeRelative(7)" data-testid="snooze-next-week">
+                Next week (@_today.AddDays(7).ToString("d MMM"))
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="() => SnoozeRelative(30)" data-testid="snooze-next-month">
+                In a month (@_today.AddDays(30).ToString("d MMM"))
+            </MudButton>
+
+            <MudDivider Class="my-2" />
+
+            <MudDatePicker Label="Custom date"
+                           @bind-Date="_customDate"
+                           DateFormat="yyyy-MM-dd"
+                           Variant="Variant.Outlined"
+                           data-testid="snooze-custom-date" />
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" data-testid="snooze-cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="_saving || _customDate is null"
+                   OnClick="SnoozeCustomAsync"
+                   data-testid="snooze-save-custom">
+            Snooze to date
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public Guid ReminderId { get; set; }
+
+    private DateOnly _today;
+    private DateTime? _customDate;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _today = await UserTimeZone.GetTodayAsync();
+        _customDate = DateTime.Today.AddDays(1);
+    }
+
+    private async Task SnoozeRelative(int days)
+    {
+        var targetDate = _today.AddDays(days);
+        await ExecuteSnoozeAsync(targetDate);
+    }
+
+    private async Task SnoozeCustomAsync()
+    {
+        if (_customDate is null)
+        {
+            return;
+        }
+
+        var targetDate = DateOnly.FromDateTime(_customDate.Value);
+        await ExecuteSnoozeAsync(targetDate);
+    }
+
+    private async Task ExecuteSnoozeAsync(DateOnly targetDate)
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var success = await ReminderService.SnoozeAsync(ReminderId, targetDate);
+            if (success)
+            {
+                Snackbar.Add($"Snoozed until {targetDate:d MMM}", Severity.Info);
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                Snackbar.Add("Could not snooze reminder", Severity.Error);
+                MudDialog.Cancel();
+            }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

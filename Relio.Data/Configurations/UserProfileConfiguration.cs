@@ -22,7 +22,26 @@ public sealed class UserProfileConfiguration : IEntityTypeConfiguration<UserProf
         builder.Property(p => p.DisplayName)
             .HasMaxLength(UserProfile.DisplayNameMaxLength);
 
+        builder.Property(p => p.BirthdayRemindersEnabled)
+            .IsRequired()
+            .HasDefaultValue(true);
+
+        builder.Property(p => p.DefaultBirthdayLeadDays)
+            .IsRequired()
+            .HasDefaultValue(0);
+
+        builder.Property(p => p.ReminderEmailDelivery)
+            .HasConversion<string>()
+            .HasMaxLength(50)
+            .IsRequired()
+            .HasDefaultValue(ReminderEmailDelivery.DailyDigest);
+
+        builder.Property(p => p.UnsubscribeToken)
+            .HasMaxLength(64);
+
         // Exactly one profile per user.
         builder.HasIndex(p => p.OwnerId).IsUnique();
+
+        builder.HasIndex(p => p.UnsubscribeToken);
     }
 }

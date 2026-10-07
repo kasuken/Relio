@@ -13,7 +13,8 @@ namespace Relio.Data.Tests.People;
 /// with it - contact methods, notes, tag links and interaction participation, deleting a shared interaction
 /// only when its last participant is removed, but never the tags themselves, another person's links
 /// to them, or the relationship type - in one save, even though the InMemory provider enforces no
-/// foreign keys and would otherwise leave orphans behind.
+/// foreign keys and would otherwise leave orphans behind. Reminders belong to one person, while
+/// interactions are shared and are removed only with their final participant.
 /// </summary>
 public class PeopleServiceArchiveDeleteTests
 {
@@ -22,7 +23,7 @@ public class PeopleServiceArchiveDeleteTests
     private static readonly DateTimeOffset Now = new(2026, 10, 6, 11, 30, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task DeleteAsync_removes_the_person_their_contact_methods_and_tag_links_but_keeps_the_tags()
+    public async Task DeleteAsync_removes_the_person_and_its_children_but_keeps_the_tags()
     {
         var database = NewDatabase();
         await using var dbContext = CreateDbContext(database);
@@ -33,6 +34,13 @@ public class PeopleServiceArchiveDeleteTests
             PersonId = seeded.AdaId,
             Text = "A private note.",
             IsPinned = true,
+        });
+        dbContext.Reminders.Add(new Reminder
+        {
+            OwnerId = Owner,
+            PersonId = seeded.AdaId,
+            Title = "Call Ada",
+            DueDate = new DateOnly(2026, 10, 8),
         });
         await dbContext.SaveChangesAsync();
 
@@ -45,6 +53,8 @@ public class PeopleServiceArchiveDeleteTests
             .Should().Be(0, "no contact method is left orphaned");
         (await fresh.Notes.AsNoTracking().Where(note => note.PersonId == seeded.AdaId).CountAsync())
             .Should().Be(0, "no note is left orphaned");
+        (await fresh.Reminders.AsNoTracking().Where(reminder => reminder.PersonId == seeded.AdaId).CountAsync())
+            .Should().Be(0, "no reminder is left orphaned");
         (await TagLinksAsync(fresh)).Select(link => link.PersonId).Should().NotContain(seeded.AdaId, "the links go with the person");
         (await fresh.Tags.AsNoTracking().Select(t => t.Name).ToListAsync())
             .Should().BeEquivalentTo("Chess", "Climbing");

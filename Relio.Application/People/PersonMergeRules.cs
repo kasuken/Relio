@@ -207,6 +207,9 @@ public static class PersonMergeRules
             LastContactedOn = Later(primary.LastContactedOn, duplicate.LastContactedOn),
             ContactMethodSteps = CombineContactMethods(primary, duplicate),
             Tags = CombineTags(primary, duplicate),
+            StayInTouchCadenceDays = primary.StayInTouchCadenceDays ?? duplicate.StayInTouchCadenceDays,
+            BirthdayReminderDisabled = primary.BirthdayReminderDisabled || duplicate.BirthdayReminderDisabled,
+            BirthdayReminderLeadDays = primary.BirthdayReminderLeadDays ?? duplicate.BirthdayReminderLeadDays,
         };
 
         string? ResolveText(MergeField field, string? primaryText, string? duplicateText)

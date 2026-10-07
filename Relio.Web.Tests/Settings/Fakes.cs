@@ -1,5 +1,6 @@
 using Relio.Application.Accounts;
 using Relio.Application.Profile;
+using Relio.Application.Reminders;
 using Relio.Application.Time;
 using Relio.Domain;
 using Relio.Web.Time;
@@ -74,4 +75,43 @@ internal sealed class FakeTwoFactorStatusService(bool isEnabled = false, int rec
 
     public Task<TwoFactorStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(Status);
+}
+
+/// <summary>An <see cref="INotificationPreferencesService"/> that records what was saved.</summary>
+internal sealed class FakeNotificationPreferencesService(NotificationPreferencesDto? initialPreferences = null) : INotificationPreferencesService
+{
+    public NotificationPreferencesDto Preferences { get; set; } = initialPreferences ?? new(
+        ReminderEmailDelivery.DailyDigest,
+        BirthdayRemindersEnabled: true,
+        DefaultBirthdayLeadDays: 0,
+        UnsubscribeToken: "test-token");
+
+    public List<UpdateNotificationPreferencesRequest> Saved { get; } = [];
+
+    public Task<NotificationPreferencesDto> GetPreferencesAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(Preferences);
+
+    public Task SetPreferencesAsync(UpdateNotificationPreferencesRequest request, CancellationToken cancellationToken = default)
+    {
+        Saved.Add(request);
+        Preferences = new NotificationPreferencesDto(
+            request.Delivery,
+            request.BirthdayRemindersEnabled,
+            request.DefaultBirthdayLeadDays,
+            Preferences.UnsubscribeToken);
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>An <see cref="IUnsubscribeService"/> that records tokens and returns a configurable result.</summary>
+internal sealed class FakeUnsubscribeService(bool result = true) : IUnsubscribeService
+{
+    public List<string> ReceivedTokens { get; } = [];
+    public bool Result { get; set; } = result;
+
+    public Task<bool> UnsubscribeAsync(string token, CancellationToken cancellationToken = default)
+    {
+        ReceivedTokens.Add(token);
+        return Task.FromResult(Result);
+    }
 }

@@ -10,7 +10,7 @@ public class NavigationTests(RelioAppFixture fixture)
 {
     [Theory]
     [InlineData("People", "/people", "People")] // the demo account has people, so the list - not the empty state
-    [InlineData("Reminders", "/reminders", "No reminders yet")]
+    [InlineData("Reminders", "/reminders", "Reminders")]
     [InlineData("Difficult moments", "/difficult-moments", "No difficult moments recorded")]
     [InlineData("Settings", "/settings", "Settings")]
     [InlineData("Administration", "/admin/users", "Administration")] // the demo account is an Administrator

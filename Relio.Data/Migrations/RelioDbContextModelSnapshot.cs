@@ -483,6 +483,12 @@ namespace Relio.Data.Migrations
                     b.Property<int?>("BirthdayMonth")
                         .HasColumnType("int");
 
+                    b.Property<bool>("BirthdayReminderDisabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("BirthdayReminderLeadDays")
+                        .HasColumnType("int");
+
                     b.Property<int?>("BirthdayYear")
                         .HasColumnType("int");
 
@@ -523,6 +529,9 @@ namespace Relio.Data.Migrations
 
                     b.Property<Guid?>("RelationshipTypeId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("StayInTouchCadenceDays")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
@@ -584,6 +593,65 @@ namespace Relio.Data.Migrations
                     b.ToTable("RelationshipTypes");
                 });
 
+            modelBuilder.Entity("Relio.Domain.Reminder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CustomIntervalMonths")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Frequency")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsCompleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateOnly?>("LastDeliveredDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly?>("SnoozedUntilDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PersonId");
+
+                    b.HasIndex("OwnerId", "PersonId");
+
+                    b.HasIndex("OwnerId", "IsCompleted", "DueDate");
+
+                    b.ToTable("Reminders");
+                });
+
             modelBuilder.Entity("Relio.Domain.Tag", b =>
                 {
                     b.Property<Guid>("Id")
@@ -620,8 +688,18 @@ namespace Relio.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("BirthdayRemindersEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<int>("DefaultBirthdayLeadDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
 
                     b.Property<string>("DisplayName")
                         .HasMaxLength(100)
@@ -632,10 +710,21 @@ namespace Relio.Data.Migrations
                         .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<string>("ReminderEmailDelivery")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("DailyDigest");
+
                     b.Property<string>("TimeZoneId")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("UnsubscribeToken")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
@@ -644,6 +733,8 @@ namespace Relio.Data.Migrations
 
                     b.HasIndex("OwnerId")
                         .IsUnique();
+
+                    b.HasIndex("UnsubscribeToken");
 
                     b.ToTable("UserProfiles");
                 });
@@ -768,9 +859,21 @@ namespace Relio.Data.Migrations
                     b.Navigation("Participants");
                 });
 
+            modelBuilder.Entity("Relio.Domain.Reminder", b =>
+                {
+                    b.HasOne("Relio.Domain.Person", "Person")
+                        .WithMany("Reminders")
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                    b.Navigation("Person");
+                });
+
             modelBuilder.Entity("Relio.Domain.Person", b =>
                 {
                     b.Navigation("ContactMethods");
+
+                    b.Navigation("Reminders");
                 });
 #pragma warning restore 612, 618
         }

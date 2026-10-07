@@ -64,4 +64,13 @@ public sealed record UpdatePersonRequest : IPersonProfileInput
     /// <see cref="Relio.Application.Ownership.ForeignEntityNotOwnedException"/> and change nothing.
     /// </summary>
     public IReadOnlyList<ContactMethodInput>? ContactMethods { get; init; }
+
+    /// <summary>Optional stay-in-touch cadence in days (issue #41).</summary>
+    public int? StayInTouchCadenceDays { get; init; }
+
+    /// <summary>Whether birthday reminders are disabled specifically for this person (issue #38).</summary>
+    public bool BirthdayReminderDisabled { get; init; }
+
+    /// <summary>Per-person lead time override for birthday reminders in days (issue #38).</summary>
+    public int? BirthdayReminderLeadDays { get; init; }
 }
