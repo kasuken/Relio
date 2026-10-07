@@ -1,8 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Relio.Application.Interactions;
+using Relio.Application.Notes;
 using Relio.Application.People;
 using Relio.Application.Security;
 using Relio.Data;
+using Relio.Data.Interactions;
+using Relio.Data.Notes;
 using Relio.Data.People;
 using Relio.Domain;
 
@@ -128,6 +132,72 @@ public static class PeopleTestHelpers
             new OwnerCurrentUser(ownerId),
             scope.ServiceProvider.GetRequiredService<TimeProvider>());
         return await merge.MergeAsync(request);
+    }
+
+    /// <summary>Creates a shared interaction through the real service acting as <paramref name="ownerId"/>.</summary>
+    public static async Task<Guid> CreateInteractionAsync(
+        RelioWebAppFactory app,
+        string ownerId,
+        CreateInteractionRequest request)
+    {
+        using var scope = app.CreateRealScope();
+        var interactions = new InteractionService(
+            scope.ServiceProvider.GetRequiredService<RelioDbContext>(),
+            new OwnerCurrentUser(ownerId),
+            scope.ServiceProvider.GetRequiredService<TimeProvider>());
+        return await interactions.CreateAsync(request);
+    }
+
+    /// <summary>Creates a note through the real <c>NoteService</c> acting as <paramref name="ownerId"/>.</summary>
+    public static async Task<Guid> CreateNoteAsync(
+        RelioWebAppFactory app,
+        string ownerId,
+        Guid personId,
+        string text,
+        bool isPinned = false)
+    {
+        using var scope = app.CreateRealScope();
+        var notes = new NoteService(
+            scope.ServiceProvider.GetRequiredService<RelioDbContext>(),
+            new OwnerCurrentUser(ownerId));
+        var note = await notes.CreateAsync(new CreateNoteRequest(personId, text, isPinned));
+        return note.Id;
+    }
+
+    /// <summary>Seeds many interactions in one database save for timeline pagination tests.</summary>
+    public static async Task SeedInteractionsAsync(
+        RelioWebAppFactory app,
+        string ownerId,
+        Guid personId,
+        DateOnly newestDate,
+        int count)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(count);
+        using var scope = app.CreateRealScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<RelioDbContext>();
+        var person = await dbContext.People.SingleAsync(
+            profile => profile.Id == personId && profile.OwnerId == ownerId);
+
+        var interactions = Enumerable.Range(0, count)
+            .Select(index => new Interaction
+            {
+                OwnerId = ownerId,
+                OccurredOn = newestDate.AddDays(-index),
+                Kind = InteractionKind.Call,
+                Description = $"Pagination entry {index + 1}",
+            })
+            .ToArray();
+        dbContext.Interactions.AddRange(interactions);
+        dbContext.InteractionParticipants.AddRange(interactions.Select(interaction => new InteractionParticipant
+        {
+            OwnerId = ownerId,
+            InteractionId = interaction.Id,
+            PersonId = personId,
+        }));
+
+        // Keep the denormalized date aligned with the seeded interaction records.
+        person.LastContactedOn = newestDate;
+        await dbContext.SaveChangesAsync();
     }
 
     /// <summary>The merge candidates for a person, through the real <c>PersonMergeService</c> acting as <paramref name="ownerId"/>.</summary>

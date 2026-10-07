@@ -6,7 +6,8 @@ namespace Relio.Data.IntegrationTests.People;
 
 /// <summary>
 /// What only a real SQL Server can prove for issue #26: deleting a person really removes their
-/// contact methods and tag links in one save (and leaves the tags and other people's links alone),
+/// contact methods, notes, tag links and interaction participation in one save (and leaves the tags and
+/// other people's links alone), shared interactions survive until their last participant is removed,
 /// every foreign key that references <c>People</c> is <c>ON DELETE CASCADE</c> - the backstop behind
 /// <c>PeopleService.RemoveDependentsAsync</c> - and archive/restore round trip through the real
 /// <c>datetime2</c> column.
@@ -30,6 +31,8 @@ public sealed class PersonDeleteSqlServerTests(SqlServerDatabaseFixture fixture)
         await TestDataFactory.CreateContactMethodAsync(dbContext, owner, personId, "ada@example.com");
         await TestDataFactory.CreateContactMethodAsync(dbContext, owner, personId, "+44 7700 900123", ContactMethodKind.Phone, 1);
         await TestDataFactory.CreateContactMethodAsync(dbContext, owner, otherPersonId, "grace@example.com");
+        await TestDataFactory.CreateNoteAsync(dbContext, owner, personId, "Ada's note.", isPinned: true);
+        await TestDataFactory.CreateNoteAsync(dbContext, owner, otherPersonId, "Grace's note.");
 
         var deleted = await TestDataFactory.CreateService(dbContext, owner).DeleteAsync(personId);
 
@@ -37,6 +40,8 @@ public sealed class PersonDeleteSqlServerTests(SqlServerDatabaseFixture fixture)
         await using var verify = fixture.CreateDbContext();
         (await verify.People.AnyAsync(p => p.Id == personId)).Should().BeFalse();
         (await verify.ContactMethods.CountAsync(c => c.PersonId == personId)).Should().Be(0);
+        (await verify.Notes.CountAsync(note => note.PersonId == personId)).Should().Be(0);
+        (await verify.Notes.CountAsync(note => note.PersonId == otherPersonId)).Should().Be(1);
         (await CountTagLinksAsync(verify, personId)).Should().Be(0);
         (await verify.Tags.CountAsync(t => t.OwnerId == owner)).Should().Be(2, "deleting a person never deletes their tags");
         (await CountTagLinksAsync(verify, otherPersonId)).Should().Be(1, "another person's link to the same tag stays");
@@ -57,6 +62,53 @@ public sealed class PersonDeleteSqlServerTests(SqlServerDatabaseFixture fixture)
 
         await using var verify = fixture.CreateDbContext();
         (await verify.People.AnyAsync(p => p.Id == personId)).Should().BeFalse();
+    }
+
+    [SqlServerFact]
+    public async Task DeleteAsync_preserves_shared_interactions_until_the_last_participant_is_deleted()
+    {
+        await using var dbContext = fixture.CreateDbContext();
+        var owner = TestDataFactory.NewOwnerId();
+        var firstPersonId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ada");
+        var secondPersonId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Grace");
+        var today = DateOnly.FromDateTime(TimeProvider.System.GetUtcNow().UtcDateTime);
+        var interactions = TestDataFactory.CreateInteractionService(dbContext, owner);
+        var sharedId = await interactions.CreateAsync(new Relio.Application.Interactions.CreateInteractionRequest
+        {
+            ProfilePersonId = firstPersonId,
+            OccurredOn = today,
+            Kind = InteractionKind.Meeting,
+            Description = "A shared meeting",
+            ParticipantIds = [firstPersonId, secondPersonId],
+        });
+        var privateId = await interactions.CreateAsync(new Relio.Application.Interactions.CreateInteractionRequest
+        {
+            ProfilePersonId = firstPersonId,
+            OccurredOn = today,
+            Kind = InteractionKind.Call,
+            Description = "A private call",
+            ParticipantIds = [firstPersonId],
+        });
+
+        (await TestDataFactory.CreateService(dbContext, owner).DeleteAsync(firstPersonId)).Should().BeTrue();
+        await using (var verify = fixture.CreateDbContext())
+        {
+            (await verify.Interactions
+                .Where(interaction => interaction.OwnerId == owner)
+                .Select(interaction => interaction.Id)
+                .ToListAsync()).Should().Equal(sharedId);
+            (await verify.InteractionParticipants
+                .Where(participant => participant.OwnerId == owner)
+                .Select(participant => participant.PersonId)
+                .ToListAsync())
+                .Should().ContainSingle().Which.Should().Be(secondPersonId);
+            (await verify.Interactions.AnyAsync(interaction => interaction.Id == privateId)).Should().BeFalse();
+        }
+
+        (await TestDataFactory.CreateService(dbContext, owner).DeleteAsync(secondPersonId)).Should().BeTrue();
+        await using var final = fixture.CreateDbContext();
+        (await final.Interactions.CountAsync(interaction => interaction.OwnerId == owner)).Should().Be(0);
+        (await final.InteractionParticipants.CountAsync(participant => participant.OwnerId == owner)).Should().Be(0);
     }
 
     [SqlServerFact]
@@ -94,6 +146,8 @@ public sealed class PersonDeleteSqlServerTests(SqlServerDatabaseFixture fixture)
             "a child that does not cascade would block deleting its person on SQL Server (or be orphaned)");
         foreignKeys.Should().Contain("FK_PersonTags_People_PeopleId:CASCADE");
         foreignKeys.Should().Contain("FK_ContactMethods_People_PersonId:CASCADE");
+        foreignKeys.Should().Contain("FK_InteractionParticipants_People_PersonId:CASCADE");
+        foreignKeys.Should().Contain("FK_Notes_People_PersonId:CASCADE");
     }
 
     [SqlServerFact]

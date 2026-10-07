@@ -1,5 +1,8 @@
 using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
+using Relio.Application.Interactions;
 using Relio.Application.People;
 using Relio.Domain;
 using Relio.Web.E2ETests.Infrastructure;
@@ -12,9 +15,7 @@ namespace Relio.Web.E2ETests;
 /// Issue #28 end to end: merging two profiles of the same person from the profile's More menu or the
 /// duplicate warning, in a real browser over a real circuit. Every test registers its own fresh user and
 /// never touches the shared demo user's people. The merged profile can only be proven to hold the contact
-/// methods, tags and details of both until interactions, notes, reminders and difficult moments exist
-/// (#31 to #43): each of those issues extends <c>PersonMergeService.MoveDependentsAsync</c> and
-/// <see cref="Merging_two_profiles_leaves_one_profile_with_everything_from_both"/> in the same pull request.
+/// methods, tags, details and both non-repeated and repeated shared interactions.
 /// </summary>
 [Collection(RelioAppCollection.Name)]
 public class PersonMergeTests(RelioAppFixture fixture)
@@ -69,6 +70,27 @@ public class PersonMergeTests(RelioAppFixture fixture)
         var page = await fixture.NewPageAsync();
         var ownerId = await RegisterFreshUserAsync(page);
         var (john, jon) = await SeedJohnAndJonAsync(ownerId);
+        var occurredOn = DateOnly.FromDateTime(TimeProvider.System.GetUtcNow().UtcDateTime).AddDays(-1);
+        var sharedInteractionId = await PeopleTestHelpers.CreateInteractionAsync(fixture.App, ownerId, new CreateInteractionRequest
+        {
+            ProfilePersonId = john,
+            OccurredOn = occurredOn,
+            Kind = InteractionKind.Meeting,
+            Description = "We visited the museum together.",
+            ParticipantIds = [john, jon],
+        });
+        var duplicateOnlyInteractionId = await PeopleTestHelpers.CreateInteractionAsync(fixture.App, ownerId, new CreateInteractionRequest
+        {
+            ProfilePersonId = jon,
+            OccurredOn = occurredOn,
+            Kind = InteractionKind.Message,
+            Description = "Jon sent the gallery opening details.",
+            ParticipantIds = [jon],
+        });
+        await PeopleTestHelpers.CreateNoteAsync(
+            fixture.App, ownerId, john, "Remember John's observatory story.", isPinned: true);
+        await PeopleTestHelpers.CreateNoteAsync(
+            fixture.App, ownerId, jon, "Remember Jon's gallery opening.");
 
         await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, $"/people/{john}");
         await page.Locator("[data-testid='person-actions']").GetByRole(AriaRole.Button, new() { Name = "More", Exact = true }).ClickAsync();
@@ -118,6 +140,16 @@ public class PersonMergeTests(RelioAppFixture fixture)
         await Expect(page.Locator("[data-testid='person-tag']")).ToHaveTextAsync(["Chess", "Climbing"]);
         await Expect(page.Locator("[data-testid='person-details']")).ToContainTextAsync("Met at the chess club.");
         await Expect(page.Locator("[data-testid='person-details']")).ToContainTextAsync("Climbs on Tuesdays.");
+        await Expect(page.Locator("[data-testid='timeline-entry-text']")).ToHaveCountAsync(4);
+        (await page.Locator("[data-testid='timeline-entry-text']").AllTextContentsAsync())
+            .Should().BeEquivalentTo(
+            [
+                "We visited the museum together.",
+                "Jon sent the gallery opening details.",
+                "Remember John's observatory story.",
+                "Remember Jon's gallery opening.",
+            ]);
+        await Expect(page.GetByTestId("pinned-note-text")).ToHaveTextAsync("Remember John's observatory story.");
 
         // One Smith in the list.
         await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/people");
@@ -131,6 +163,26 @@ public class PersonMergeTests(RelioAppFixture fixture)
         var merged = await PeopleTestHelpers.GetPersonAsync(fixture.App, ownerId, john);
         merged!.ContactMethods.Select(c => c.Value).Should().Equal("john@example.com", "+44 7700 900123");
         merged.ContactMethods.Select(c => c.Label).Should().Equal("Work", "Mobile");
+        using var verify = fixture.App.CreateRealScope();
+        var interactionDb = verify.ServiceProvider.GetRequiredService<Relio.Data.RelioDbContext>();
+        var mergedNotes = await interactionDb.Notes.AsNoTracking()
+            .Where(note => note.OwnerId == ownerId)
+            .OrderBy(note => note.Text)
+            .ToListAsync();
+        mergedNotes.Should().HaveCount(2);
+        mergedNotes.Should().OnlyContain(note => note.PersonId == john, "both notes move to the kept profile");
+        mergedNotes.Single(note => note.IsPinned).Text.Should().Be("Remember John's observatory story.");
+        mergedNotes.Should().ContainSingle(note => !note.IsPinned && note.Text == "Remember Jon's gallery opening.");
+        var sharedParticipants = await interactionDb.InteractionParticipants.AsNoTracking()
+            .Where(participant => participant.InteractionId == sharedInteractionId)
+            .Select(participant => participant.PersonId)
+            .ToListAsync();
+        sharedParticipants.Should().ContainSingle().Which.Should().Be(john, "the shared row is not repeated after merging");
+        var movedParticipants = await interactionDb.InteractionParticipants.AsNoTracking()
+            .Where(participant => participant.InteractionId == duplicateOnlyInteractionId)
+            .Select(participant => participant.PersonId)
+            .ToListAsync();
+        movedParticipants.Should().ContainSingle().Which.Should().Be(john, "the duplicate-only interaction moves to the kept profile");
 
         await RelioAppFixture.ClosePageAsync(page);
     }

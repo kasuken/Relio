@@ -13,7 +13,8 @@ after your relationships, available as a hosted service or self-hosted.
 ## Features (MVP)
 
 - **People**: profiles with relationship type, contact methods, tags and birthdays, imported from a phone's vCard or a CSV file
-- **Timeline**: interactions and notes per person, in chronological order
+- **Timeline**: add private notes and dated interactions shared across up to 20 profiles; pin notes,
+  filter the combined history and load it in pages. Last-contact dates follow the latest interaction.
 - **Reminders**: reconnect follow-ups and birthday reminders, by email and on the dashboard
 - **Difficult moments**: record tensions, triggers, resolutions and lessons learned
 - **Dashboard**: upcoming reminders, recent interactions and recently added people

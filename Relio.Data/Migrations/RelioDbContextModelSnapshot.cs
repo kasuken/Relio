@@ -352,6 +352,122 @@ namespace Relio.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Relio.Domain.Interaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateOnly>("OccurredOn")
+                        .HasColumnType("date");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId", "OccurredOn", "Id");
+
+                    b.HasIndex("OwnerId", "OccurredOn", "CreatedAtUtc", "Id");
+
+                    b.ToTable("Interactions", t =>
+                        {
+                            t.HasCheckConstraint("CK_Interactions_Kind", "[Kind] IN (N'Call', N'Meeting', N'Message', N'Event', N'Other')");
+                        });
+                });
+
+            modelBuilder.Entity("Relio.Domain.InteractionParticipant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("InteractionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PersonId");
+
+                    b.HasIndex("InteractionId", "PersonId")
+                        .IsUnique();
+
+                    b.HasIndex("OwnerId", "PersonId", "InteractionId");
+
+                    b.ToTable("InteractionParticipants");
+                });
+
+            modelBuilder.Entity("Relio.Domain.Note", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsPinned")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PersonId");
+
+                    b.HasIndex("OwnerId", "PersonId", "IsPinned");
+
+                    b.HasIndex("OwnerId", "PersonId", "CreatedAtUtc", "Id");
+
+                    b.ToTable("Notes", (string)null);
+                });
+
             modelBuilder.Entity("Relio.Domain.Person", b =>
                 {
                     b.Property<Guid>("Id")
@@ -607,6 +723,36 @@ namespace Relio.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Relio.Domain.InteractionParticipant", b =>
+                {
+                    b.HasOne("Relio.Domain.Interaction", "Interaction")
+                        .WithMany("Participants")
+                        .HasForeignKey("InteractionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Relio.Domain.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Interaction");
+
+                    b.Navigation("Person");
+                });
+
+            modelBuilder.Entity("Relio.Domain.Note", b =>
+                {
+                    b.HasOne("Relio.Domain.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Person");
+                });
+
             modelBuilder.Entity("Relio.Domain.Person", b =>
                 {
                     b.HasOne("Relio.Domain.RelationshipType", "RelationshipType")
@@ -615,6 +761,11 @@ namespace Relio.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("RelationshipType");
+                });
+
+            modelBuilder.Entity("Relio.Domain.Interaction", b =>
+                {
+                    b.Navigation("Participants");
                 });
 
             modelBuilder.Entity("Relio.Domain.Person", b =>

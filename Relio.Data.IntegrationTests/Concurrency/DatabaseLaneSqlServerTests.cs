@@ -4,11 +4,14 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Relio.Application.Accounts;
 using Relio.Application.Administration;
+using Relio.Application.Interactions;
+using Relio.Application.Notes;
 using Relio.Application.People;
 using Relio.Application.People.Import;
 using Relio.Application.Profile;
 using Relio.Application.Security;
 using Relio.Application.Time;
+using Relio.Application.Timeline;
 using Relio.Data.DependencyInjection;
 using Relio.Data.Identity;
 using Relio.Data.IntegrationTests.Infrastructure;
@@ -193,6 +196,55 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
         var read = await people.GetAsync(person.Id);
         read!.Tags.Should().ContainSingle().Which.Name.Should().Be("Climbing");
         read.ContactMethods.Should().ContainSingle().Which.Value.Should().Be("ada@example.com");
+    }
+
+    [SqlServerFact]
+    public async Task Profile_interactions_and_timeline_loads_serialize_on_one_circuit_context()
+    {
+        var ownerId = await SeedProfileAsync("Pacific/Kiritimati", "Ada");
+        await using var provider = BuildProvider(ownerId);
+        await using var scope = provider.CreateAsyncScope();
+        var people = scope.ServiceProvider.GetRequiredService<IPeopleService>();
+        var interactions = scope.ServiceProvider.GetRequiredService<IInteractionService>();
+        var notes = scope.ServiceProvider.GetRequiredService<INoteService>();
+        var timeline = scope.ServiceProvider.GetRequiredService<IPersonTimelineService>();
+        var person = await people.CreateAsync(new CreatePersonRequest { FirstName = "Ada" });
+        var other = await people.CreateAsync(new CreatePersonRequest { FirstName = "Grace" });
+        await notes.CreateAsync(new CreateNoteRequest(person.Id, "A note for the lane test.", true));
+        var today = await scope.ServiceProvider.GetRequiredService<IUserTimeZoneService>().GetTodayAsync();
+        var interactionId = await interactions.CreateAsync(new CreateInteractionRequest
+        {
+            ProfilePersonId = person.Id,
+            OccurredOn = today,
+            Kind = InteractionKind.Meeting,
+            Description = "A shared conversation.",
+            ParticipantIds = [person.Id, other.Id],
+        });
+
+        Task<PersonTimelinePage?>? page = null;
+        Task<InteractionDetails?>? details = null;
+        Task<IReadOnlyList<InteractionParticipantOption>>? candidates = null;
+        Task<IReadOnlyList<Relio.Domain.Note>>? pinnedNotes = null;
+        var act = async () =>
+        {
+            page = timeline.GetPageAsync(person.Id);
+            details = interactions.GetAsync(interactionId);
+            candidates = interactions.ListParticipantCandidatesAsync(person.Id);
+            pinnedNotes = notes.ListPinnedAsync(person.Id);
+            await Task.WhenAll(page, details, candidates, pinnedNotes);
+        };
+
+        await act.Should().NotThrowAsync();
+        var timelinePage = await page!;
+        timelinePage.Should().NotBeNull();
+        timelinePage!.Items.Select(item => item.Kind)
+            .Should().BeEquivalentTo(new[] { TimelineEntryKind.Interaction, TimelineEntryKind.Note });
+        var interactionDetails = await details!;
+        interactionDetails.Should().NotBeNull();
+        interactionDetails!.Participants.Should().HaveCount(2);
+        (await candidates!).Select(candidate => candidate.PersonId)
+            .Should().BeEquivalentTo(new[] { person.Id, other.Id });
+        (await pinnedNotes!).Should().ContainSingle(note => note.Text == "A note for the lane test.");
     }
 
     [SqlServerFact]

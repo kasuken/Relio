@@ -1,9 +1,15 @@
 @page "/people/{PersonId:guid}"
+@using Relio.Application.Interactions
+@using Relio.Application.Notes
 @using Relio.Application.People
 @using Relio.Application.Time
+@using Relio.Application.Timeline
 @using Relio.Domain
 @using Relio.Web.Time
+@using Relio.Web.Components.Notes
 @inject IPeopleService PeopleService
+@inject IInteractionService InteractionService
+@inject INoteService NoteService
 @inject IUserTimeZoneService UserTimeZone
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
@@ -98,6 +104,11 @@
             </div>
         }
 
+        <PinnedNotes @ref="_pinnedNotes"
+                     PersonId="PersonId"
+                     EditRequested="EditNoteAsync"
+                     Changed="PinnedNotesChangedAsync" />
+
         <dl class="rl-facts">
             @foreach (var contactMethod in _person.ContactMethods.OrderBy(contactMethod => contactMethod.SortOrder))
             {
@@ -148,7 +159,58 @@
                     <dd class="rl-entry-text rl-multiline" data-testid="person-details">@_person.Details</dd>
                 </div>
             }
+            <div>
+                <dt>Last contacted</dt>
+                <dd data-testid="person-last-contacted">
+                    @(_person.LastContactedOn is DateOnly contacted
+                        ? DateDisplay.FormatRelative(contacted, _today)
+                        : PeopleListText.NotContactedYet)
+                </dd>
+            </div>
         </dl>
+
+        <PersonTimeline @ref="_timeline"
+                    PersonId="PersonId"
+                    Busy="@(_busy || _showInteractionEditor || _showNoteEditor)"
+                    EditInteractionRequested="EditInteractionAsync"
+                    DeleteInteractionRequested="DeleteInteractionAsync"
+                    EditNoteRequested="EditNoteAsync"
+                    DeleteNoteRequested="DeleteNoteAsync" />
+
+        <section class="rl-profile-memories" aria-label="Notes and interactions">
+            <div class="rl-profile-memory-actions">
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Outlined.NoteAdd"
+                           OnClick="StartNote"
+                           Disabled="@(_busy || _showInteractionEditor || _showNoteEditor)"
+                           data-testid="person-add-note">
+                    Add a note
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Class="rl-profile-primary-action"
+                           StartIcon="@Icons.Material.Outlined.Add"
+                           OnClick="StartInteraction"
+                           Disabled="@(_busy || _showInteractionEditor || _showNoteEditor)"
+                           data-testid="person-log-interaction">
+                    Log an interaction
+                </MudButton>
+            </div>
+            @if (_showInteractionEditor)
+            {
+                <InteractionEditor PersonId="PersonId"
+                                   InteractionId="_interactionIdToEdit"
+                                   Saved="InteractionSavedAsync"
+                                   Cancelled="InteractionCancelledAsync" />
+            }
+            @if (_showNoteEditor)
+            {
+                <NoteEditor PersonId="PersonId"
+                            NoteId="_noteIdToEdit"
+                            Saved="NoteSavedAsync"
+                            Cancelled="NoteCancelledAsync" />
+            }
+        </section>
     }
 }
 
@@ -156,6 +218,14 @@
     private Person? _person;
     private bool _loaded;
     private string _archivedText = string.Empty;
+    private DateOnly _today;
+    private PersonTimeline? _timeline;
+    private PinnedNotes? _pinnedNotes;
+    private bool _showInteractionEditor;
+    private Guid? _interactionIdToEdit;
+    private bool _showNoteEditor;
+    private Guid? _noteIdToEdit;
+    private int _loadVersion;
 
     // True while an archive, restore or delete is in flight: a second click (or a second menu item)
     // must not start another one, and the menu and the Restore button are disabled meanwhile.
@@ -170,8 +240,16 @@
         // keeps this component (a link from one profile to another). Read-only on purpose -
         // prerendering runs it twice.
         _loaded = false;
-        await LoadAsync();
-        _loaded = true;
+        var version = ++_loadVersion;
+        _showInteractionEditor = false;
+        _interactionIdToEdit = null;
+        _showNoteEditor = false;
+        _noteIdToEdit = null;
+        await LoadAsync(version);
+        if (version == _loadVersion)
+        {
+            _loaded = true;
+        }
     }
 
     /// <summary>
@@ -180,14 +258,31 @@
     /// viewer's calendar. The zone and "today" are read one after the other (the circuit's one
     /// database lane would queue them anyway) and only when there is a note to show.
     /// </summary>
-    private async Task LoadAsync()
+    private async Task LoadAsync(int version)
     {
-        _person = await PeopleService.GetAsync(PersonId);
-        if (_person is { IsArchived: true })
+        var personId = PersonId;
+        var person = await PeopleService.GetAsync(personId);
+        if (version != _loadVersion || personId != PersonId)
         {
-            var zone = await UserTimeZone.GetTimeZoneAsync();
+            return;
+        }
+
+        _person = person;
+        _archivedText = string.Empty;
+        if (person is not null)
+        {
+            var zone = person.IsArchived ? await UserTimeZone.GetTimeZoneAsync() : null;
             var today = await UserTimeZone.GetTodayAsync();
-            _archivedText = PersonArchiveText.ArchivedOn(_person.ArchivedAtUtc, zone, today);
+            if (version != _loadVersion || personId != PersonId)
+            {
+                return;
+            }
+
+            _today = today;
+            if (person.IsArchived)
+            {
+                _archivedText = PersonArchiveText.ArchivedOn(person.ArchivedAtUtc, zone!, today);
+            }
         }
     }
 
@@ -210,7 +305,7 @@
             }
 
             Snackbar.Info(PersonArchiveText.Archived);
-            await LoadAsync();
+            await RefreshProfileAsync();
         }
         finally
         {
@@ -236,7 +331,7 @@
             }
 
             Snackbar.Info(PersonArchiveText.Restored);
-            await LoadAsync();
+            await RefreshProfileAsync();
         }
         finally
         {
@@ -285,6 +380,199 @@
         finally
         {
             _busy = false;
+        }
+    }
+
+    private void StartInteraction()
+    {
+        if (_busy || _showInteractionEditor || _showNoteEditor)
+        {
+            return;
+        }
+
+        _interactionIdToEdit = null;
+        _showInteractionEditor = true;
+    }
+
+    private void StartNote()
+    {
+        if (_busy || _showInteractionEditor || _showNoteEditor)
+        {
+            return;
+        }
+
+        _noteIdToEdit = null;
+        _showNoteEditor = true;
+    }
+
+    private Task EditInteractionAsync(Guid interactionId)
+    {
+        if (!_busy && !_showNoteEditor)
+        {
+            _interactionIdToEdit = interactionId;
+            _showInteractionEditor = true;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task InteractionSavedAsync()
+    {
+        _showInteractionEditor = false;
+        _interactionIdToEdit = null;
+        Snackbar.Saved("Interaction saved");
+        await RefreshProfileAsync();
+    }
+
+    private Task InteractionCancelledAsync()
+    {
+        _showInteractionEditor = false;
+        _interactionIdToEdit = null;
+        return Task.CompletedTask;
+    }
+
+    private Task EditNoteAsync(Guid noteId)
+    {
+        if (!_busy && !_showInteractionEditor)
+        {
+            _noteIdToEdit = noteId;
+            _showNoteEditor = true;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task NoteSavedAsync()
+    {
+        _showNoteEditor = false;
+        _noteIdToEdit = null;
+        await RefreshProfileAsync();
+    }
+
+    private Task NoteCancelledAsync()
+    {
+        _showNoteEditor = false;
+        _noteIdToEdit = null;
+        return Task.CompletedTask;
+    }
+
+    private Task PinnedNotesChangedAsync() =>
+        _timeline?.ReloadAsync() ?? Task.CompletedTask;
+
+    private async Task DeleteNoteAsync(Guid noteId)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var confirmed = await DialogService.ShowConfirmAsync(
+                "Delete this note?",
+                "This note will be permanently removed. It can't be undone.",
+                confirmLabel: "Delete permanently",
+                cancelLabel: "Cancel",
+                destructive: true);
+            if (!confirmed)
+            {
+                return;
+            }
+
+            bool deleted;
+            try
+            {
+                deleted = await NoteService.DeleteAsync(noteId);
+            }
+            catch (Exception)
+            {
+                Snackbar.Add("The note couldn't be deleted. Try again.", Severity.Error);
+                return;
+            }
+
+            if (deleted)
+            {
+                Snackbar.Info("Note deleted");
+            }
+            else
+            {
+                Snackbar.Info("This note is no longer available.");
+            }
+
+            await RefreshProfileAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteInteractionAsync(Guid interactionId)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var confirmed = await DialogService.ShowConfirmAsync(
+                "Delete this interaction?",
+                "It will be removed from every profile listed. This can't be undone.",
+                confirmLabel: "Delete permanently",
+                cancelLabel: "Cancel",
+                destructive: true);
+            if (!confirmed)
+            {
+                return;
+            }
+
+            bool deleted;
+            try
+            {
+                deleted = await InteractionService.DeleteAsync(interactionId);
+            }
+            catch (Exception)
+            {
+                Snackbar.Add("The interaction couldn't be deleted. Try again.", Severity.Error);
+                return;
+            }
+
+            if (deleted)
+            {
+                Snackbar.Info("Interaction deleted");
+            }
+            else
+            {
+                Snackbar.Info("This interaction is no longer available.");
+            }
+
+            await RefreshProfileAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RefreshProfileAsync()
+    {
+        var version = ++_loadVersion;
+        await LoadAsync(version);
+        if (version == _loadVersion)
+        {
+            _loaded = true;
+            if (_timeline is not null)
+            {
+                await _timeline.ReloadAsync();
+            }
+
+            if (_pinnedNotes is not null)
+            {
+                await _pinnedNotes.ReloadAsync();
+            }
         }
     }
 }

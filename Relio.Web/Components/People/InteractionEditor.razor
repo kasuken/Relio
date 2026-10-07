@@ -1,0 +1,326 @@
+@using Relio.Application.Interactions
+@using Relio.Application.Ownership
+@using Relio.Application.Time
+@using Relio.Domain
+@inject IInteractionService InteractionService
+@inject IUserTimeZoneService UserTimeZone
+
+<section class="rl-interaction-editor" data-testid="interaction-editor" aria-busy="@(_loading || _busy)">
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" data-testid="interaction-editor-loading" />
+    }
+    else if (_loadFailed)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" data-testid="interaction-load-error">
+            The interaction couldn't be loaded. Try again.
+        </MudAlert>
+        <MudButton Variant="Variant.Text"
+                   Disabled="@_busy"
+                   OnClick="CancelAsync"
+                   data-testid="interaction-cancel">
+            Cancel
+        </MudButton>
+    }
+    else if (_notFound)
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" data-testid="interaction-not-found">
+            This interaction is no longer available.
+        </MudAlert>
+    }
+    else
+    {
+        <div class="rl-interaction-editor-heading">
+            <MudText Typo="Typo.h6" HtmlTag="h2">@(InteractionId is null ? "Log an interaction" : "Edit interaction")</MudText>
+            <MudText Typo="Typo.body2" Class="rl-meta">
+                This interaction is shared across every profile listed below. Changes affect everyone.
+            </MudText>
+        </div>
+
+        @if (_errorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" data-testid="interaction-save-error">
+                @_errorMessage
+            </MudAlert>
+        }
+
+        <div class="rl-form-field" data-testid="interaction-date-field">
+            <MudDatePicker @bind-Date="_occurredOn"
+                           Label="Date"
+                           Variant="Variant.Outlined"
+                           PickerVariant="PickerVariant.Dialog"
+                           DateFormat="d MMM yyyy"
+                           Editable="true"
+                           Disabled="_busy"
+                           data-testid="interaction-date" />
+            @foreach (var message in MessagesFor(
+                InteractionValidationError.DateRequired,
+                InteractionValidationError.DateInFuture))
+            {
+                <MudText Color="Color.Error" Typo="Typo.caption" data-testid="interaction-date-error">@message</MudText>
+            }
+        </div>
+
+        <div class="rl-form-field" data-testid="interaction-kind-field">
+            <MudSelect T="InteractionKind"
+                       @bind-Value="_kind"
+                       Label="Type"
+                       Variant="Variant.Outlined"
+                       Disabled="_busy"
+                       data-testid="interaction-kind">
+                @foreach (var kind in InteractionKindText.All)
+                {
+                    <MudSelectItem T="InteractionKind" Value="@kind">@InteractionKindText.Name(kind)</MudSelectItem>
+                }
+            </MudSelect>
+            @foreach (var message in MessagesFor(InteractionValidationError.KindInvalid))
+            {
+                <MudText Color="Color.Error" Typo="Typo.caption" data-testid="interaction-kind-error">@message</MudText>
+            }
+        </div>
+
+        <div class="rl-form-field" data-testid="interaction-participants-field">
+            <MudSelect T="Guid"
+                       MultiSelection="true"
+                       SelectedValues="_selectedParticipantIds"
+                       SelectedValuesChanged="ParticipantIdsChangedAsync"
+                       Label="People"
+                       Variant="Variant.Outlined"
+                       Disabled="_busy"
+                       data-testid="interaction-participants">
+                @foreach (var option in _participantOptions)
+                {
+                    <MudSelectItem T="Guid" Value="@option.PersonId">
+                        @option.DisplayName@(option.IsArchived ? " (archived)" : string.Empty)
+                    </MudSelectItem>
+                }
+            </MudSelect>
+            @foreach (var message in MessagesFor(
+                InteractionValidationError.ParticipantsRequired,
+                InteractionValidationError.ProfileParticipantRequired,
+                InteractionValidationError.TooManyParticipants,
+                InteractionValidationError.ParticipantIdInvalid,
+                InteractionValidationError.DuplicateParticipant,
+                InteractionValidationError.ArchivedParticipantNotAllowed))
+            {
+                <MudText Color="Color.Error" Typo="Typo.caption" data-testid="interaction-participant-error">@message</MudText>
+            }
+        </div>
+
+        <div class="rl-form-field" data-testid="interaction-description-field">
+            <MudTextField T="string"
+                          @bind-Value="_description"
+                          Label="What happened?"
+                          Variant="Variant.Outlined"
+                          Lines="4"
+                          MaxLength="@Interaction.DescriptionMaxLength"
+                          Counter="Interaction.DescriptionMaxLength"
+                          Class="rl-serif"
+                          Disabled="_busy"
+                          data-testid="interaction-description" />
+            @foreach (var message in MessagesFor(
+                InteractionValidationError.DescriptionRequired,
+                InteractionValidationError.DescriptionTooLong))
+            {
+                <MudText Color="Color.Error" Typo="Typo.caption" data-testid="interaction-description-error">@message</MudText>
+            }
+        </div>
+
+        <div class="rl-interaction-editor-actions">
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Outlined.Save"
+                       OnClick="SaveAsync"
+                       Disabled="_busy"
+                       data-testid="interaction-save">
+                Save interaction
+            </MudButton>
+            <MudButton Variant="Variant.Text"
+                       OnClick="CancelAsync"
+                       Disabled="_busy"
+                       data-testid="interaction-cancel">
+                Cancel
+            </MudButton>
+        </div>
+    }
+</section>
+
+@code {
+    private DateTime? _occurredOn;
+    private InteractionKind _kind = InteractionKind.Call;
+    private string? _description;
+    private HashSet<Guid> _selectedParticipantIds = [];
+    private IReadOnlyList<InteractionParticipantOption> _participantOptions = [];
+    private IReadOnlyList<InteractionValidationError> _validationErrors = [];
+    private string? _errorMessage;
+    private bool _loading;
+    private bool _busy;
+    private bool _notFound;
+    private bool _loadFailed;
+    private int _loadVersion;
+
+    /// <summary>The profile whose timeline is being viewed.</summary>
+    [Parameter, EditorRequired]
+    public Guid PersonId { get; set; }
+
+    /// <summary>The existing shared interaction to edit, or null to create one.</summary>
+    [Parameter]
+    public Guid? InteractionId { get; set; }
+
+    /// <summary>Raised after the interaction has been saved successfully.</summary>
+    [Parameter]
+    public EventCallback Saved { get; set; }
+
+    /// <summary>Raised when the editor is cancelled.</summary>
+    [Parameter]
+    public EventCallback Cancelled { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var version = ++_loadVersion;
+        _loading = true;
+        _notFound = false;
+        _loadFailed = false;
+        _errorMessage = null;
+        _validationErrors = [];
+        _description = null;
+        _kind = InteractionKind.Call;
+        _selectedParticipantIds = [];
+        _occurredOn = null;
+
+        try
+        {
+            if (InteractionId is { } interactionId)
+            {
+                var interaction = await InteractionService.GetAsync(interactionId);
+                if (version != _loadVersion)
+                {
+                    return;
+                }
+
+                if (interaction is null)
+                {
+                    _notFound = true;
+                    return;
+                }
+
+                _occurredOn = interaction.OccurredOn.ToDateTime(TimeOnly.MinValue);
+                _kind = interaction.Kind;
+                _description = interaction.Description;
+                _selectedParticipantIds = interaction.Participants
+                    .Select(participant => participant.PersonId)
+                    .ToHashSet();
+            }
+            else
+            {
+                var today = await UserTimeZone.GetTodayAsync();
+                if (version != _loadVersion)
+                {
+                    return;
+                }
+
+                _occurredOn = today.ToDateTime(TimeOnly.MinValue);
+                _selectedParticipantIds.Add(PersonId);
+            }
+
+            _participantOptions = await InteractionService.ListParticipantCandidatesAsync(
+                PersonId,
+                _selectedParticipantIds.ToArray());
+        }
+        catch (Exception)
+        {
+            if (version == _loadVersion)
+            {
+                _loadFailed = true;
+            }
+        }
+        finally
+        {
+            if (version == _loadVersion)
+            {
+                _loading = false;
+            }
+        }
+    }
+
+    private IEnumerable<string> MessagesFor(params InteractionValidationError[] errors) =>
+        _validationErrors
+            .Where(errors.Contains)
+            .Select(InteractionFormMessages.Message);
+
+    private Task ParticipantIdsChangedAsync(IEnumerable<Guid> participantIds)
+    {
+        _selectedParticipantIds = participantIds.ToHashSet();
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_busy || _loading || _notFound)
+        {
+            return;
+        }
+
+        _busy = true;
+        _errorMessage = null;
+        _validationErrors = [];
+        try
+        {
+            var occurredOn = _occurredOn is { } date
+                ? DateOnly.FromDateTime(date)
+                : default;
+            if (InteractionId is { } interactionId)
+            {
+                var updated = await InteractionService.UpdateAsync(interactionId, new UpdateInteractionRequest
+                {
+                    OccurredOn = occurredOn,
+                    Kind = _kind,
+                    Description = _description,
+                    ParticipantIds = _selectedParticipantIds.ToArray(),
+                });
+                if (!updated)
+                {
+                    _notFound = true;
+                    return;
+                }
+            }
+            else
+            {
+                await InteractionService.CreateAsync(new CreateInteractionRequest
+                {
+                    ProfilePersonId = PersonId,
+                    OccurredOn = occurredOn,
+                    Kind = _kind,
+                    Description = _description,
+                    ParticipantIds = _selectedParticipantIds.ToArray(),
+                });
+            }
+
+            await Saved.InvokeAsync();
+        }
+        catch (InteractionValidationException exception)
+        {
+            _validationErrors = exception.Errors;
+        }
+        catch (ForeignEntityNotOwnedException exception) when (exception.EntityName == ForeignEntityNames.People)
+        {
+            _errorMessage = "One of the selected people is no longer available. Refresh the form and try again.";
+        }
+        catch (Exception)
+        {
+            _errorMessage = "The interaction couldn't be saved. Try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task CancelAsync()
+    {
+        if (!_busy)
+        {
+            await Cancelled.InvokeAsync();
+        }
+    }
+}

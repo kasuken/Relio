@@ -4,17 +4,23 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Relio.Application.Accounts;
 using Relio.Application.Administration;
+using Relio.Application.Interactions;
+using Relio.Application.Notes;
 using Relio.Application.People;
 using Relio.Application.People.Import;
+using Relio.Application.Timeline;
 using Relio.Data.Administration;
 using Relio.Data.Concurrency;
 using Relio.Data.Identity;
+using Relio.Data.Interactions;
+using Relio.Data.Notes;
 using Relio.Application.Profile;
 using Relio.Application.Time;
 using Relio.Data.People;
 using Relio.Data.Profile;
 using Relio.Data.Seeding;
 using Relio.Data.Time;
+using Relio.Data.Timeline;
 
 namespace Relio.Data.DependencyInjection;
 
@@ -91,6 +97,9 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
 
         AddDataService<IPeopleService, PeopleService>(services);
+        AddDataService<IInteractionService, InteractionService>(services);
+        AddDataService<INoteService, NoteService>(services);
+        AddDataService<IPersonTimelineService, PersonTimelineService>(services);
         AddDataService<IPeopleImportService, PeopleImportService>(services);
         AddDataService<IPersonMergeService, PersonMergeService>(services);
         AddDataService<IRelationshipTypeService, RelationshipTypeService>(services);

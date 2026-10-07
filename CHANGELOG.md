@@ -6,6 +6,21 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Record interactions and notes in each person's timeline (epic #30; issues #31, #32, #33, #34 and #35).
+  **Log an interaction** records a calendar date, type, description and up to 20 people; the same
+  interaction appears in every participant's timeline, and edits or deletion affect all of them. New
+  participants are active people by default, while an archived participant already on an interaction
+  stays attached when it is edited. **Add a note** stores up to 10,000 characters for one person, with
+  an optional pin near the top of that profile. Notes can be edited, unpinned or permanently deleted.
+  The mixed timeline is filterable and loads 50 entries at a time from bounded database queries; note
+  dates are shown in the owner's time zone, while interaction dates remain the calendar dates entered.
+  `LastContactedOn` is now derived from the latest surviving interaction for each participant, including
+  when a shared interaction is added, edited, removed or moved in a profile merge. Deleting a person
+  removes their notes and participant links, but preserves a shared interaction while someone else is
+  still listed; merging moves notes and deduplicates shared participation. Timeline text is private,
+  never logged, and remains until the user deletes it or its person. Difficult moments are not yet
+  modeled; the timeline has an empty filter seam for that future feature. Migration
+  `AddInteractionsNotesAndTimeline`; no external requests or new packages.
 - Import people from a vCard or CSV file (issue #29), completing epic #21. **Import** in the people list's
   header (and "Or import people from a file" under the empty state) opens `/people/import`. Choose a vCard
   (`.vcf`, versions 2.1, 3.0 and 4.0, as exported by iPhone, Android and Google Contacts) or a CSV file (Google
@@ -31,14 +46,16 @@ All notable changes to this project are documented in this file.
   disagree** (name, nickname, relationship, birthday, how you met, details, status; the texts also offer
   **Keep both**; a profile that is archived while the other is active defaults to active). Contact methods
   are united with repeats combined (the same email in different capitals is one email, and a label the kept
-  one lacked is taken from the repeat), tags are united, and the later "last contacted" date wins. A preview
+  one lacked is taken from the repeat), tags are united, and the last-contact date is recomputed from the
+  surviving interaction history. Notes move with their text and pin state; interaction participants move
+  without copying a shared interaction. A preview
   shows exactly what you will get. A confirmation names both people and says it can't be undone; then
   everything recorded about the other profile moves to the one you keep and the other is removed, in a
   single transaction (`IPersonMergeService`, one save), and you land on the merged profile ("Profiles
   merged"). Merging profiles that together have more than 20 contact methods or tags, or two texts too long
   to keep both, is refused with an explanation and changes nothing. A profile that isn't yours, or that
   disappeared meanwhile, is reported like one that doesn't exist. No migration. Future things that belong to
-  a person (interactions, notes, reminders, difficult moments) must add a line to
+  a person (reminders, difficult moments) must add a line to
   `PersonMergeService.MoveDependentsAsync`: `PersonMergeChecklistTests` and a SQL Server foreign-key test fail
   until they do, and `Every_person_column_has_a_merge_rule` does the same for a new column on `Person`.
 - Detect possible duplicate people (issue #27), epic #21. Adding a person, or renaming one, now checks
@@ -59,8 +76,9 @@ All notable changes to this project are documented in this file.
   and reminders. Everything you recorded is kept.") with a **Restore** button, and archiving never touches
   anything recorded about them. **Delete** asks first ("Delete Ada Lovelace? ... It can't be undone.",
   button "Delete permanently") and is permanent: `IPeopleService.DeleteAsync` removes the person, their
-  contact methods and their tag links in one save, keeps your tags (and other people's links to them) and
-  relationship types, and works on archived people too. Afterwards you land on the people list and Back
+  contact methods, notes and interaction participation in one save, deleting a shared interaction only
+  when no participant remains. It keeps your tags (and other people's links to them) and relationship
+  types, and works on archived people too. Afterwards you land on the people list and Back
   does not return to the deleted profile. No migration: the foreign keys already cascade, and the service
   also removes the dependents explicitly because the InMemory provider (unit tests) would otherwise leave
   orphans. `PersonDeleteChecklistTests` fails when a new entity references a person without being added to
@@ -103,9 +121,9 @@ All notable changes to this project are documented in this file.
   everyone is archived the page says so and offers to show them. `IPeopleService.ListPageAsync`
   returns one page of lightweight rows (`PersonListItem`: no how-we-met text, details, birthday or
   nickname) plus the user's active and archived totals; every ordering ends with the id so a paged
-  list never repeats or skips a row, and never-contacted people are explicitly sorted last. New
-  `Person.LastContactedOn` (a calendar date in your time zone): nothing sets it yet - issue #34 will
-  maintain it from your interactions - so for now it is only filled in for the demo data.
+  list never repeats or skips a row, and never-contacted people are explicitly sorted last. `Person.LastContactedOn`
+  is maintained from each person's latest surviving interaction, as a calendar date in that user's time zone
+  (issue #34). Demo profiles still include examples for every sort state.
   Migration `AddPeopleListSorting`: adds the nullable `People.LastContactedOn` (`date`) and replaces
   `IX_People_OwnerId_IsArchived` with three composite indexes (`OwnerId, IsArchived` plus first and
   last name / `CreatedAtUtc` / `LastContactedOn`); no backfill. `DateDisplay.FormatRelative` is the

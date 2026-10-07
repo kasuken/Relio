@@ -130,18 +130,88 @@ public class PersonMergeServiceTests
     }
 
     [Fact]
-    public async Task MergeAsync_takes_the_later_last_contacted_date()
+    public async Task MergeAsync_recalculates_last_contacted_from_interactions_not_stale_profile_values()
     {
         var database = NewDatabase();
         await using var dbContext = CreateDbContext(database);
         var seeded = await SeedAsync(
             dbContext,
-            john => john.LastContactedOn = new DateOnly(2026, 3, 1),
+            john => john.LastContactedOn = new DateOnly(2026, 10, 5),
             jon => jon.LastContactedOn = new DateOnly(2026, 8, 1));
+        await AddInteractionAsync(dbContext, seeded.JohnId, new DateOnly(2026, 3, 1));
+        await AddInteractionAsync(dbContext, seeded.JonId, new DateOnly(2026, 8, 1));
 
         await CreateService(dbContext).MergeAsync(Request(seeded));
 
         (await ReadAsync(database, seeded.JohnId)).LastContactedOn.Should().Be(new DateOnly(2026, 8, 1));
+    }
+
+    [Fact]
+    public async Task MergeAsync_moves_and_deduplicates_shared_interaction_participants()
+    {
+        var database = NewDatabase();
+        await using var dbContext = CreateDbContext(database);
+        var seeded = await SeedAsync(dbContext);
+        var movedInteraction = await AddInteractionAsync(
+            dbContext,
+            seeded.JonId,
+            new DateOnly(2026, 10, 1),
+            seeded.GraceId);
+        var sharedInteraction = await AddInteractionAsync(
+            dbContext,
+            seeded.JohnId,
+            new DateOnly(2026, 10, 3),
+            seeded.JonId);
+
+        await CreateService(dbContext).MergeAsync(Request(seeded));
+
+        await using var fresh = CreateDbContext(database);
+        var movedParticipants = await fresh.InteractionParticipants.AsNoTracking()
+            .Where(participant => participant.InteractionId == movedInteraction)
+            .Select(participant => participant.PersonId)
+            .ToListAsync();
+        movedParticipants.Should().BeEquivalentTo(new[] { seeded.JohnId, seeded.GraceId });
+        var sharedParticipants = await fresh.InteractionParticipants.AsNoTracking()
+            .Where(participant => participant.InteractionId == sharedInteraction)
+            .Select(participant => participant.PersonId)
+            .ToListAsync();
+        sharedParticipants.Should().ContainSingle().Which.Should().Be(seeded.JohnId);
+        (await fresh.People.AsNoTracking().SingleAsync(person => person.Id == seeded.JohnId))
+            .LastContactedOn.Should().Be(new DateOnly(2026, 10, 3));
+    }
+
+    [Fact]
+    public async Task MergeAsync_moves_notes_to_the_primary_without_changing_their_text_or_pin_state()
+    {
+        var database = NewDatabase();
+        await using var dbContext = CreateDbContext(database);
+        var seeded = await SeedAsync(dbContext);
+        dbContext.Notes.AddRange(
+            new Note
+            {
+                OwnerId = Owner,
+                PersonId = seeded.JohnId,
+                Text = "A pinned note on the primary.",
+                IsPinned = true,
+            },
+            new Note
+            {
+                OwnerId = Owner,
+                PersonId = seeded.JonId,
+                Text = "An unpinned note on the duplicate.",
+            });
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+
+        await CreateService(dbContext).MergeAsync(Request(seeded));
+
+        await using var fresh = CreateDbContext(database);
+        var notes = await fresh.Notes.AsNoTracking().OrderBy(note => note.Text).ToListAsync();
+        notes.Should().HaveCount(2);
+        notes.Should().OnlyContain(note => note.PersonId == seeded.JohnId);
+        notes.Select(note => (note.Text, note.IsPinned)).Should().Equal(
+            ("A pinned note on the primary.", true),
+            ("An unpinned note on the duplicate.", false));
     }
 
     [Fact]
@@ -569,6 +639,41 @@ public class PersonMergeServiceTests
 
         await dbContext.SaveChangesAsync();
         dbContext.ChangeTracker.Clear();
+    }
+
+    private static async Task<Guid> AddInteractionAsync(
+        RelioDbContext dbContext,
+        Guid firstPersonId,
+        DateOnly occurredOn,
+        Guid? secondPersonId = null)
+    {
+        var interaction = new Interaction
+        {
+            OwnerId = Owner,
+            OccurredOn = occurredOn,
+            Kind = InteractionKind.Meeting,
+            Description = "A private interaction.",
+        };
+        dbContext.Interactions.Add(interaction);
+        dbContext.InteractionParticipants.Add(new InteractionParticipant
+        {
+            OwnerId = Owner,
+            InteractionId = interaction.Id,
+            PersonId = firstPersonId,
+        });
+        if (secondPersonId is { } second)
+        {
+            dbContext.InteractionParticipants.Add(new InteractionParticipant
+            {
+                OwnerId = Owner,
+                InteractionId = interaction.Id,
+                PersonId = second,
+            });
+        }
+
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+        return interaction.Id;
     }
 
     private sealed record Seeded(
