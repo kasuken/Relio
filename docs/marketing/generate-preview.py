@@ -38,3 +38,28 @@ draw.text((72, 520), "People. Conversations. Follow-ups.", font=font("HankenGrot
 target = root / "Relio.Web/wwwroot/img/og-preview.png"
 target.parent.mkdir(parents=True, exist_ok=True)
 image.save(target, optimize=True)
+
+# A fictional illustration, not a screenshot or a live account.
+thread = Image.new("RGB", (960, 680), colors["surface"])
+draw = ImageDraw.Draw(thread)
+sans = font("HankenGrotesk-Roman-latin.woff2", 26)
+serif = font("Alegreya-Roman-latin.woff2", 32)
+draw.text((56, 38), "Morgan Silva", font=font("Alegreya-Roman-latin.woff2", 48), fill=colors["text"])
+draw.text((56, 108), "Fictional example", font=sans, fill=colors["text-muted"])
+draw.line((80, 200, 80, 586), fill=colors["line-strong"], width=2)
+for y, label, lines, marker in [
+    (205, "Log an interaction", ["Talked about the new garden.", "The first tomatoes are growing."], "pen"),
+    (354, "Add a note", ["A favourite book:", "The Secret Garden."], "pencil"),
+    (503, "Keep a follow-up", ["Ask how the garden", "is growing."], "pen"),
+]:
+    if marker == "pencil":
+        draw.rectangle((70, y + 6, 90, y + 26), fill=colors["pencil-mark"])
+    else:
+        draw.ellipse((70, y + 6, 90, y + 26), fill=colors["pen"])
+    draw.text((116, y), label, font=sans, fill=colors["text-muted"])
+    for index, line in enumerate(lines):
+        draw.text((116, y + 44 + index * 38), line, font=serif, fill=colors["text"])
+thread.save(target.with_name("relationship-thread.png"), optimize=True)
+source = root / "docs/marketing/screenshots/relationship-thread.png"
+source.parent.mkdir(parents=True, exist_ok=True)
+thread.save(source)

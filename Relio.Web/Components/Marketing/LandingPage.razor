@@ -4,7 +4,72 @@
 
 <SeoHeadContent Title="A private notebook for your relationships"
                 Description="Remember conversations, keep personal notes and follow up with the people in your life. Explore Relio and hosted or self-hosted use."
-                CanonicalPath="/" />
-<h1>A private notebook for your relationships</h1>
-<p>Remember conversations, keep notes about the people in your life and follow up when it matters.</p>
-<MarketingStartLink />
+                CanonicalPath="/" IncludeWebsiteStructuredData="true" />
+
+<section class="rl-marketing-hero">
+    <div>
+        <p class="rl-marketing-eyebrow">People, not pipelines</p>
+        <h1>A private notebook for your relationships</h1>
+        <p class="rl-marketing-lead">Remember the conversation. Keep the small details. Make room to reach out.</p>
+        <p>Relio keeps people, interactions, personal notes and follow-ups in one place, for your eyes rather than a public profile.</p>
+        <MarketingStartLink />
+        <p><a href="/features">Explore what Relio can do</a></p>
+    </div>
+    <figure class="rl-marketing-example">
+        <img src="/img/relationship-thread.png" width="960" height="680"
+             alt="Fictional example: Morgan's thread contains a conversation about a new garden, a note about a favourite book and a follow-up to ask how the garden is growing." />
+        <figcaption>A fictional relationship thread. An illustration, not a real account.</figcaption>
+    </figure>
+</section>
+
+<section class="rl-marketing-section" aria-labelledby="workflow-heading">
+    <h2 id="workflow-heading">A few words now, a helpful memory later</h2>
+    <ol class="rl-marketing-grid">
+        <li><h3>Add a person</h3><p>Keep contact details, a birthday and the little things you want to remember.</p></li>
+        <li><h3>Log an interaction</h3><p>After a walk or a call, write down what you talked about. Add a note for details worth keeping nearby.</p></li>
+        <li><h3>Keep a follow-up</h3><p>Set a reminder to ask how something went, or choose how often you would like to reach out.</p></li>
+    </ol>
+</section>
+
+<section class="rl-marketing-section" aria-labelledby="overview-heading">
+    <h2 id="overview-heading">One thread per person</h2>
+    <p>Profiles bring conversations and notes together in a dated timeline. Pin a useful note,
+        see upcoming birthdays and reminders, and use the dashboard to choose where to start.</p>
+    <p><strong>Planned:</strong> difficult moments and reflection. A future workflow will help you record
+        what happened, how it was resolved and what you learned. It is not available yet.</p>
+    <a href="/features">Read the feature overview</a>
+</section>
+
+<section class="rl-marketing-section" aria-labelledby="ownership-heading">
+    <h2 id="ownership-heading">Your notebook, your choices</h2>
+    <p>Relationship pages require sign-in and are scoped to your account. Relio does not load remote
+        fonts, advertising or marketing trackers. Full JSON export, contact-only vCard export and
+        password-confirmed account deletion are available in Settings.</p>
+    <p>Private narratives are encrypted in storage; names and indexed contact metadata are not.
+        The person running your instance is responsible for its hosting, backups and reviewed policies.</p>
+    <RelioPolicyLinks AriaLabel="Available trust information" />
+</section>
+
+<section class="rl-marketing-section" aria-labelledby="hosting-heading">
+    <h2 id="hosting-heading">Choose where your notebook lives</h2>
+    <div class="rl-marketing-grid">
+        <div><h3>Use this instance</h3><p>Sign in here, or create an account if registration is open.
+            Availability is set by the person running this instance.</p><MarketingStartLink /></div>
+        <div><h3>Run your own instance</h3><p>Relio's source is available under the AGPL.
+            Self-hosting needs SQL Server, protected storage keys and an operator to keep them backed up.</p>
+            <a href="/pricing#self-hosting">Read the hosting information</a></div>
+    </div>
+</section>
+
+<section class="rl-marketing-section rl-marketing-faq" aria-labelledby="faq-heading">
+    <h2 id="faq-heading">Before you begin</h2>
+    <details><summary>How do I start?</summary><p>Create an account where registration is open.
+        The optional first-run guide helps you check your time zone, add a person and log an interaction.
+        Invitation-only instances need a link from their administrator.</p></details>
+    <details><summary>Is this a shared address book?</summary><p>No. Each account has its own relationship
+        notebook. There are no public profiles, social feeds or shared user-content pages.</p></details>
+    <details><summary>Does Relio give relationship advice?</summary><p>No. You write your own words.
+        Relio does not offer AI advice or judge your relationships.</p></details>
+    <details><summary>Do reminders need email?</summary><p>The dashboard works without email.
+        Optional reminder emails require configured mail delivery and your notification preferences.</p></details>
+</section>

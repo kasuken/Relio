@@ -16,9 +16,22 @@
     <meta name="twitter:title" content="@FullTitle" />
     <meta name="twitter:description" content="@Description" />
     <meta name="twitter:image" content="@SocialPreviewUrl" />
+    @if (IncludeWebsiteStructuredData)
+    {
+        <script type="application/ld+json" nonce="@Relio.Web.Security.ContentSecurityPolicyNonce.Get(HttpContext)">
+            @((MarkupString)WebsiteStructuredData)
+        </script>
+    }
 </HeadContent>
 
 @code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    /// <summary>Gets or sets whether to emit factual website metadata, without commercial offers.</summary>
+    [Parameter]
+    public bool IncludeWebsiteStructuredData { get; set; }
+
     /// <summary>Gets or sets the page title, without the configured site name.</summary>
     [Parameter, EditorRequired]
     public string Title { get; set; } = string.Empty;
@@ -43,4 +56,14 @@
     private string CanonicalUrl => SeoOptions.Value.GetCanonicalUrl(CanonicalPath);
 
     private string SocialPreviewUrl => SeoOptions.Value.GetCanonicalUrl(SeoOptions.Value.SocialPreviewPath);
+
+    // System.Text.Json's default encoder escapes HTML delimiters, including closing script tags.
+    private string WebsiteStructuredData => System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["@context"] = "https://schema.org",
+        ["@type"] = "WebSite",
+        ["name"] = SeoOptions.Value.SiteName,
+        ["url"] = CanonicalUrl,
+        ["description"] = SeoOptions.Value.Description,
+    });
 }
