@@ -1,0 +1,86 @@
+@page "/features"
+@attribute [MarketingPage]
+@layout MarketingLayout
+
+<SeoHeadContent Title="Features"
+                Description="Explore Relio's people profiles, private interaction timeline, notes, reminders, dashboard and account controls. See what is available and what is planned."
+                CanonicalPath="/features" />
+
+<header>
+    <p class="rl-marketing-eyebrow">A relationship memory, in your words</p>
+    <h1>Keep the details that help you show up</h1>
+    <p class="rl-marketing-lead">A few useful workflows, without a sales pipeline or a social feed.</p>
+    <MarketingStartLink />
+</header>
+
+<section class="rl-marketing-section" aria-labelledby="people-heading">
+    <h2 id="people-heading">People and profiles</h2>
+    <p>Keep names, contact methods, relationship types, tags and birthdays together. Import contacts
+        from vCard or CSV, check possible duplicates and merge profiles. Archive a person without
+        losing their history, or delete their profile and its dependent records.</p>
+    <p>For example, remember how you met a friend and which address to use for a birthday card.</p>
+</section>
+
+<section class="rl-marketing-section" aria-labelledby="timeline-heading">
+    <h2 id="timeline-heading">Interactions and notes</h2>
+    <div class="rl-marketing-hero">
+        <div>
+            <p>Log a dated interaction after a call or a walk. An interaction can include more than
+                one person and appears on each participant's timeline. Edits apply to the same shared record.</p>
+            <p>Add private plain-text notes and pin one near the top of a profile.
+                Filter the timeline by entry type and load older entries a page at a time.</p>
+            <p>For example, keep the name of a book someone recommended, then pick up the conversation next time.</p>
+        </div>
+        <figure class="rl-marketing-example">
+            <img src="/img/relationship-thread.png" width="960" height="680" loading="lazy"
+                 alt="Fictional illustration of Morgan's conversation, a book note and a garden follow-up in one relationship thread." />
+            <figcaption>Fictional example. No real relationship data.</figcaption>
+        </figure>
+    </div>
+</section>
+
+<section class="rl-marketing-section" aria-labelledby="reminders-heading">
+    <h2 id="reminders-heading">Reach out and remember birthdays</h2>
+    <p>Set a one-off or recurring follow-up, snooze it or mark it complete.
+        Choose a stay-in-touch cadence for a person and birthday lead times that suit you.
+        Dates follow your saved time zone.</p>
+    <p>For example, set a reminder to ask how a new job is going. The dashboard works without email;
+        optional reminder emails need configured mail delivery and your notification preferences.</p>
+</section>
+
+<section class="rl-marketing-section" aria-labelledby="dashboard-heading">
+    <h2 id="dashboard-heading">A quiet place to start</h2>
+    <p>The dashboard shows upcoming reminders and birthdays, people to reach out to, recent
+        interactions and recently added people. Log an interaction from the dashboard or people list.
+        The optional first-run guide helps you check your time zone and add your first person.</p>
+    <p><strong>Planned:</strong> searching people by name and filtering by tag or relationship type.
+        The people list currently supports sorting, paging and including archived people.</p>
+</section>
+
+<section class="rl-marketing-section" aria-labelledby="reflection-heading">
+    <h2 id="reflection-heading">Difficult moments and reflection</h2>
+    <p><strong>Planned, not available yet.</strong> A future workflow will let you record what happened,
+        what set it off, how it was resolved and what you learned. Relio will not provide AI advice
+        or rate your relationships.</p>
+</section>
+
+<section class="rl-marketing-section" aria-labelledby="security-heading">
+    <h2 id="security-heading">Account security and ownership</h2>
+    <p>Use a local account and optionally turn on authenticator-app two-factor authentication.
+        Keep recovery codes somewhere safe. Private relationship pages require sign-in;
+        an administrator's role does not grant access to your notebook.</p>
+    <p>In <a href="/settings" data-enhance-nav="false">Settings</a>, export your full notebook as JSON
+        or export contacts as vCard. A full JSON backup can be restored into a fresh account.
+        Permanent account deletion requires your current password and explicit confirmation.
+        Backup retention and hosting remain the instance operator's responsibility.</p>
+    <p>Private narratives and stored authentication tokens are encrypted at rest.
+        Names, contact methods and indexed metadata remain readable in the database.
+        No third-party marketing scripts or remotely hosted assets are loaded.</p>
+    <RelioPolicyLinks AriaLabel="Available trust information" />
+</section>
+
+<section class="rl-marketing-section" aria-labelledby="start-heading">
+    <h2 id="start-heading">Start with one person</h2>
+    <p>Use this instance when registration is available, or <a href="/pricing">read about hosting your own</a>.</p>
+    <MarketingStartLink />
+</section>
