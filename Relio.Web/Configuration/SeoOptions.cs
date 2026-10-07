@@ -6,6 +6,18 @@ public sealed class SeoOptions
     /// <summary>The configuration section containing these options.</summary>
     public const string SectionName = "Seo";
 
+    /// <summary>Safe local metadata origin used until an operator supplies their deployment URL.</summary>
+    public const string DefaultPublicOrigin = "https://localhost";
+
+    /// <summary>Gets or sets the explicit production crawler opt-in. Off by default.</summary>
+    public bool IndexingEnabled { get; set; }
+
+    /// <summary>Gets or sets the factual default description for the site.</summary>
+    public string Description { get; set; } = "A private notebook for the people in your life.";
+
+    /// <summary>Gets or sets a local social preview image path.</summary>
+    public string SocialPreviewPath { get; set; } = "/img/og-preview.png";
+
     /// <summary>Gets or sets the public HTTPS origin used to build canonical URLs.</summary>
     public string? PublicOrigin { get; set; }
 
@@ -24,7 +36,6 @@ public sealed class SeoOptions
     /// <param name="applicationOwnedPath">A fixed, local application route beginning with one slash.</param>
     /// <returns>An absolute canonical URL based only on configured origin and the fixed route.</returns>
     /// <exception cref="ArgumentException">The path is not a safe local application route.</exception>
-    /// <exception cref="InvalidOperationException">No public origin is configured.</exception>
     public string GetCanonicalUrl(string applicationOwnedPath)
     {
         ArgumentNullException.ThrowIfNull(applicationOwnedPath);
@@ -40,26 +51,10 @@ public sealed class SeoOptions
             throw new ArgumentException("A canonical URL path must be a fixed local application route.", nameof(applicationOwnedPath));
         }
 
-        if (string.IsNullOrWhiteSpace(PublicOrigin))
-        {
-            throw new InvalidOperationException(
-                $"{SectionName}:PublicOrigin is required to build a public canonical URL.");
-        }
-
-        return new Uri(new Uri(PublicOrigin, UriKind.Absolute), applicationOwnedPath).AbsoluteUri;
+        return new Uri(new Uri(PublicOrigin ?? DefaultPublicOrigin, UriKind.Absolute), applicationOwnedPath).AbsoluteUri;
     }
 
     /// <summary>Builds the canonical URL for the application's sitemap endpoint.</summary>
     /// <returns>An absolute sitemap URL based only on the configured origin.</returns>
-    /// <exception cref="InvalidOperationException">No public origin is configured.</exception>
-    public string GetSitemapUrl()
-    {
-        if (string.IsNullOrWhiteSpace(PublicOrigin))
-        {
-            throw new InvalidOperationException(
-                $"{SectionName}:PublicOrigin is required to build a public sitemap URL.");
-        }
-
-        return new Uri(new Uri(PublicOrigin, UriKind.Absolute), "/sitemap.xml").AbsoluteUri;
-    }
+    public string GetSitemapUrl() => GetCanonicalUrl("/sitemap.xml");
 }

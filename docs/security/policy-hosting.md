@@ -82,12 +82,18 @@ startup. Configuration can also be provided through the platform's configuration
 environment variables, for example
 `HostedFeatures__Policies__Privacy__ContentFile` and `Seo__PublicOrigin`.
 
-When policy hosting is off, the routes answer anonymous 404 responses, policy links are omitted,
-and the sitemap is unavailable. The public origin is required only when at least one policy is
-enabled. Canonical and social URLs use that configured origin, never the incoming `Host` header.
-`robots.txt` only advertises enabled policy routes when indexing is explicitly enabled in
-Production; Development and indexing-disabled deployments do not advertise a sitemap.
+When policy hosting is off, policy routes answer anonymous 404 responses and policy links are
+omitted. The public origin is required when a policy or production indexing is enabled.
+Canonical and social URLs use that configured origin, never the incoming `Host` header.
+Without an override, public metadata uses `https://localhost` and indexing stays off.
+Set `Seo:PublicOrigin` to the deployment's HTTPS origin before publication, and explicitly set
+`Seo:IndexingEnabled=true` to allow crawling in Production. The older
+`HostedFeatures:Policies:IndexingEnabled` switch is retained as an equivalent site-wide opt-in
+when policy hosting is enabled. Neither switch allows crawling outside Production.
 
-The static marketing shell and shared metadata/crawler infrastructure here are only the portion
-needed to host reviewed policy documents. They do not implement the broader marketing journeys
-tracked by issues #86, #87 and #92, and do not change the protected `/` route.
+The sitemap explicitly lists `/`, `/features`, `/pricing`, `/changelog` and enabled policy
+routes only. No entries come from user data. Account, private, error, health and token-bearing
+routes are never listed; private/account/error responses carry `noindex, nofollow`.
+The protected workspace lives at `/dashboard`; public pages use static SSR. Site name,
+description and the local PNG social preview are configurable through `Seo:SiteName`,
+`Seo:Description` and `Seo:SocialPreviewPath` (a PNG under `/img/`).
