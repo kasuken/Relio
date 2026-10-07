@@ -32,7 +32,7 @@ public class AccountSettingsTests(RelioAppFixture fixture)
         }
 
         await Expect(page.Locator("[data-testid='settings-current-email']")).ToHaveTextAsync(email);
-        await Expect(page.Locator("[data-testid='settings-reminder-email-preferences']")).ToBeDisabledAsync();
+        await Expect(page.Locator("[data-testid='settings-reminder-email-preferences']")).ToBeEnabledAsync();
 
         await RelioAppFixture.ClosePageAsync(page);
     }

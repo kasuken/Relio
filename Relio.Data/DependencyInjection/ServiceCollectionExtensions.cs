@@ -98,6 +98,8 @@ public static class ServiceCollectionExtensions
         AddDataService<IRelationshipTypeService, RelationshipTypeService>(services);
         AddDataService<ITagService, TagService>(services);
         AddDataService<IReminderService, ReminderService>(services);
+        AddDataService<INotificationPreferencesService, NotificationPreferencesService>(services);
+        AddDataService<IUnsubscribeService, UnsubscribeService>(services);
         AddDataService<IUserTimeZoneService, UserTimeZoneService>(services);
         AddDataService<IUserProfileService, UserProfileService>(services);
         AddDataService<ITwoFactorStatusService, TwoFactorStatusService>(services);

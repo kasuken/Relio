@@ -1,0 +1,107 @@
+@page "/settings/reminders"
+@attribute [Authorize]
+@using Microsoft.Extensions.Options
+@using Relio.Application.Reminders
+@using Relio.Domain
+@using Relio.Web.Email
+
+@inject INotificationPreferencesService PreferencesService
+@inject IOptions<EmailOptions> EmailOptionsAccessor
+@inject ISnackbar Snackbar
+
+<PageTitle>Reminder preferences - Relio</PageTitle>
+
+<MudLink Href="/settings" Class="mb-4 d-inline-block" data-testid="settings-back">Settings</MudLink>
+
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-4">Reminder email preferences</MudText>
+
+@if (!EmailOptionsAccessor.Value.CanSendEmail)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-6" data-testid="settings-email-provider-alert">
+        Email delivery is not configured on this Relio instance. Reminders will appear on your dashboard only.
+    </MudAlert>
+}
+
+<MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-2">Email delivery</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-4">
+    Choose how you want to receive reminder emails.
+</MudText>
+
+<MudRadioGroup T="ReminderEmailDelivery" @bind-Value="_delivery" Class="mb-6" data-testid="settings-reminder-delivery-group">
+    <MudRadio Value="ReminderEmailDelivery.DailyDigest" Color="Color.Primary" data-testid="settings-delivery-digest">
+        Daily digest (one email summarising all reminders due for the day)
+    </MudRadio>
+    <MudRadio Value="ReminderEmailDelivery.Immediate" Color="Color.Primary" data-testid="settings-delivery-immediate">
+        Immediate (send an email as each reminder becomes due)
+    </MudRadio>
+    <MudRadio Value="ReminderEmailDelivery.None" Color="Color.Primary" data-testid="settings-delivery-none">
+        None (turn email off; reminders appear on your dashboard only)
+    </MudRadio>
+</MudRadioGroup>
+
+<MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-6 mb-2">Birthday reminders</MudText>
+<MudText Typo="Typo.body1" Class="mud-text-secondary mb-4">
+    Configure whether birthday reminders are enabled and their default lead time.
+</MudText>
+
+<div class="mb-4">
+    <MudSwitch T="bool"
+               @bind-Value="_birthdayRemindersEnabled"
+               Label="Birthday reminders enabled"
+               Color="Color.Primary"
+               data-testid="settings-birthday-reminders-toggle" />
+</div>
+
+<MudSelect T="int"
+           @bind-Value="_defaultBirthdayLeadDays"
+           Label="Default birthday lead time"
+           Disabled="@(!_birthdayRemindersEnabled)"
+           Variant="Variant.Outlined"
+           Class="rl-settings-field mb-6"
+           data-testid="settings-birthday-lead-days-select">
+    <MudSelectItem Value="0">On the day (0 days)</MudSelectItem>
+    <MudSelectItem Value="1">1 day before</MudSelectItem>
+    <MudSelectItem Value="3">3 days before</MudSelectItem>
+    <MudSelectItem Value="7">7 days before (1 week)</MudSelectItem>
+    <MudSelectItem Value="14">14 days before (2 weeks)</MudSelectItem>
+</MudSelect>
+
+<MudButton Variant="Variant.Filled"
+           Color="Color.Primary"
+           Disabled="_saving"
+           OnClick="SaveAsync"
+           data-testid="settings-reminders-save">
+    Save preferences
+</MudButton>
+
+@code {
+    private ReminderEmailDelivery _delivery = ReminderEmailDelivery.DailyDigest;
+    private bool _birthdayRemindersEnabled = true;
+    private int _defaultBirthdayLeadDays = 0;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var prefs = await PreferencesService.GetPreferencesAsync();
+        _delivery = prefs.Delivery;
+        _birthdayRemindersEnabled = prefs.BirthdayRemindersEnabled;
+        _defaultBirthdayLeadDays = prefs.DefaultBirthdayLeadDays;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        try
+        {
+            await PreferencesService.SetPreferencesAsync(new UpdateNotificationPreferencesRequest(
+                _delivery,
+                _birthdayRemindersEnabled,
+                _defaultBirthdayLeadDays));
+            Snackbar.Saved("Reminder preferences saved");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

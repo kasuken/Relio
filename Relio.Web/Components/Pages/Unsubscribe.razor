@@ -1,0 +1,52 @@
+@page "/unsubscribe"
+@attribute [AllowAnonymous]
+@layout MainLayout
+
+@using Relio.Application.Reminders
+
+@inject IUnsubscribeService UnsubscribeService
+
+<PageTitle>Unsubscribe - Relio</PageTitle>
+
+@if (!_processed)
+{
+    <MudProgressCircular Indeterminate="true" Class="my-4" />
+}
+else if (_success)
+{
+    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-4">Unsubscribed</MudText>
+    <MudAlert Severity="Severity.Success" Class="mb-6" data-testid="unsubscribe-success">
+        You have been unsubscribed from reminder emails. You will no longer receive reminder emails from Relio.
+    </MudAlert>
+    <MudLink Href="/" data-testid="unsubscribe-home-link">Go to Relio</MudLink>
+}
+else
+{
+    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-4">Unsubscribe</MudText>
+    <MudAlert Severity="Severity.Error" Class="mb-6" data-testid="unsubscribe-invalid">
+        The unsubscribe link is invalid or has expired.
+    </MudAlert>
+    <MudLink Href="/" data-testid="unsubscribe-home-link">Go to Relio</MudLink>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "token")]
+    public string? Token { get; set; }
+
+    private bool _processed;
+    private bool _success;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(Token))
+        {
+            _success = await UnsubscribeService.UnsubscribeAsync(Token);
+        }
+        else
+        {
+            _success = false;
+        }
+
+        _processed = true;
+    }
+}
