@@ -1117,6 +1117,135 @@ a {
     margin: var(--space-3) 0 0;
 }
 
+/* Importing people (issue #29). Hairline rows and plain text, like the people list: the preview is a
+   page of the notebook, not a table. Only theme tokens; a problem is muted text with an icon, never red. */
+.rl-page-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.rl-empty-alt {
+    text-align: center;
+    margin: var(--space-3) 0 0;
+}
+
+.rl-import-intro {
+    max-width: var(--measure);
+    margin: 0 0 var(--space-2);
+    color: var(--text-muted);
+}
+
+.rl-import-choose {
+    max-width: var(--measure);
+    margin-top: var(--space-4);
+}
+
+.rl-import-columns,
+.rl-import-list,
+.rl-import-problems {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.rl-import-columns {
+    margin-top: var(--space-3);
+}
+
+.rl-import-column {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 14rem;
+    gap: var(--space-3);
+    align-items: center;
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.rl-import-column-header,
+.rl-import-column-example {
+    overflow-wrap: anywhere;
+}
+
+.rl-import-column-header {
+    font-family: var(--font-sans);
+    font-weight: 600;
+}
+
+.rl-import-date-order {
+    max-width: 24rem;
+    margin-top: var(--space-4);
+}
+
+.rl-import-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
+    max-width: var(--measure);
+    margin: var(--space-2) 0 var(--space-3);
+}
+
+.rl-import-row {
+    max-width: var(--measure);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.rl-import-check {
+    min-height: 44px;
+}
+
+.rl-import-check .mud-typography {
+    font-family: var(--font-serif);
+    overflow-wrap: anywhere;
+}
+
+.rl-import-row .rl-meta,
+.rl-import-problems {
+    display: block;
+    padding-left: 2.75rem;
+    overflow-wrap: anywhere;
+}
+
+.rl-import-problems li {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-1);
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+}
+
+.rl-import-duplicate {
+    margin: var(--space-1) 0 0;
+}
+
+.rl-import-match {
+    display: inline-block;
+    margin-inline-end: var(--space-2);
+}
+
+@media (max-width: 599.98px) {
+    .rl-import-column {
+        grid-template-columns: 1fr;
+        gap: var(--space-1);
+    }
+
+    .rl-page-header-actions {
+        width: 100%;
+    }
+
+    .rl-page-header-actions .mud-button-root {
+        flex: 1 1 100%;
+        min-height: 44px;
+    }
+
+    .rl-import-choose .mud-button-root {
+        width: 100%;
+        min-height: 44px;
+    }
+}
+
 @media (max-width: 599.98px) {
     .rl-merge-heads,
     .rl-merge-options.mud-input-control-boolean-input .mud-radio-group {

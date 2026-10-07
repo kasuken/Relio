@@ -6,6 +6,23 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Import people from a vCard or CSV file (issue #29), completing epic #21. **Import** in the people list's
+  header (and "Or import people from a file" under the empty state) opens `/people/import`. Choose a vCard
+  (`.vcf`, versions 2.1, 3.0 and 4.0, as exported by iPhone, Android and Google Contacts) or a CSV file (Google
+  Contacts and Outlook exports are recognised, and any other file with a header row can be matched column by
+  column, with the field names, an example value and the date order you can change). Names, nickname,
+  birthdays (including birthdays without a year), notes and email, phone, address and social contact details
+  are imported; a vCard export from a phone brings its name, birthday and contact methods. **Nothing is imported
+  until you confirm a preview** of every person found: who has a problem (a missing name blocks the row; a
+  birthday that can't be read, a too-long note or an email address that doesn't look right is left out or kept
+  as other details, with a note), who may already be in your list or repeats an earlier row of the file
+  (those start unticked and link to the existing profile in a new tab), and what each would be created with.
+  Importing creates everyone you ticked in a single save, all or nothing, and opens the list sorted by
+  recently added. Files up to 1 MB and 2,000 people are read; the file is read in memory and is never stored
+  or logged, and nothing about it leaves the app. vCard and CSV are read by Relio's own code (no new package);
+  UTF-8, UTF-16 and Windows-1252 files and quoted-printable text are handled, and dates are read strictly (a
+  two-digit year or a month name is reported, not guessed). Tags and relationship types are not imported
+  (follow-up: import groups as tags). No migration.
 - Merge duplicate person profiles (issue #28), epic #21. A profile's **More** menu has **Merge with…**,
   and the possible-duplicate warning in edit mode has **Merge instead**; both open
   `/people/{id}/merge`, where the profile you came from is the one you **keep**. First you choose the other

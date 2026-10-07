@@ -22,6 +22,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="People\Import\Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Relio.Application\Relio.Application.csproj" />
     <ProjectReference Include="..\Relio.Data\Relio.Data.csproj" />
   </ItemGroup>

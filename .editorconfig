@@ -13,3 +13,12 @@ indent_size = 2
 
 [*.md]
 trim_trailing_whitespace = false
+
+# Import fixtures (issue #29) are test data whose exact bytes matter (CRLF, folds, UTF-16, Windows-1252).
+[Relio.Application.Tests/People/Import/Fixtures/**]
+charset = unset
+end_of_line = unset
+trim_trailing_whitespace = false
+insert_final_newline = false
+indent_style = unset
+indent_size = unset

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Relio.Application.Accounts;
 using Relio.Application.Administration;
 using Relio.Application.People;
+using Relio.Application.People.Import;
 using Relio.Data.Administration;
 using Relio.Data.Concurrency;
 using Relio.Data.Identity;
@@ -90,6 +91,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
 
         AddDataService<IPeopleService, PeopleService>(services);
+        AddDataService<IPeopleImportService, PeopleImportService>(services);
         AddDataService<IPersonMergeService, PersonMergeService>(services);
         AddDataService<IRelationshipTypeService, RelationshipTypeService>(services);
         AddDataService<ITagService, TagService>(services);

@@ -1,0 +1,176 @@
+@* The column matching step of a CSV import (issue #29): one row per column with an example value and
+   a choice of what to import it as. The suggestion (Google, Outlook or the common column names) is
+   already applied; the person only corrects it. Every change raises a new immutable mapping. Headers and
+   examples are the person's own data, rendered as text. Nothing here reads the clock or a service. *@
+@using Relio.Application.People.Import
+
+<div data-testid="import-map">
+    <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-2">@ImportText.MapHeading</MudText>
+    <p class="rl-meta" data-testid="import-preset">@ImportText.LooksLike(Suggestion.Preset)</p>
+
+    <ul class="rl-import-columns" data-testid="import-columns">
+        @foreach (var column in VisibleColumns)
+        {
+            var index = column.ColumnIndex;
+            <li class="rl-import-column" data-testid="import-column" @key="index">
+                <span class="rl-import-column-header" data-testid="import-column-header">@Table.Headers[index]</span>
+                <span class="rl-serif rl-meta rl-import-column-example" data-testid="import-column-example">@Example(index)</span>
+                <MudSelect T="CsvField"
+                           Value="column.Field"
+                           ValueChanged="@(field => ChangeFieldAsync(index, field))"
+                           Label="Import as"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           ToStringFunc="ImportText.FieldName">
+                    @foreach (var field in Fields)
+                    {
+                        <MudSelectItem T="CsvField" Value="field">@ImportText.FieldName(field)</MudSelectItem>
+                    }
+                </MudSelect>
+            </li>
+        }
+
+        @for (var blockIndex = 0; blockIndex < Mapping.AddressBlocks.Count; blockIndex++)
+        {
+            var position = blockIndex;
+            var block = Mapping.AddressBlocks[blockIndex];
+            <li class="rl-import-column" data-testid="import-address-block" @key="@($"block-{position}")">
+                <span class="rl-import-column-header">@ImportText.AddressBlockName(block.Label, block.ColumnIndexes.Count)</span>
+                <span class="rl-meta rl-import-column-example">@string.Join(", ", block.ColumnIndexes.Select(i => Table.Headers[i]))</span>
+                <MudSwitch T="bool"
+                           Value="block.Enabled"
+                           ValueChanged="@(enabled => ChangeBlockAsync(position, enabled))"
+                           Label="Import"
+                           Color="Color.Primary" />
+            </li>
+        }
+    </ul>
+
+    @if (Mapping.HasBirthday && DateOrderIsAmbiguous)
+    {
+        <div class="rl-import-date-order" data-testid="import-date-order">
+            <MudSelect T="DateOrder"
+                       Value="Mapping.DateOrder"
+                       ValueChanged="ChangeDateOrderAsync"
+                       Label="@ImportText.DatesWrittenAs"
+                       Variant="Variant.Outlined"
+                       Margin="Margin.Dense"
+                       ToStringFunc="ImportText.DateOrderName">
+                @foreach (var order in DateOrders)
+                {
+                    <MudSelectItem T="DateOrder" Value="order">@ImportText.DateOrderName(order)</MudSelectItem>
+                }
+            </MudSelect>
+            <p class="rl-meta">@ImportText.CheckBirthdays</p>
+        </div>
+    }
+
+    @if (!Mapping.HasName)
+    {
+        <p class="rl-meta" role="alert" data-testid="import-mapping-error">@ImportText.NameColumnNeeded</p>
+    }
+
+    <div class="rl-form-actions">
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   DropShadow="false"
+                   Disabled="!Mapping.HasName"
+                   OnClick="OnPreview"
+                   data-testid="import-preview">
+            Preview
+        </MudButton>
+        <MudButton Variant="Variant.Text"
+                   OnClick="OnChooseAnother"
+                   data-testid="import-choose-another">
+            Choose another file
+        </MudButton>
+    </div>
+</div>
+
+@code {
+    private static readonly CsvField[] Fields =
+        [.. Enum.GetValues<CsvField>().Where(field => field != CsvField.Label)];
+
+    private static readonly DateOrder[] DateOrders = Enum.GetValues<DateOrder>();
+
+    private const int ExampleLength = 40;
+
+    // Set once the person picks the date order themselves: from then on a changed column never overrides it.
+    private bool _dateOrderChosen;
+
+    /// <summary>The parsed file: headers and records, in memory only.</summary>
+    [Parameter, EditorRequired]
+    public CsvTable Table { get; set; } = default!;
+
+    /// <summary>What the headers looked like, and the mapping suggested for them.</summary>
+    [Parameter, EditorRequired]
+    public CsvMappingSuggestion Suggestion { get; set; } = default!;
+
+    /// <summary>The current mapping.</summary>
+    [Parameter, EditorRequired]
+    public CsvColumnMapping Mapping { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<CsvColumnMapping> MappingChanged { get; set; }
+
+    /// <summary>Raised when the person asks for the preview.</summary>
+    [Parameter]
+    public EventCallback OnPreview { get; set; }
+
+    /// <summary>Raised when the person wants to start again with another file.</summary>
+    [Parameter]
+    public EventCallback OnChooseAnother { get; set; }
+
+    // The columns the person decides about: not a label column (it follows its value column) and not
+    // part of an address block (the block is one switch).
+    private IEnumerable<CsvColumnAssignment> VisibleColumns
+    {
+        get
+        {
+            var inBlocks = Mapping.AddressBlocks.SelectMany(block => block.ColumnIndexes).ToHashSet();
+            return Mapping.Columns.Where(column => column.Field != CsvField.Label && !inBlocks.Contains(column.ColumnIndex));
+        }
+    }
+
+    private bool DateOrderIsAmbiguous =>
+        CsvMappingPresets.DetectDateOrder(Table, Mapping.BirthdayColumns).IsAmbiguous;
+
+    /// <summary>The first value in the column, cut short; it is what tells the person what the column holds.</summary>
+    private string Example(int columnIndex)
+    {
+        foreach (var record in Table.Records)
+        {
+            var cell = columnIndex < record.Cells.Count ? record.Cells[columnIndex].Trim() : string.Empty;
+            if (cell.Length > 0)
+            {
+                // A line break would make the example taller than the row; show the first line.
+                var firstLine = cell.Split('\n', 2)[0].Trim();
+                return firstLine.Length <= ExampleLength ? firstLine : firstLine[..(ExampleLength - 1)] + "…";
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private async Task ChangeFieldAsync(int columnIndex, CsvField field)
+    {
+        var next = Mapping.WithField(columnIndex, field);
+        if (!_dateOrderChosen)
+        {
+            // New birthday columns can prove an order the old ones did not.
+            var evidence = CsvMappingPresets.DetectDateOrder(Table, next.BirthdayColumns);
+            next = next.WithDateOrder(CsvMappingPresets.ChooseDateOrder(Suggestion.Preset, evidence));
+        }
+
+        await MappingChanged.InvokeAsync(next);
+    }
+
+    private Task ChangeBlockAsync(int blockIndex, bool enabled) =>
+        MappingChanged.InvokeAsync(Mapping.WithAddressBlock(blockIndex, enabled));
+
+    private Task ChangeDateOrderAsync(DateOrder order)
+    {
+        _dateOrderChosen = true;
+        return MappingChanged.InvokeAsync(Mapping.WithDateOrder(order));
+    }
+}
