@@ -203,6 +203,37 @@ ol.rl-marketing-grid {
     font-weight: 600;
 }
 
+.rl-release-notes {
+    max-width: var(--measure);
+    margin-block-start: var(--space-8);
+    overflow-wrap: anywhere;
+}
+
+.rl-release-notes h2,
+.rl-release-notes h3 {
+    margin-block-start: var(--space-8);
+}
+
+.rl-release-notes li {
+    margin-block-end: var(--space-4);
+}
+
+.rl-release-notes pre {
+    max-width: 100%;
+    overflow-x: auto;
+    padding: var(--space-4);
+    background: var(--surface-sunken);
+}
+
+.rl-release-notes img {
+    max-width: 100%;
+    height: auto;
+}
+
+.rl-policy-document {
+    max-width: var(--measure);
+}
+
 .rl-marketing-shell > footer {
     width: min(var(--content-max), calc(100% - var(--space-8)));
     margin-inline: auto;

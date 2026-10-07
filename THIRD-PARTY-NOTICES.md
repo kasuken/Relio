@@ -11,6 +11,7 @@ The .NET runtime and ASP.NET Core are © .NET Foundation and Contributors, licen
 | [MudBlazor](https://mudblazor.com/) | 9.11.0 | MIT |
 | [Microsoft.EntityFrameworkCore.SqlServer](https://docs.microsoft.com/ef/core/) | 10.0.12 | MIT |
 | [Net.Codecrete.QrCodeGenerator](https://github.com/manuelbl/QrCodeGenerator) | 3.2.1 | MIT |
+| [Markdig](https://github.com/xoofx/markdig) | 1.4.0 | BSD-2-Clause |
 
 ## Fonts
 

@@ -6,6 +6,17 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Public marketing pages (epic #85): a static anonymous landing page, verified feature overview,
+  hosting information without unimplemented paid offers, and locally embedded release notes.
+  The authenticated workspace now starts at `/dashboard`; default sign-in and account
+  continuations use that route while explicit safe local return URLs remain unchanged.
+  Public metadata uses a validated configured origin, never a request Host header. A local social
+  preview and a fictional relationship illustration use Relio's tokens and self-hosted fonts.
+  Indexing remains off by default; production opt-in lists only fixed public and enabled reviewed
+  policy routes. Changelog Markdown disables raw HTML, validates links and permits local raster
+  images only. Difficult moments, search/filtering and hosted billing are explicitly not
+  advertised as delivered.
+
 - Privacy, trust and data ownership (epic #54; issues #55-#62). Purpose-separated authenticated
   encryption protects private narratives, reminder titles and Identity/unsubscribe credentials,
   backed by mandatory durable external protected keys and restartable legacy-data backfill.

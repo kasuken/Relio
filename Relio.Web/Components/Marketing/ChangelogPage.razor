@@ -1,0 +1,27 @@
+@page "/changelog"
+@attribute [MarketingPage]
+@layout MarketingLayout
+@inject Relio.Web.Marketing.ReleaseNotes ReleaseNotes
+
+<SeoHeadContent Title="Changelog"
+                Description="Read Relio's repository release notes, including delivered changes in the unreleased build. The published page uses locally embedded release notes."
+                CanonicalPath="/changelog" />
+
+<header>
+    <p class="rl-marketing-eyebrow">What changed</p>
+    <h1>Changelog</h1>
+    <p>These are the release notes embedded when this instance was built. Unreleased means changes
+        delivered to the source but not yet assigned a release version; it is not a list of future promises.</p>
+</header>
+
+@if (ReleaseNotes.Html is { } html)
+{
+    <article class="rl-release-notes" aria-label="Repository release notes">
+        @((MarkupString)html)
+    </article>
+}
+else
+{
+    <p role="status">Release notes aren't available in this build. You can read the
+        <a href="https://github.com/kasuken/Relio/blob/main/CHANGELOG.md">repository changelog</a>.</p>
+}

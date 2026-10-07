@@ -41,6 +41,7 @@ public static class MarketingServiceCollectionExtensions
             .ValidateOnStart();
 
         services.AddSingleton<HostedPolicyDocumentProvider>();
+        services.AddSingleton<Relio.Web.Marketing.ReleaseNotes>();
         services.AddSingleton<IHostedPolicyDocumentProvider>(
             serviceProvider => serviceProvider.GetRequiredService<HostedPolicyDocumentProvider>());
         services.AddHostedService<HostedPolicyDocumentProvider>(

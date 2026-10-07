@@ -41,3 +41,18 @@ There is no payment integration, commercial offer schema or second entitlement m
 paid offers requires #67's actual service contract and approved commercial values, not a marketing
 configuration override. Self-hosting links point to the existing setup and protected-key
 documentation; the dedicated deployment guide remains #65's planned work.
+
+## Changelog publication
+
+Root `CHANGELOG.md` is embedded as `Relio.ReleaseNotes.md` by `Relio.Web.csproj`.
+Rebuild and redeploy to publish an update; editing a file beside a running published app
+does not change the page. No GitHub requests or repository files are needed at runtime.
+Keep delivered-but-not-released changes under `Unreleased` and use actual version/date headings
+when a release is made. Do not add personal data, credentials or internal operational details.
+
+The restricted Markdig renderer disables raw HTML. Links accept HTTP(S), local paths or anchors
+without credentials, control characters or backslashes; relative repository-file links should
+be written as explicit HTTPS links. Images must be PNG/WebP under `/img/`, without traversal,
+encoded paths, query strings or fragments. Unsafe links/images become readable text with an
+omission notice. The page owns its h1; repository release headings start at h2. A missing resource
+logs a warning and renders a calm message instead of exposing a stack trace.
