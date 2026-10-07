@@ -10,7 +10,7 @@
 @inject ITwoFactorStatusService TwoFactorStatusService
 
 <MudText Typo="Typo.body2" Class="mud-text-secondary">Email</MudText>
-<MudText Typo="Typo.body1" Class="mb-3" data-testid="settings-current-email">@_email</MudText>
+<MudText Typo="Typo.body1" Class="mb-3 rl-wrap-anywhere" data-testid="settings-current-email">@_email</MudText>
 
 <MudText Typo="Typo.body2" Class="mud-text-secondary">Two-factor authentication</MudText>
 <MudText Typo="Typo.body1" Class="mb-3" data-testid="settings-2fa-state">@(_twoFactor.IsEnabled ? "On" : "Off")</MudText>

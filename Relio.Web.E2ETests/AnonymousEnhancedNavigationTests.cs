@@ -39,10 +39,8 @@ public class AnonymousEnhancedNavigationTests(RelioAppFixture fixture)
         await page.Locator("[data-testid='register-password']").FillAsync(StrongPassword);
         await page.Locator("[data-testid='register-confirm-password']").FillAsync(StrongPassword);
         await page.Locator("[data-testid='register-submit']").ClickAsync();
-        await page.Locator("[data-testid='register-confirmation-heading']").WaitForAsync();
-
-        // The confirmation page's "continue" button is an enhanced navigation to an interactive page.
-        await page.Locator("[data-testid='register-confirmation-continue']").ClickAsync();
+        // Successful registration writes the cookie and full-loads the interactive first-run guide.
+        await page.Locator("[data-testid='onboarding-page']").WaitForAsync();
         await page.Locator("html[data-app-ready='true']").WaitForAsync();
         await Expect(page.Locator("[data-testid='signed-in-as']")).ToHaveTextAsync(email);
 

@@ -21,25 +21,18 @@ public class RegistrationTests(RelioAppFixture fixture)
     private const string ValidPassword = "Str0ng-Passw0rd!";
 
     [Fact]
-    public async Task Registering_with_valid_data_shows_confirmation_and_lands_in_the_app()
+    public async Task Registering_with_valid_data_starts_the_guide_and_lands_in_the_app()
     {
         var page = await fixture.NewPageAsync();
         var email = NewEmail("register");
 
         await RegisterAsync(page, email, ValidPassword);
 
-        await Expect(page).ToHaveURLAsync(new Regex("/Account/RegisterConfirmation$"));
-        await Expect(page.Locator("[data-testid='register-confirmation-heading']"))
-            .ToHaveTextAsync("Your account is ready");
-        await Expect(page.Locator("[data-testid='register-confirmation-continue']")).ToBeVisibleAsync();
-
-        // A plain Goto rather than clicking the link: Blazor's enhanced navigation intercepts
-        // anchor clicks (every page loads _framework/blazor.web.js, whether or not the routed
-        // component itself is interactive), which races Playwright's own actionability/stability
-        // checks on this static SSR page. The link's href ("/") is asserted above; following it
-        // directly still proves the same thing - landing in the app, signed in as the new user.
-        await page.GotoAsync("/");
+        await Expect(page).ToHaveURLAsync(new Regex("/onboarding$"));
         await page.Locator("html[data-app-ready='true']").WaitForAsync();
+        await Expect(page.GetByRole(Microsoft.Playwright.AriaRole.Heading,
+            new() { Name = "Get started", Exact = true })).ToBeVisibleAsync();
+        await page.GetByTestId("onboarding-skip").ClickAsync();
 
         await Expect(page).ToHaveURLAsync(new Regex("/$"));
         await Expect(page.Locator("[data-testid='signed-in-as']")).ToHaveTextAsync(email);
@@ -67,7 +60,7 @@ public class RegistrationTests(RelioAppFixture fixture)
 
         var firstPage = await fixture.NewPageAsync();
         await RegisterAsync(firstPage, email, ValidPassword);
-        await Expect(firstPage).ToHaveURLAsync(new Regex("/Account/RegisterConfirmation$"));
+        await Expect(firstPage).ToHaveURLAsync(new Regex("/onboarding$"));
         await RelioAppFixture.ClosePageAsync(firstPage);
 
         // A separate browser context (own cookies), not a sign-out on the same page: the first
@@ -90,7 +83,7 @@ public class RegistrationTests(RelioAppFixture fixture)
         var email = NewEmail("timezone");
 
         await RegisterAsync(page, email, ValidPassword);
-        await Expect(page).ToHaveURLAsync(new Regex("/Account/RegisterConfirmation$"));
+        await Expect(page).ToHaveURLAsync(new Regex("/onboarding$"));
 
         using var scope = fixture.App.CreateRealScope();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<RelioUser>>();

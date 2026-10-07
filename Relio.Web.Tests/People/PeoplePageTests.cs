@@ -93,7 +93,8 @@ public class PeoplePageTests
         import.GetAttribute("href").Should().Be("/people/import");
         import.TextContent.Trim().Should().Be("Import");
         cut.Find("[data-testid='people-add']").GetAttribute("href").Should().Be("/people/new");
-        cut.Find(".rl-page-header-actions").Children.Should().HaveCount(2);
+        cut.Find("[data-testid='people-log-interaction']").GetAttribute("href").Should().Be("/interactions/new");
+        cut.Find(".rl-page-header-actions").Children.Should().HaveCount(3);
     }
 
     [Fact]

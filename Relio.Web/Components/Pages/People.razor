@@ -23,6 +23,9 @@
             <p class="rl-empty-alt">
                 <MudLink Href="/people/import" data-testid="people-empty-import">Or import people from a file</MudLink>
             </p>
+            <p class="rl-empty-alt">
+                <MudLink Href="/interactions/new" data-testid="people-empty-log-interaction">Log an interaction</MudLink>
+            </p>
         </div>
     }
     else
@@ -30,6 +33,12 @@
         <div class="rl-page-header">
             <MudText Typo="Typo.h2" HtmlTag="h1">People</MudText>
             <div class="rl-page-header-actions">
+                <MudButton Variant="Variant.Outlined"
+                           Href="/interactions/new"
+                           StartIcon="@Icons.Material.Outlined.Forum"
+                           data-testid="people-log-interaction">
+                    Log an interaction
+                </MudButton>
                 <MudButton Variant="Variant.Outlined"
                            Href="/people/import"
                            StartIcon="@Icons.Material.Outlined.UploadFile"

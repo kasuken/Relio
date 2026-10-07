@@ -705,6 +705,11 @@ namespace Relio.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<bool>("OnboardingDismissed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("OwnerId")
                         .IsRequired()
                         .HasMaxLength(450)
@@ -854,11 +859,6 @@ namespace Relio.Data.Migrations
                     b.Navigation("RelationshipType");
                 });
 
-            modelBuilder.Entity("Relio.Domain.Interaction", b =>
-                {
-                    b.Navigation("Participants");
-                });
-
             modelBuilder.Entity("Relio.Domain.Reminder", b =>
                 {
                     b.HasOne("Relio.Domain.Person", "Person")
@@ -866,7 +866,13 @@ namespace Relio.Data.Migrations
                         .HasForeignKey("PersonId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
                     b.Navigation("Person");
+                });
+
+            modelBuilder.Entity("Relio.Domain.Interaction", b =>
+                {
+                    b.Navigation("Participants");
                 });
 
             modelBuilder.Entity("Relio.Domain.Person", b =>

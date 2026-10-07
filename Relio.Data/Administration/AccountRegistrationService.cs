@@ -182,7 +182,12 @@ public sealed class AccountRegistrationService(
         var timeZoneId = TimeZoneIds.TryParse(request.TimeZoneId, out var parsedTimeZone)
             ? parsedTimeZone.Id
             : TimeZoneIds.Default;
-        dbContext.UserProfiles.Add(new UserProfile { OwnerId = user.Id, TimeZoneId = timeZoneId });
+        dbContext.UserProfiles.Add(new UserProfile
+        {
+            OwnerId = user.Id,
+            TimeZoneId = timeZoneId,
+            OnboardingDismissed = false,
+        });
         dbContext.RelationshipTypes.AddRange(RelationshipType.CreateDefaults(user.Id));
         await dbContext.SaveChangesAsync(cancellationToken);
 

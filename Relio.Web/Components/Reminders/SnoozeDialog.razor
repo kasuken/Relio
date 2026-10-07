@@ -9,7 +9,7 @@
         <MudText Typo="Typo.h3">Snooze reminder</MudText>
     </TitleContent>
     <DialogContent>
-        <div class="d-flex flex-column gap-3" style="min-width: 280px;">
+        <div class="rl-reminder-dialog-fields d-flex flex-column gap-3">
             <MudText Typo="Typo.body2" Class="mud-text-secondary">
                 Choose when you want to be reminded again:
             </MudText>
@@ -62,7 +62,7 @@
     protected override async Task OnInitializedAsync()
     {
         _today = await UserTimeZone.GetTodayAsync();
-        _customDate = DateTime.Today.AddDays(1);
+        _customDate = _today.AddDays(1).ToDateTime(TimeOnly.MinValue);
     }
 
     private async Task SnoozeRelative(int days)

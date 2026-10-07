@@ -30,7 +30,8 @@ public static class AccountTestHelpers
     public static string NewEmail(string prefix) => $"{prefix}-{Guid.NewGuid():N}@example.com";
 
     /// <summary>
-    /// Fills in and submits the real Register page and waits for its confirmation page. With
+    /// Fills in and submits the real Register page and waits for its next page: the onboarding
+    /// guide when confirmation is not required, or the confirmation page when it is. With
     /// <c>Email:Provider=None</c> (the shared fixture's default) this also signs the new user in.
     /// </summary>
     public static async Task RegisterAsync(IPage page, string email, string password)
@@ -40,7 +41,8 @@ public static class AccountTestHelpers
         await page.Locator("[data-testid='register-password']").FillAsync(password);
         await page.Locator("[data-testid='register-confirm-password']").FillAsync(password);
         await page.Locator("[data-testid='register-submit']").ClickAsync();
-        await page.Locator("[data-testid='register-confirmation-heading']").WaitForAsync();
+        await page.Locator(
+            "[data-testid='onboarding-page'], [data-testid='register-confirmation-heading']").WaitForAsync();
     }
 
     /// <summary>

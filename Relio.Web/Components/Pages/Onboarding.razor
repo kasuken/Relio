@@ -1,0 +1,388 @@
+@page "/onboarding"
+@attribute [Authorize]
+
+@using Microsoft.AspNetCore.Authorization
+@using Relio.Application.Onboarding
+@using Relio.Application.People
+@using Relio.Application.Time
+@using Relio.Domain
+@using Relio.Web.Components.People
+@using Relio.Web.Time
+
+@inject IOnboardingService OnboardingService
+@inject IPeopleService PeopleService
+@inject IUserTimeZoneService TimeZoneService
+@inject IBrowserTimeZoneReader BrowserTimeZoneReader
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject ILogger<Onboarding> Logger
+
+<PageTitle>Get started - Relio</PageTitle>
+
+<section class="rl-onboarding" data-testid="onboarding-page">
+    <div class="rl-onboarding-header">
+        <MudText Typo="Typo.h2" HtmlTag="h1">Get started</MudText>
+        @if (_isPending)
+        {
+            <MudButton Variant="Variant.Text"
+                       Disabled="@(_busy || _savingTimeZone)"
+                       OnClick="SkipAsync"
+                       data-testid="onboarding-skip">
+                Skip for now
+            </MudButton>
+        }
+    </div>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-4" />
+    }
+    else if (_loadFailed)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" data-testid="onboarding-load-error">
+            The guide couldn't be loaded. Try again.
+            <MudButton Variant="Variant.Text" OnClick="LoadAsync" data-testid="onboarding-retry">
+                Try again
+            </MudButton>
+        </MudAlert>
+    }
+    else if (_redirectAfterRender)
+    {
+        <MudText Typo="Typo.body1" Class="mud-text-secondary" data-testid="onboarding-already-dismissed">
+            This guide is already complete. Returning to your notebook…
+        </MudText>
+    }
+    else if (_isPending)
+    {
+        <MudText Typo="Typo.body1" Class="rl-onboarding-intro">
+            Relio is a private notebook about the people in your life. What you record is visible only in your
+            account. Relio doesn't include third-party analytics or tracking. Take a minute to set up the basics;
+            you can skip any time.
+        </MudText>
+
+        <div class="rl-onboarding-progress">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary" data-testid="onboarding-progress">
+                Step @_currentStep of 3
+            </MudText>
+            <MudProgressLinear Value="@_progress" Color="Color.Primary" />
+        </div>
+
+        @if (!_timeZoneSaved)
+        {
+            <section class="rl-onboarding-step" data-testid="onboarding-timezone-step">
+                <MudText Typo="Typo.h3" HtmlTag="h2">Set your time zone</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    Relio uses it for calendar dates, like birthdays and the dates you record. You can change it
+                    later in Settings.
+                </MudText>
+
+                <MudAutocomplete T="string"
+                                 @bind-Value="_selectedTimeZoneId"
+                                 Label="Time zone"
+                                 HelperText="Choose the time zone you use day to day."
+                                 SearchFunc="SearchTimeZonesAsync"
+                                 CoerceValue="true"
+                                 ResetValueOnEmptyText="false"
+                                 MaxItems="50"
+                                 Error="@(_timeZoneError is not null)"
+                                 ErrorText="@_timeZoneError"
+                                 Variant="Variant.Outlined"
+                                 Class="rl-onboarding-timezone"
+                                 data-testid="onboarding-timezone" />
+
+                @if (HasBrowserSuggestion)
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined"
+                              Class="rl-onboarding-suggestion"
+                              data-testid="onboarding-timezone-browser-suggestion">
+                        Your browser is set to @_browserTimeZoneId.
+                        <MudButton Variant="Variant.Text"
+                                   Size="Size.Small"
+                                   OnClick="UseBrowserTimeZone"
+                                   data-testid="onboarding-timezone-use-browser">
+                            Use this time zone
+                        </MudButton>
+                    </MudAlert>
+                }
+
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="_savingTimeZone"
+                           OnClick="SaveTimeZoneAsync"
+                           data-testid="onboarding-timezone-save">
+                    Save and continue
+                </MudButton>
+            </section>
+        }
+        else if (_personId is null)
+        {
+            <section class="rl-onboarding-step" data-testid="onboarding-person-step">
+                <MudText Typo="Typo.h3" HtmlTag="h2">Add your first person</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+                    A first name is all Relio needs. You can add more details whenever you like.
+                </MudText>
+                <PersonForm OnSaved="PersonSavedAsync" />
+            </section>
+        }
+        else
+        {
+            <section class="rl-onboarding-step" data-testid="onboarding-interaction-step">
+                <MudText Typo="Typo.h3" HtmlTag="h2">Log your first interaction</MudText>
+                @if (_interactionSaved)
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined"
+                              data-testid="onboarding-interaction-saved">
+                        Your interaction was saved. Finish setup to return to your notebook.
+                    </MudAlert>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Disabled="_busy"
+                               OnClick="FinishAsync"
+                               data-testid="onboarding-finish">
+                        Finish setup
+                    </MudButton>
+                }
+                else if (_editingInteraction)
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+                        A sentence is enough. You can add a note instead later if you prefer.
+                    </MudText>
+                    <InteractionEditor PersonId="@_personId.Value"
+                                       Saved="InteractionSavedAsync"
+                                       Cancelled="CancelInteraction" />
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+                        Your person is ready. You can log an interaction now, or come back to it later.
+                    </MudText>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               OnClick="() => _editingInteraction = true"
+                               data-testid="onboarding-log-interaction">
+                        Log an interaction
+                    </MudButton>
+                }
+            </section>
+        }
+
+        @if (_dismissError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="rl-onboarding-error"
+                      data-testid="onboarding-dismiss-error">
+                @_dismissError
+            </MudAlert>
+        }
+
+    }
+</section>
+
+@code {
+    private string? _selectedTimeZoneId;
+    private string? _storedTimeZoneId;
+    private string? _browserTimeZoneId;
+    private string? _timeZoneError;
+    private string? _dismissError;
+    private Guid? _personId;
+    private bool _loading = true;
+    private bool _loadFailed;
+    private bool _redirectAfterRender;
+    private bool _isPending;
+    private bool _timeZoneSaved;
+    private bool _savingTimeZone;
+    private bool _editingInteraction = true;
+    private bool _interactionSaved;
+    private bool _busy;
+
+    private bool HasBrowserSuggestion =>
+        _browserTimeZoneId is not null
+        && !string.Equals(_browserTimeZoneId, _storedTimeZoneId, StringComparison.OrdinalIgnoreCase);
+
+    private int _currentStep => !_timeZoneSaved ? 1 : _personId is null ? 2 : 3;
+
+    private float _progress => _currentStep / 3f * 100f;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_redirectAfterRender)
+        {
+            _redirectAfterRender = false;
+            Navigation.NavigateTo("/", replace: true);
+            return;
+        }
+
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var browserZone = await BrowserTimeZoneReader.GetBrowserTimeZoneIdAsync();
+            if (TimeZoneIds.TryParse(browserZone, out _))
+            {
+                _browserTimeZoneId = browserZone;
+                StateHasChanged();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // The circuit ended before the browser replied; choosing a zone manually still works.
+        }
+        catch (JSException)
+        {
+            // Browser-zone suggestions are optional.
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadFailed = false;
+        _redirectAfterRender = false;
+
+        try
+        {
+            var state = await OnboardingService.GetStateAsync();
+            if (!state.IsPending)
+            {
+                _isPending = false;
+                _redirectAfterRender = true;
+                return;
+            }
+
+            _isPending = true;
+            _storedTimeZoneId = (await TimeZoneService.GetTimeZoneAsync()).Id;
+            _selectedTimeZoneId = _storedTimeZoneId;
+
+            var people = await PeopleService.ListPageAsync(new PeopleListQuery { PageSize = 1 });
+            _personId = people.ActiveCount == 0 ? null : people.People.Items.FirstOrDefault()?.Id;
+        }
+        catch (Exception exception)
+        {
+            _isPending = false;
+            _loadFailed = true;
+            Logger.LogError(
+                "Could not load first-run onboarding state. Error type: {ExceptionType}",
+                exception.GetType().Name);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private Task<IEnumerable<string>> SearchTimeZonesAsync(string? value, CancellationToken cancellationToken)
+    {
+        IEnumerable<string> ids = TimeZoneIds.GetAvailableIds();
+        ids = ids
+            .Concat(new[] { _storedTimeZoneId, _browserTimeZoneId }.OfType<string>())
+            .Distinct(StringComparer.Ordinal);
+
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            var needle = value.Trim().Replace(' ', '_');
+            ids = ids.Where(id => id.Contains(needle, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return Task.FromResult<IEnumerable<string>>(ids.Order(StringComparer.Ordinal).ToList());
+    }
+
+    private void UseBrowserTimeZone() => _selectedTimeZoneId = _browserTimeZoneId;
+
+    private async Task SaveTimeZoneAsync()
+    {
+        if (_busy || _savingTimeZone)
+        {
+            return;
+        }
+
+        _savingTimeZone = true;
+        _timeZoneError = null;
+
+        try
+        {
+            // Onboarding is the explicit sign-up continuation: browser detection only suggests a value,
+            // and the user has to choose Save and continue before this allowed time-zone write.
+            await TimeZoneService.SetTimeZoneAsync(_selectedTimeZoneId ?? string.Empty);
+            _storedTimeZoneId = TimeZoneIds.Parse(_selectedTimeZoneId!).Id;
+            _selectedTimeZoneId = _storedTimeZoneId;
+            _timeZoneSaved = true;
+            Snackbar.Saved("Time zone saved");
+        }
+        catch (InvalidTimeZoneIdException)
+        {
+            _timeZoneError = "Choose a time zone from the list, for example Europe/Rome.";
+        }
+        catch (Exception exception)
+        {
+            _timeZoneError = "The time zone couldn't be saved. Try again.";
+            Logger.LogError(
+                "Could not save the current user's onboarding time zone. Error type: {ExceptionType}",
+                exception.GetType().Name);
+        }
+        finally
+        {
+            _savingTimeZone = false;
+        }
+    }
+
+    private Task PersonSavedAsync(Guid personId)
+    {
+        _personId = personId;
+        _editingInteraction = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task InteractionSavedAsync()
+    {
+        _interactionSaved = true;
+        await DismissAndReturnAsync("The interaction was saved, but setup couldn't be finished. Try again.");
+    }
+
+    private Task CancelInteraction()
+    {
+        _editingInteraction = false;
+        return Task.CompletedTask;
+    }
+
+    private Task SkipAsync() =>
+        DismissAndReturnAsync("Setup couldn't be skipped. Try again.", showWelcomeMessage: true);
+
+    private Task FinishAsync() =>
+        DismissAndReturnAsync("Setup couldn't be finished. Try again.", showWelcomeMessage: false);
+
+    private async Task DismissAndReturnAsync(string failureMessage, bool showWelcomeMessage = false)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _dismissError = null;
+
+        try
+        {
+            await OnboardingService.DismissAsync();
+            _isPending = false;
+            Snackbar.Add(
+                showWelcomeMessage ? "You can add your first person from the dashboard." : "You're all set.",
+                Severity.Success);
+            Navigation.NavigateTo("/", replace: true);
+        }
+        catch (Exception exception)
+        {
+            _dismissError = failureMessage;
+            Logger.LogError(
+                "Could not dismiss first-run onboarding. Error type: {ExceptionType}",
+                exception.GetType().Name);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

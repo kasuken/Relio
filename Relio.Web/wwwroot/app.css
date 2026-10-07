@@ -107,7 +107,21 @@
     color: var(--text);
 }
 
+.rl-app main,
+.rl-page {
+    min-width: 0;
+}
+
 :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+
+a:focus-visible,
+.mud-button-root:focus-visible,
+.mud-link-root:focus-visible,
+.mud-input-slot:focus-visible,
+[role="combobox"]:focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: 2px;
 }
@@ -132,11 +146,73 @@ a {
     max-width: var(--content-max);
 }
 
+.rl-wrap-anywhere {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.rl-skip-link {
+    position: fixed;
+    inset-block-start: var(--space-3);
+    inset-inline-start: var(--space-3);
+    z-index: 2000;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.rl-skip-link:not(:focus-visible) {
+    transform: translateY(calc(-100% - var(--space-3)));
+}
+
+.rl-skip-link:focus-visible {
+    outline-offset: 2px;
+}
+
 .rl-signout-form {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     margin: 0;
+    min-width: 0;
+}
+
+.rl-signout-form [data-testid="signed-in-as"] {
+    display: block;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: clamp(5rem, 18vw, 12rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* MudLink renders these anchors in a child component, outside Home's CSS-isolation scope. */
+.dashboard-view-all {
+    flex: 0 0 auto;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.dashboard-person-link {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--link);
+    font-family: var(--font-serif);
+    font-size: 1.125rem;
+    line-height: 1.4;
+    text-decoration: none;
+}
+
+.dashboard-person-link:hover,
+.dashboard-view-all:hover {
+    text-decoration: underline;
 }
 
 /* Plain HTML form fields for the account pages (Register, Login - see
@@ -340,6 +416,7 @@ a {
 .rl-entry-text {
     margin: var(--space-1) 0 0;
     color: var(--text);
+    overflow-wrap: anywhere;
 }
 
 .rl-entry-reflect {
@@ -347,6 +424,7 @@ a {
     padding: var(--space-3) var(--space-4);
     background: var(--plum-soft);
     border-radius: var(--radius-md);
+    overflow-wrap: anywhere;
 }
 
 .rl-entry-reflect-label {
@@ -519,6 +597,73 @@ a {
     color: var(--warning);
 }
 
+.rl-reminder-dialog-fields {
+    width: 100%;
+    min-width: 0;
+}
+
+.rl-reminder-card {
+    min-width: 0;
+}
+
+.rl-reminder-card-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-width: 0;
+}
+
+.rl-reminder-card-main {
+    display: flex;
+    flex: 1 1 14rem;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+}
+
+.rl-reminder-card-copy {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.rl-reminder-card-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-1);
+}
+
+.rl-person-reminder-card,
+.rl-person-reminder-content {
+    min-width: 0;
+}
+
+.rl-person-reminder-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+}
+
+.rl-person-reminder-main {
+    display: flex;
+    flex: 1 1 14rem;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.rl-person-reminder-copy {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 /* Empty state: the three thread markers stand in for an illustration. */
 .rl-empty {
     display: flex;
@@ -574,6 +719,7 @@ a {
     *, *::before, *::after {
         transition-duration: 0.01ms !important;
         animation-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
     }
 }
 
@@ -583,9 +729,19 @@ a {
 }
 
 /* An invitation link is shown once as plain text; long tokens must wrap instead of widening the page. */
+.rl-invite-alert .mud-alert-message {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .rl-invite-link {
+    box-sizing: border-box;
     display: block;
-    word-break: break-all;
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
     font-family: var(--font-sans);
     font-size: 0.875rem;
     color: var(--text);
@@ -609,6 +765,18 @@ a {
     gap: var(--space-2);
     padding: var(--space-3) 0;
     border-bottom: 1px solid var(--line);
+}
+
+.rl-admin-list > li > span:first-child {
+    flex: 1 1 12rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.rl-settings-field {
+    width: 100%;
+    max-width: var(--measure);
+    min-width: 0;
 }
 
 /* Two-factor authentication (issue #20). The QR code is an inline SVG drawn from two classes, so its
@@ -669,6 +837,36 @@ a {
 
 .rl-steps > li {
     margin-bottom: var(--space-4);
+}
+
+@media (max-width: 599.98px) {
+    .rl-reminder-card-content {
+        align-items: flex-start;
+    }
+
+    .rl-reminder-card-main,
+    .rl-person-reminder-main {
+        flex-basis: 100%;
+    }
+
+    .rl-reminder-card-actions {
+        flex: 1 1 100%;
+    }
+
+    .rl-reminder-card-actions .mud-icon-button,
+    .rl-person-reminder-content .mud-icon-button {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .rl-reminder-card-primary-action {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .rl-settings-field {
+        max-width: 100%;
+    }
 }
 
 /* People (issue #22). Hairline rows and plain text, no cards: the list is a notebook index. */
@@ -915,6 +1113,7 @@ a {
 
 .rl-multiline {
     white-space: pre-line;
+    overflow-wrap: anywhere;
 }
 
 /* Tags (issue #24): the chosen tags above the tag picker, and the tags on a profile. */

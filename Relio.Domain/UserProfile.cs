@@ -1,9 +1,10 @@
 namespace Relio.Domain;
 
 /// <summary>
-/// Per-user settings that are not tied to any one product entity: the user's time zone (epic #12)
-/// and their optional display name (#18). Sign-up (#15) and account settings (#18) read and write
-/// it as the Identity user's profile. Keyed by <see cref="IOwnedEntity.OwnerId"/> like every other
+/// Per-user settings that are not tied to any one product entity: the user's time zone (epic #12),
+/// their optional display name (#18), and whether first-run onboarding has been dismissed (#48).
+/// Sign-up (#15), account settings (#18) and the onboarding service (#48) read and write it as the
+/// Identity user's profile. Keyed by <see cref="IOwnedEntity.OwnerId"/> like every other
 /// owned entity - see the "User-scoped data pattern" section of AGENTS.md - with a unique index
 /// enforcing exactly one profile per user (see <c>Relio.Data.Configurations.UserProfileConfiguration</c>).
 /// </summary>
@@ -49,4 +50,11 @@ public sealed class UserProfile : OwnedEntity
     /// Secure token for one-click unsubscribe links in reminder emails (issue #40).
     /// </summary>
     public string? UnsubscribeToken { get; set; }
+
+    /// <summary>
+    /// Whether the first-run guide has been completed or skipped (issue #48). Defaults to
+    /// <see langword="true"/> so legacy, programmatically-created and demo accounts are not
+    /// unexpectedly enrolled; account registration explicitly sets this to <see langword="false"/>.
+    /// </summary>
+    public bool OnboardingDismissed { get; set; } = true;
 }

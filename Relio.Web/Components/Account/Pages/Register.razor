@@ -255,7 +255,7 @@ else
         else
         {
             await SignInManager.SignInAsync(user, isPersistent: false);
-            NavigationManager.NavigateTo("/Account/RegisterConfirmation", forceLoad: true);
+            NavigationManager.NavigateTo("/onboarding", forceLoad: true);
         }
     }
 

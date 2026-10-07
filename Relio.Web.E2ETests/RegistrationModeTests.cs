@@ -143,7 +143,7 @@ public class RegistrationModeTests(RelioAppFixture fixture)
         await inviteePage.Locator("[data-testid='register-password']").FillAsync(StrongPassword);
         await inviteePage.Locator("[data-testid='register-confirm-password']").FillAsync(StrongPassword);
         await inviteePage.Locator("[data-testid='register-submit']").ClickAsync();
-        await inviteePage.Locator("[data-testid='register-confirmation-heading']").WaitForAsync();
+        await inviteePage.Locator("[data-testid='onboarding-page']").WaitForAsync();
         (await IsAdministratorAsync(app.Factory, invitedEmail)).Should().BeFalse();
 
         var reuse = await app.NewPageAsync();

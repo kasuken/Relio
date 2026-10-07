@@ -22,7 +22,7 @@
     <HeaderContent>
         <MudTh>Email</MudTh>
         <MudTh>Status</MudTh>
-        <MudTh></MudTh>
+        <MudTh>Actions</MudTh>
     </HeaderContent>
     <RowTemplate>
         <MudTd DataLabel="Email">
@@ -54,7 +54,7 @@
                 }
             </div>
         </MudTd>
-        <MudTd>
+        <MudTd DataLabel="Actions">
             @if (!context.IsCurrentUser)
             {
                 @if (context.IsDisabled)

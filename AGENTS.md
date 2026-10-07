@@ -239,9 +239,9 @@ time zone. Never call `DateTime.Now`/`DateTime.UtcNow`/`DateTime.Today` anywhere
 - `Relio.Application.Time.IUserTimeZoneService` is the per-request/per-user entry point - get the
   current user's time zone and "today", set their time zone, and ask whether a date is due
   today/overdue for them. Implemented in `Relio.Data.Time.UserTimeZoneService` (depends on
-  `RelioDbContext`, like `PeopleService`) and registered in `AddRelioData`. Sign-up (#15) and
-  account settings (#18) are the only features that should call `SetTimeZoneAsync` directly; every
-  other feature only reads.
+  `RelioDbContext`, like `PeopleService`) and registered in `AddRelioData`. Sign-up (#15), its
+  first-run guide (#48), and account settings (#18) are the only features that should call
+  `SetTimeZoneAsync` directly; every other feature only reads.
 - `Person.LastContactedOn` (`DateOnly?`, column `date`, issue #23) is the user-calendar date of the
   most recent interaction, `null` for "never". Create/Update requests never carry it; issue #34 is the
   one feature that maintains it, from the interactions it records. Until then only seed data sets it.
@@ -1254,6 +1254,50 @@ Established by epic #36 (issues #37, #38, #39, #40, #41). Follows the user-scope
 - **Stay-in-Touch Cadence**: Optional per-person cadence in days (`Person.StayInTouchCadenceDays`). When elapsed days since `LastContactedOn ?? ToUserDate(CreatedAtUtc)` exceeds the cadence, the person is surfaced in "Reach out" on the Dashboard and Reminders page. "Mark contacted" updates `Person.LastContactedOn` to reset the cadence.
 - **Email Delivery & Privacy Invariant**: `IReminderEmailSender` abstraction with `SmtpReminderEmailSender` (when `Email:Provider == Smtp`) and `NullReminderEmailSender` (no-op logger when unconfigured). User notification preferences at `/settings/reminders` (`ReminderEmailDelivery`: `None`, `Immediate`, `DailyDigest`). Unsubscribe links use cryptographically secure URL-safe tokens via `/unsubscribe?token=...`. **Email bodies strictly contain only person name, reminder title, and due date — NEVER notes, difficult moments, or sensitive details** (GDPR compliance).
 - **Background Scheduler**: `ReminderSchedulerBackgroundService` periodically runs `IReminderSchedulerRunner.RunDueRemindersJobAsync`. Evaluates user time zones to determine local `today`. Queries due reminders and birthdays via indexed queries, dispatches emails according to preferences, and stamps `LastDeliveredDate = userToday` atomically, guaranteeing exact-once delivery across app restarts and multi-instance deployments. All time-sensitive logic uses injected `TimeProvider`.
+
+## Dashboard, onboarding and quick log
+
+Established by epic #46 (issues #47, #48 and #49).
+
+- **Dashboard reads** go through `IDashboardService` / `Relio.Data.Dashboard.DashboardService`,
+  registered with `AddDataService`. A snapshot supplies the user's calendar day and bounded
+  lists for upcoming reminders/birthdays, reach-outs, recent interactions and recently added
+  people. Every section shows at most five entries with a deterministic id tie-breaker. The
+  upcoming window is 30 days; overdue incomplete reminders remain visible, and snoozed dates
+  are evaluated through `SnoozedUntilDate ?? DueDate` in the database. Counts and projections
+  replace loading full person graphs. Queries explicitly filter ownership, including related
+  people and interaction participants, exclude archived people, and run sequentially.
+  Birthday and cadence dates reuse the existing pure calculators; only their required columns
+  are loaded. No read changes last-contact dates or creates reminders.
+- **Onboarding** is an interactive `/onboarding` page using the existing `PersonForm` and
+  `InteractionEditor`, not another implementation of their validation or creation rules.
+  `UserProfile.OnboardingDismissed` is the only persisted onboarding state: it defaults to true
+  for legacy/programmatic users, while registration explicitly creates it as false.
+  `IOnboardingService` reads and dismisses the current user's guide through the database lane;
+  a missing profile does not enroll an existing account. Completing or skipping is permanent
+  across devices. Non-confirmation sign-up redirects to the guide with a full load; an account
+  awaiting email confirmation can find the pending guide through the dashboard's
+  `OnboardingPrompt` after signing in. The prompt does not force a redirect. No step analytics,
+  draft text, person names or current-step history are persisted.
+- **Quick log** uses `/interactions/new`, reached from labelled buttons in the dashboard,
+  people list and signed-in app bar, without adding a drawer route. The picker offers only
+  active owned people through `IInteractionService.ListParticipantCandidatesAsync(Guid.Empty)`.
+  Selecting a person opens the existing `InteractionEditor`; its date defaults to today in
+  the owning user's time zone, and its service keeps the timeline and last-contact date in sync.
+  Success opens that person's profile. Browser titles remain generic and URLs carry opaque
+  ids only. Loading failures are errors with a retry, not an empty picker.
+- **Concurrency** is proven by the dashboard/onboarding/quick-log reads in
+  `DatabaseLaneSqlServerTests` and by the corresponding pages in `SqlServerPageLoadTests`.
+  E2E onboarding and quick-log scenarios use fresh accounts, never changes to the demo account.
+- **Responsive and accessible UI (#50)** uses wrapping and token-based focus styles, not hidden
+  page overflow. The shell's first keyboard stop is "Skip to main content", targeting its
+  `main-content` landmark. `ResponsiveAccessibilityTests` checks actual document overflow at
+  360, 768 and 1440 pixels, keyboard creation and quick logging, and a generous interactive
+  dashboard/timeline page-load smoke budget with bounded result counts. These automated checks
+  are regression evidence, not a claim of complete WCAG conformance.
+- **Upgrade** applies `AddOnboardingState` before starting the new app. Its required bit column
+  defaults to true for existing profiles; `HasSentinel(true)` ensures a new registration's
+  explicit false is inserted rather than replaced by that SQL default.
 
 ## End-to-end tests
 

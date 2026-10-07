@@ -6,6 +6,20 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Dashboard, first-run onboarding and global quick log (epic #46; issues #47–#50).
+  The dashboard shows upcoming reminders and birthdays, people to reach out to, recent interactions
+  and recently added people, with helpful empty states and up to five entries per section. Upcoming
+  reminders cover the next 30 days, including overdue reminders; archived people and completed
+  reminders are excluded. Queries use owner-scoped projections and database limits rather than
+  loading full profiles. New accounts get an optional guide to set their time zone, add a person
+  and record an interaction; completing or skipping it is remembered across devices. Existing
+  accounts are not enrolled on upgrade. **Log an interaction** in the dashboard, people list and
+  app bar opens an active-person picker and the existing interaction editor, keeping the person's
+  timeline and last-contact date in sync. Responsive layouts support 360px phones, tablet and
+  desktop widths, with keyboard flows, a skip-to-content link, clearer action labels, wrapping
+  for long user text and visible focus. Migration `AddOnboardingState` adds only the per-account
+  dismissal flag; no analytics, external requests or new packages.
+
 - Record interactions and notes in each person's timeline (epic #30; issues #31, #32, #33, #34 and #35).
   **Log an interaction** records a calendar date, type, description and up to 20 people; the same
   interaction appears in every participant's timeline, and edits or deletion affect all of them. New
