@@ -378,4 +378,30 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
         person.Tags.Single().Id.Should().NotBe(tagIdOwnedByB);
         (await dbContext.Tags.AsNoTracking().Where(t => t.OwnerId == ownerB).CountAsync()).Should().Be(1);
     }
+
+    [SqlServerFact]
+    public async Task FindPossibleDuplicatesAsync_never_matches_another_owners_people()
+    {
+        await using var dbContext = fixture.CreateDbContext();
+        var ownerA = TestDataFactory.NewOwnerId();
+        var ownerB = TestDataFactory.NewOwnerId();
+        var theirs = await TestDataFactory.CreatePersonAsync(dbContext, ownerB, "John", "Smith");
+        await TestDataFactory.CreatePersonAsync(dbContext, ownerB, "John", "Smith", isArchived: true);
+        await TestDataFactory.CreateContactMethodAsync(dbContext, ownerB, theirs, "john@example.com");
+        await TestDataFactory.CreateContactMethodAsync(dbContext, ownerB, theirs, "+44 7700 900123", ContactMethodKind.Phone, 1);
+
+        var result = await TestDataFactory.CreateService(dbContext, ownerA).FindPossibleDuplicatesAsync(new PossibleDuplicateQuery
+        {
+            FirstName = "John",
+            LastName = "Smith",
+            ExcludePersonId = theirs,
+            ContactMethods =
+            [
+                new ContactMethodInput(null, ContactMethodKind.Email, null, "john@example.com"),
+                new ContactMethodInput(null, ContactMethodKind.Phone, null, "07700 900123"),
+            ],
+        });
+
+        result.Should().BeEmpty();
+    }
 }

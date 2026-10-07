@@ -744,8 +744,8 @@ Established by issue #22 under epic #21. The routes are pages, not dialogs: `/pe
 - **All of them are interactive** (MudBlazor inputs only bind over a circuit - see the static SSR note
   under "Accounts and authentication"); never add `[ExcludeFromInteractiveRouting]` to a people page.
   Each page has exactly one `h1` (`FocusOnNavigate` targets it) and sets no `AutoFocus`.
-- **`Components/People/PersonForm.razor`** is the one form for a person: add (#22), edit (#24) and,
-  later, the duplicate warning (#27) plug into it. It binds to `PersonFormModel`, shows one message
+- **`Components/People/PersonForm.razor`** is the one form for a person: add (#22), edit (#24) and
+  the possible-duplicate warning (#27, see below) plug into it. It binds to `PersonFormModel`, shows one message
   per field from `PersonFormMessages`, and is a `<form novalidate>` (so the browser's own "fill out
   this field" bubble never pre-empts Relio's message) **with no submit button**: Save is a
   `ButtonType.Button` with `OnClick`, because Enter inside the tag or label autocomplete would otherwise
@@ -972,6 +972,60 @@ Established by issue #22 under epic #21. The routes are pages, not dialogs: `/pe
   registers a **fresh user per test** - their six default types are theirs to change - and **never changes the
   demo user's relationship types or tags**; pick options in dialogs with `AriaRole.Option`/`AriaRole.Radio`.
   A page that composes label components belongs in `SqlServerPageLoadTests`.
+
+### Possible duplicates (issue #27)
+
+- **API.** `IPeopleService.FindPossibleDuplicatesAsync(PossibleDuplicateQuery, ct)` returns at most 5
+  `PossibleDuplicate(Id, FirstName, LastName, IsArchived, Reasons)` (`PossibleDuplicateReason`: SameName,
+  SimilarName, SameEmail, SamePhone; several can apply), strongest first. It is a read in the People
+  aggregate, so the lane proxy already covers it (`DatabaseLaneSqlServerTests` includes it). The query
+  carries first/last name, nickname, the contact methods (**only Email and Phone count**; an email without
+  `@` or a phone with under 3 digits is ignored) and `ExcludePersonId` (the person being edited). The
+  exclusion is not an assigned foreign id, so it is not ownership-checked: another user's id excludes
+  nothing, since their people are never candidates. A blank first name means only the contact rules run;
+  nothing to compare returns `[]`.
+- **Candidates are every person the owner has, archived included** (an archived duplicate is still a
+  duplicate; the warning labels them "Archived"). This is the one place an archived person is deliberately
+  part of a default-looking view (see the #26 audit).
+- **The matching is pure and lives in Application**, so merge (#28), import (#29) and search (#52) reuse
+  it: `PersonNameNormalizer` (FormKD, drop non-spacing marks, then lower-case, hand-mapped ß æ œ ø ł đ ð þ
+  dotless i, apostrophes removed - done first, because U+00B4 decomposes into a space - other punctuation to
+  space, collapse, FormC; each step has a test), `NameSimilarity` (Damerau-Levenshtein with early exit;
+  `FirstNamesClose`, `LastNamesClose`), `DuplicateProbe` (a query reduced to its keys) and
+  `PossibleDuplicateMatcher` (`Prepare` normalizes candidates once, `Find` ranks). The rules are
+  **stricter than a plain edit distance on purpose**: a first name under 3 letters matches only exactly; a
+  prefix of 3+ letters matches (Alex/Alexander); otherwise one typo (two above 8 letters) matches, except a
+  single-letter substitution in a name of 5 letters or fewer (Mark/Mary, Jon/Jan, Dan/Don stay apart;
+  Jon/John, Jhon/John match; Eric/Erik is an accepted miss); last names need 5+ letters and one typo
+  (Smith/Smyth yes, Hall/Hill no). Same email is an exact match on the lower-cased address; same phone is
+  an exact match or the same last 8 digits when both have 8+ (so `+44 7700 900123` equals `07700 900123`).
+  There is no nickname dictionary (Bob/Robert); only a stored nickname counts. Do not "simplify" the
+  thresholds back to the roadmap sketch. #29 must call `Prepare` once and `Find` per row, never load
+  the people again per row.
+- **Nothing is persisted, cached or logged.** Normalized names and keys are computed in memory per call
+  (and the form keeps one `DuplicateProbe.Key` string in component memory). No column, no cache, no
+  migration. Never put a normalized name in an exception message, a URL or a title.
+- **Data.** `Relio.Data.People.DuplicateCandidateLoader` (internal, reused by #28) loads, untracked and
+  one query after another: every owner person as a projection; emails with an exact `IN` on
+  `NormalizedValue` (a seek on `IX_ContactMethods_OwnerId_NormalizedValue`); phones with one `EndsWith`
+  query per distinct suffix (the last 8 digits, or the whole short number), an owner-range scan of the
+  same index since a suffix is not sargable - fine at personal scale. Always filter `Kind` (an address
+  equal to an email must not match).
+- **The form checks on a save attempt only**, never on blur or while typing and never from a lifecycle
+  method: `PersonForm.SaveAsync` builds the request, asks `FindPossibleDuplicatesAsync`, and shows
+  `PossibleDuplicateWarning` (a `Severity.Warning` `MudAlert`, links to `/people/{id}` with
+  `target="_blank" rel="noopener"` and a visually hidden "(opens in a new tab)", reasons, **Save anyway**)
+  directly above the form actions instead of saving. "Save anyway" acknowledges the probe key
+  (`DuplicateProbe.Key`: names, nickname and the sorted email and phone keys) and saves; another Save with
+  the same key does not warn again (also after a validation error), while any change to a name or an
+  email/phone key checks again. A blank first name is not checked, so the service's validation message
+  shows. In **edit** mode only a rename (a different `DuplicateProbe.NameKey` from the loaded person) is
+  checked, and `ExcludePersonId` is always the person's id. `PossibleDuplicateWarning.ItemActions` is the
+  hook #28 uses for "Merge instead". Wording lives in `PossibleDuplicateText`.
+- **Tests.** Every `IPeopleService` fake must implement the new method (`FakePeopleService` records
+  `DuplicateQueries` and returns `Duplicates`). `PeopleTestHelpers.ListPeopleAsync` and
+  `FindPossibleDuplicatesAsync` read through the real service in E2E tests. SQL Server translation of the
+  three candidate queries is proven in `PossibleDuplicateSqlServerTests`.
 
 ## End-to-end tests
 

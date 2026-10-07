@@ -82,6 +82,32 @@ public static class PeopleTestHelpers
         await types.CreateAsync(name);
     }
 
+    /// <summary>Every person <paramref name="ownerId"/> has, archived included, through the real <c>PeopleService</c>.</summary>
+    public static async Task<IReadOnlyList<Person>> ListPeopleAsync(RelioWebAppFactory app, string ownerId)
+    {
+        using var scope = app.CreateRealScope();
+        var people = new PeopleService(
+            scope.ServiceProvider.GetRequiredService<RelioDbContext>(),
+            new OwnerCurrentUser(ownerId),
+            scope.ServiceProvider.GetRequiredService<TimeProvider>());
+        return await people.ListAsync(includeArchived: true);
+    }
+
+    /// <summary>
+    /// What <c>PeopleService.FindPossibleDuplicatesAsync</c> reports for <paramref name="query"/>,
+    /// asked as <paramref name="ownerId"/>.
+    /// </summary>
+    public static async Task<IReadOnlyList<PossibleDuplicate>> FindPossibleDuplicatesAsync(
+        RelioWebAppFactory app, string ownerId, PossibleDuplicateQuery query)
+    {
+        using var scope = app.CreateRealScope();
+        var people = new PeopleService(
+            scope.ServiceProvider.GetRequiredService<RelioDbContext>(),
+            new OwnerCurrentUser(ownerId),
+            scope.ServiceProvider.GetRequiredService<TimeProvider>());
+        return await people.FindPossibleDuplicatesAsync(query);
+    }
+
     private sealed class OwnerCurrentUser(string userId) : ICurrentUser
     {
         public bool IsAuthenticated => true;
