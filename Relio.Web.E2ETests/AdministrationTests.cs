@@ -63,7 +63,7 @@ public class AdministrationTests(RelioAppFixture fixture)
     {
         var page = await fixture.NewPageAsync();
         await RegisterAsync(page, NewEmail("plain"), StrongPassword);
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
         await Expect(page.Locator("nav[aria-label='Primary']").GetByText("Administration", new() { Exact = true }))
             .ToHaveCountAsync(0);
 
@@ -73,7 +73,7 @@ public class AdministrationTests(RelioAppFixture fixture)
 
         // Navigating inside the open circuit skips the HTTP pipeline; the router must say no too,
         // and say "access denied" rather than bouncing a signed-in person to the login page.
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
         await page.EvaluateAsync("Blazor.navigateTo('/admin/users')");
         await Expect(page).ToHaveURLAsync(new Regex("/Account/AccessDenied"));
         await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Access denied" })).ToBeVisibleAsync();
@@ -189,7 +189,7 @@ public class AdministrationTests(RelioAppFixture fixture)
 
         var userPage = await app.NewPageAsync();
         await RegisterAsync(userPage, email, StrongPassword);
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(userPage, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(userPage, "/dashboard");
         await Expect(userPage.Locator("[data-testid='signed-in-as']")).ToHaveTextAsync(email);
 
         var adminPage = await app.NewPageAsync();
@@ -204,7 +204,7 @@ public class AdministrationTests(RelioAppFixture fixture)
         await Expect(userPage.Locator("[data-testid='signed-in-as']")).ToHaveCountAsync(0, new() { Timeout = 20_000 });
 
         // ...and the cookie no longer works for a fresh request either.
-        await userPage.GotoAsync("/");
+        await userPage.GotoAsync("/dashboard");
         await Expect(userPage).ToHaveURLAsync(new Regex("/Account/Login"));
     }
 

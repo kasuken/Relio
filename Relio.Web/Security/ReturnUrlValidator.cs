@@ -9,7 +9,7 @@ namespace Relio.Web.Security;
 public static class ReturnUrlValidator
 {
     /// <summary>Where an unsafe or missing return URL falls back to.</summary>
-    public const string FallbackPath = "/";
+    public const string FallbackPath = "/dashboard";
 
     /// <summary>
     /// Returns <paramref name="returnUrl"/> reduced to a same-origin, path-only redirect target,

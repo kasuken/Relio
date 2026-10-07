@@ -80,12 +80,14 @@ and returns unhealthy when it cannot be reached.
 
 Relio uses ASP.NET Core Identity with local accounts only (no social login). Register at
 `/Account/Register`; a strong password is required (at least 12 characters, with upper and lower
-case, a digit and a symbol - see AGENTS.md for the rationale). Every page except the account pages
-and the health endpoints requires sign-in. Static assets and crawler endpoints are anonymous;
-operator-enabled, reviewed policy pages are also public.
+case, a digit and a symbol - see AGENTS.md for the rationale). The public site starts at `/`;
+the relationship workspace starts at `/dashboard` and still requires sign-in, as do people,
+settings and administration. Static assets, account entry pages, health and crawler endpoints
+are anonymous; operator-enabled, reviewed policy pages are also public.
 
 Sign in at `/Account/Login`; "Remember me" issues a persistent cookie that survives closing the
-browser, otherwise the session cookie ends when the browser does. Five failed sign-ins in a row
+browser, otherwise the session cookie ends when the browser does. Sign-in defaults to `/dashboard`;
+explicit safe local return URLs are preserved. Five failed sign-ins in a row
 lock the account out for 15 minutes (`Account:Lockout`, configurable - see AGENTS.md's "Accounts
 and authentication" section).
 

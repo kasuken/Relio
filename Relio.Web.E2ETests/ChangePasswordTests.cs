@@ -29,7 +29,7 @@ public class ChangePasswordTests(RelioAppFixture fixture)
         await Expect(page.Locator("[data-testid='manage-password-status']")).ToBeVisibleAsync();
 
         // This session is still signed in...
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
         await Expect(page.Locator("[data-testid='signed-in-as']")).ToHaveTextAsync(email);
 
         // ...and from now on only the new password signs in.
@@ -101,7 +101,7 @@ public class ChangePasswordTests(RelioAppFixture fixture)
             {
                 var pageA = await contextA.NewPageAsync();
                 await RegisterAsync(pageA, email, StrongPassword);
-                await RelioAppFixture.GotoAndWaitForInteractiveAsync(pageA, "/");
+                await RelioAppFixture.GotoAndWaitForInteractiveAsync(pageA, "/dashboard");
                 await Expect(pageA.Locator("[data-testid='signed-in-as']")).ToHaveTextAsync(email);
 
                 // A second device signs in, then changes the password.

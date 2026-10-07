@@ -84,13 +84,13 @@ public sealed class HostedPoliciesTests(RelioAppFixture fixture)
             using var sitemapResponse = await client.GetAsync("/sitemap.xml");
             sitemapResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
 
-            await page.GotoAsync("/");
+            await page.GotoAsync("/dashboard");
             new Uri(page.Url).AbsolutePath.Should().Be("/Account/Login");
 
             await RelioAppFixture.SignInAsDemoAsync(page);
-            await page.GotoAsync("/");
+            await page.GotoAsync("/dashboard");
             await page.Locator("html[data-app-ready='true']").WaitForAsync();
-            page.Url.Should().EndWith("/");
+            page.Url.Should().EndWith("/dashboard");
             (await page.GetByRole(AriaRole.Link, new() { Name = "Source code", Exact = true }).IsVisibleAsync())
                 .Should().BeTrue();
         }

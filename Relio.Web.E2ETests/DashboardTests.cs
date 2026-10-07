@@ -19,7 +19,7 @@ public class DashboardTests(RelioAppFixture fixture)
         await page.Locator("[data-testid='register-confirm-password']").FillAsync("Str0ng-Passw0rd!");
         await page.Locator("[data-testid='register-submit']").ClickAsync();
 
-        await page.GotoAsync("/");
+        await page.GotoAsync("/dashboard");
         await page.Locator("html[data-app-ready='true']").WaitForAsync();
 
         await Expect(page.GetByText("No one here yet")).ToBeVisibleAsync();
@@ -36,7 +36,7 @@ public class DashboardTests(RelioAppFixture fixture)
         var page = await fixture.NewPageAsync();
 
         await RelioAppFixture.SignInAsDemoAsync(page);
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
 
         await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Dashboard", Exact = true })).ToBeVisibleAsync();
         await Expect(page.Locator("[data-testid='dashboard-add-person']")).ToBeVisibleAsync();

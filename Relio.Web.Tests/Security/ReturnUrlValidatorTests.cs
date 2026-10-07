@@ -10,6 +10,12 @@ public class ReturnUrlValidatorTests
 {
     private const string BaseUri = "http://127.0.0.1:5000/";
 
+    [Fact]
+    public void Default_destination_is_the_protected_workspace()
+    {
+        ReturnUrlValidator.FallbackPath.Should().Be("/dashboard");
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

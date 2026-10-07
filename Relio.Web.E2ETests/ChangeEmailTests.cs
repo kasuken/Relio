@@ -36,7 +36,7 @@ public class ChangeEmailTests(RelioAppFixture fixture)
         await Expect(page.Locator("[data-testid='manage-email-current']")).ToHaveTextAsync(newEmail);
 
         // The session that changed it stays signed in, now as the new address.
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
         await Expect(page.Locator("[data-testid='signed-in-as']")).ToHaveTextAsync(newEmail);
 
         // Sign-in follows the new address; the old one no longer works.
@@ -165,7 +165,7 @@ public class ChangeEmailTests(RelioAppFixture fixture)
                 changed!.PendingEmail.Should().BeNull();
 
                 // The session that followed the link is now signed in as the new address.
-                await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+                await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
                 await Expect(page.Locator("[data-testid='signed-in-as']")).ToHaveTextAsync(newEmail);
 
                 await SignOutAsync(page);

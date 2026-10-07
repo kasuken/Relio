@@ -64,6 +64,45 @@
     line-height: 18px;
 }
 
+.rl-marketing-header {
+    flex-wrap: wrap;
+}
+
+.rl-marketing-header .rl-wordmark {
+    text-decoration: none;
+}
+
+.rl-marketing-nav,
+.rl-marketing-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+}
+
+.rl-marketing-nav a,
+.rl-marketing-actions a {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+}
+
+.rl-marketing-primary {
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--pen);
+    color: var(--on-pen);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.rl-marketing-access-note {
+    max-width: var(--measure);
+    color: var(--text-muted);
+}
+
 .rl-policy-copy {
     overflow-wrap: anywhere;
     white-space: pre-wrap;

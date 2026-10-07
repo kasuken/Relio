@@ -22,7 +22,7 @@ public class AuthenticationTests(RelioAppFixture fixture)
     {
         var page = await fixture.NewPageAsync();
 
-        await page.GotoAsync("/");
+        await page.GotoAsync("/dashboard");
 
         await Expect(page).ToHaveURLAsync(new Regex("/Account/Login"));
 
@@ -36,7 +36,7 @@ public class AuthenticationTests(RelioAppFixture fixture)
 
         await RelioAppFixture.SignInAsDemoAsync(page);
 
-        await Expect(page).ToHaveURLAsync(new Regex("/$"));
+        await Expect(page).ToHaveURLAsync(new Regex("/dashboard$"));
         await Expect(page.Locator("[data-testid='signed-in-as']")).ToHaveTextAsync(DemoDataSeeder.DemoEmail);
 
         await RelioAppFixture.ClosePageAsync(page);
@@ -69,7 +69,7 @@ public class AuthenticationTests(RelioAppFixture fixture)
         await page.Locator("html[data-app-ready='true']").WaitForAsync();
 
         // Falls back to the app's own dashboard, never navigates to the attacker-supplied host.
-        await Expect(page).ToHaveURLAsync(new Regex("^" + Regex.Escape(fixture.BaseUrl) + "/$"));
+        await Expect(page).ToHaveURLAsync(new Regex("^" + Regex.Escape(fixture.BaseUrl) + "/dashboard$"));
 
         await RelioAppFixture.ClosePageAsync(page);
     }
@@ -122,7 +122,7 @@ public class AuthenticationTests(RelioAppFixture fixture)
         // A second page in the SAME browser context: cookies are shared within a context, so a
         // brand new tab should already be signed in, with no second login.
         var secondTab = await page.Context.NewPageAsync();
-        await secondTab.GotoAsync("/");
+        await secondTab.GotoAsync("/dashboard");
         await secondTab.Locator("html[data-app-ready='true']").WaitForAsync();
         await Expect(secondTab.Locator("[data-testid='signed-in-as']")).ToHaveTextAsync(email);
         await secondTab.CloseAsync();
@@ -150,7 +150,7 @@ public class AuthenticationTests(RelioAppFixture fixture)
         await Expect(page.Locator("[data-testid='signed-in-as']")).Not.ToBeVisibleAsync();
 
         // And the protected page itself is gone for good until signing in again.
-        await page.GotoAsync("/");
+        await page.GotoAsync("/dashboard");
         await Expect(page).ToHaveURLAsync(new Regex("/Account/Login"));
 
         await RelioAppFixture.ClosePageAsync(page);

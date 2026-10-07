@@ -322,7 +322,7 @@ completing epic #14.
     (success/wrong-password/locked-out/unconfirmed) with the user id only, never the submitted
     email - see the gdpr-compliant skill.
   - **Open redirect protection**: `Relio.Web.Security.ReturnUrlValidator.GetSafeReturnUrl` (pure,
-    unit tested) reduces a `returnUrl` to a same-origin path or falls back to `/` - rejects a
+    unit tested) reduces a `returnUrl` to a same-origin path or falls back to `/dashboard` - rejects a
     different host, a protocol-relative `//evil.example`, and the `/\evil.example` backslash
     variant browsers normalize the same way. `Login.razor` and `RedirectToLogin.razor` both go
     through it before calling `NavigationManager.NavigateTo`.
@@ -1258,6 +1258,13 @@ Established by epic #36 (issues #37, #38, #39, #40, #41). Follows the user-scope
 ## Dashboard, onboarding and quick log
 
 Established by epic #46 (issues #47, #48 and #49).
+
+- The public root `/` uses static SSR and the marketing layout. The protected dashboard is
+  `/dashboard`, including default sign-in and account continuation destinations. Marketing pages
+  inherit `[AllowAnonymous]` and `[ExcludeFromInteractiveRouting]`; `MarketingPageAttribute`
+  selects `marketing.css` in `App.razor` by endpoint metadata. `MarketingStartLink` uses the
+  existing registration eligibility service, including the first-account rule; links into
+  registration always disable enhanced navigation so the browser time zone script executes.
 
 - **Dashboard reads** go through `IDashboardService` / `Relio.Data.Dashboard.DashboardService`,
   registered with `AddDataService`. A snapshot supplies the user's calendar day and bounded

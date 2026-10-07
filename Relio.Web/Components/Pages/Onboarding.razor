@@ -209,7 +209,7 @@
         if (_redirectAfterRender)
         {
             _redirectAfterRender = false;
-            Navigation.NavigateTo("/", replace: true);
+            Navigation.NavigateTo("/dashboard", replace: true);
             return;
         }
 
@@ -371,7 +371,7 @@
             Snackbar.Add(
                 showWelcomeMessage ? "You can add your first person from the dashboard." : "You're all set.",
                 Severity.Success);
-            Navigation.NavigateTo("/", replace: true);
+            Navigation.NavigateTo("/dashboard", replace: true);
         }
         catch (Exception exception)
         {

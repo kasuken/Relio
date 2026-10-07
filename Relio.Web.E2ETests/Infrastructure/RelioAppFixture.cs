@@ -133,7 +133,7 @@ public sealed class RelioAppFixture : IAsyncLifetime
     /// MainLayout.razor's <c>data-app-ready</c> marker), so callers never race Blazor Server's
     /// circuit connecting.
     /// </summary>
-    public static async Task GotoAndWaitForInteractiveAsync(IPage page, string path = "/")
+    public static async Task GotoAndWaitForInteractiveAsync(IPage page, string path = "/dashboard")
     {
         await page.GotoAsync(path);
         await page.Locator("html[data-app-ready='true']").WaitForAsync();

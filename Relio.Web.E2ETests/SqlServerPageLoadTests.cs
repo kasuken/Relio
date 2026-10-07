@@ -47,9 +47,9 @@ public class SqlServerPageLoadTests(RelioAppFixture fixture)
             var page = await app.NewPageAsync();
             await RelioAppFixture.SignInAsDemoAsync(page);
 
-            var dashboardResponse = await page.GotoAsync("/");
+            var dashboardResponse = await page.GotoAsync("/dashboard");
             dashboardResponse!.Status.Should().Be(200, "the dashboard prerender must not throw");
-            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
             await Expect(page.GetByTestId("dashboard-log-interaction")).ToBeVisibleAsync();
             await AssertCircuitSurvivesAsync(page);
             await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/interactions/new");

@@ -24,7 +24,7 @@ public class NavMenuTests : BunitContext
         Render<CascadingAuthenticationState>(parameters => parameters.AddChildContent<NavMenu>());
 
     [Theory]
-    [InlineData("Dashboard", "/")]
+    [InlineData("Dashboard", "/dashboard")]
     [InlineData("People", "/people")]
     [InlineData("Reminders", "/reminders")]
     [InlineData("Difficult moments", "/difficult-moments")]

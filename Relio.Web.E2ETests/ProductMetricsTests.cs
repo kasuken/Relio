@@ -24,7 +24,7 @@ public sealed class ProductMetricsTests(RelioAppFixture fixture)
         var email = NewEmail("metrics-off");
         var page = await fixture.NewPageAsync();
         await RegisterAsync(page, email, StrongPassword);
-        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/dashboard");
 
         using var scope = fixture.App.CreateRealScope();
         var services = scope.ServiceProvider;

@@ -105,7 +105,7 @@ public class PasswordResetTests(RelioAppFixture fixture)
                 // ...but the new one does.
                 await LoginAsync(page, email, NewPassword);
                 await page.Locator("html[data-app-ready='true']").WaitForAsync();
-                await Expect(page).ToHaveURLAsync(new Regex("/$"));
+                await Expect(page).ToHaveURLAsync(new Regex("/dashboard$"));
                 await SignOutAsync(page);
 
                 // Reusing the very same link fails - ResetPasswordAsync rotated the security
