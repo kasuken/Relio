@@ -20,20 +20,31 @@
                         Message="Add the first person you want to keep in touch with."
                         ActionLabel="Add a person"
                         OnAction="AddPerson" />
+            <p class="rl-empty-alt">
+                <MudLink Href="/people/import" data-testid="people-empty-import">Or import people from a file</MudLink>
+            </p>
         </div>
     }
     else
     {
         <div class="rl-page-header">
             <MudText Typo="Typo.h2" HtmlTag="h1">People</MudText>
-            <MudButton Variant="Variant.Filled"
-                       Color="Color.Primary"
-                       Href="/people/new"
-                       DropShadow="false"
-                       StartIcon="@Icons.Material.Outlined.PersonAdd"
-                       data-testid="people-add">
-                Add a person
-            </MudButton>
+            <div class="rl-page-header-actions">
+                <MudButton Variant="Variant.Outlined"
+                           Href="/people/import"
+                           StartIcon="@Icons.Material.Outlined.UploadFile"
+                           data-testid="people-import">
+                    Import
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Href="/people/new"
+                           DropShadow="false"
+                           StartIcon="@Icons.Material.Outlined.PersonAdd"
+                           data-testid="people-add">
+                    Add a person
+                </MudButton>
+            </div>
         </div>
 
         <div class="rl-people-toolbar" data-testid="people-toolbar">

@@ -1,1 +1,5 @@
 * text=auto
+
+# Import fixtures (issue #29) must stay byte-exact: line endings, trailing spaces and non-UTF-8
+# encodings are part of what they test.
+Relio.Application.Tests/People/Import/Fixtures/** -text -whitespace

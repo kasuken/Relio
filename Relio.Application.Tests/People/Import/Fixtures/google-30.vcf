@@ -1,0 +1,27 @@
+BEGIN:VCARD
+VERSION:3.0
+FN:ZoÃ« Example
+N:Example;ZoÃ«;;;
+EMAIL;TYPE=INTERNET;TYPE=WORK:zoe@example.com
+TEL;TYPE=CELL:+1 202 555 0147
+ADR;TYPE=HOME:;;100 Sample Street\nApt 4;Springfield;;12345;USA
+CATEGORIES:myContacts,Friends
+item1.URL:https://example.com/zoe
+BDAY:1979-02-28
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Ngozi Okonkwo
+N:Okonkwo;Ngozi;;;
+EMAIL;TYPE=INTERNET:ngozi@example.org
+BDAY:--0229
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Asa Lindqvist
+N:Lindqvist;Asa;;;
+TEL;TYPE=WORK:+44 20 7946 0123
+NOTE:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaÃ
+ ©bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbæ
+ ¼¢ and the end of the note.
+END:VCARD

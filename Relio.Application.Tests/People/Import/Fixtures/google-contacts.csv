@@ -1,0 +1,7 @@
+First Name,Middle Name,Last Name,Phonetic First Name,Nickname,Birthday,Notes,Labels,E-mail 1 - Label,E-mail 1 - Value,E-mail 2 - Label,E-mail 2 - Value,Phone 1 - Label,Phone 1 - Value,Address 1 - Label,Address 1 - Formatted,Organization Name
+Marta,,Bianchi,,Marti,1985-04-15,"Line one
+Line ""two""",* myContacts ::: Friends,* Home ::: Work,marta@example.com ::: marta.b@example.org,,,Mobile,+44 7700 900123,Home,"12 Example Square
+London",
+Jürgen,Karl,Müller,,,--04-15,,* myContacts,Work,jurgen@example.org,,,,,,,Example Ltd
+,,,,,,,,Home,noname@example.com,,,,,,,
+,,,,,,,,,,,,,,,,Only Org Ltd

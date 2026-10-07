@@ -60,6 +60,10 @@ for every new owned entity and service; do not invent new plumbing per feature.
   *tracked* dependents, and the database cascade is the SQL Server backstop (see "Archive, restore and
   delete" under People). `ContactMethod` (#24) is the first child, handled there; **#59's account deletion
   must include `ContactMethods` too**.
+- **One place builds a person.** `Relio.Data.People.PersonEntityBuilder` (`NewPerson`, `ApplyProfile`,
+  `CreateContactMethod`, `ApplyContactMethod`) turns a profile input into a `Person` and its contact methods
+  (normalized text, comparison keys, positions). `PeopleService.CreateAsync`/`UpdateAsync` and the import (#29)
+  use it, so a new profile field is mapped once.
 - **The merge checklist (#28), next to the delete checklist.** Merging two profiles moves everything that
   belongs to the duplicate to the primary in one private `PersonMergeService.MoveDependentsAsync`. Every
   new entity with a `PersonId` must, in the same pull request: (1) cascade on delete (it is the backstop for
@@ -1101,6 +1105,83 @@ Established by issue #22 under epic #21. The routes are pages, not dialogs: `/pe
   `.mud-radio-group`, whose own rule needs a three-class selector to override). The full timeline of both
   profiles can only be proven for contact methods, tags and fields until interactions, notes, reminders and
   difficult moments exist: each of those issues extends `MoveDependentsAsync` and the E2E merge test.
+
+### Importing people (issue #29)
+
+`/people/import` (`Components/Pages/ImportPeople.razor`, interactive like every people page) imports people from
+a vCard or CSV file. Entry points: an outlined **Import** button next to **Add a person** in the list header
+(`people-import`) and a link under the empty state (`people-empty-import`); there is no drawer entry
+(`NavMenuTests` keeps five routes). It completes epic #21. No migration, no new package, no new table.
+
+- **The file is never stored or logged.** Not on disk, not in a cache or session, not in a log: neither the
+  file, its name, its headers or cells, nor the text of any exception that could carry them (the page logs the
+  exception *type* only; `ImportFileException` and `PeopleImportValidationException` carry codes and indexes).
+  `ImportFileReader` reads the browser file into memory (`OpenReadStream(maxAllowedSize, ct)` with the limit
+  always passed - the default is 512,000 bytes - and a token cancelled in `Dispose`; `IBrowserFile.Size` is
+  client-reported, so it only gives the friendly message), the pure parsers read the bytes, and the bytes and the
+  decoded text are dropped: the page keeps only the drafts and the preview, which die with the circuit. The
+  file reaches no data service. Never hold the `IBrowserFile` past the handler, and never put a name from the
+  file in a title, a URL or a log.
+- **Limits** (`ImportLimits`): 1 MB, 2,000 people (a longer file keeps its first 2,000 and the preview says so),
+  200 CSV columns (more means "not a contacts file"), 20,000 characters per CSV cell (cut), 200,000 per vCard
+  line (skipped: an embedded photo). A NUL byte in a `.csv` means it is not a text file.
+- **The parsers are hand-rolled and pure** (`Relio.Application/People/Import/`, no I/O, no clock, invariant
+  culture only, no regular expression over untrusted text). FolkerKinzel.VCards was evaluated and not used: we
+  need a small read-only subset, the Apple quirks (`X-APPLE-OMIT-YEAR`, `itemN.X-ABLabel`, `X-SOCIALPROFILE`)
+  need custom code with it anyway, it would add three packages (one maintainer, eight major versions of breaking
+  API) to an AGPL app, and one parser style for CSV and vCard keeps the limits and the never-log rule in one
+  place. Revisit if people report vCards `VCardReader` cannot read.
+  - `TextDecoder`: byte order mark, else UTF-16 by zero bytes, else strict UTF-8, else Windows-1252 (Outlook,
+    older Windows exports) through `CodePagesEncodingProvider.Instance` directly - **never**
+    `Encoding.RegisterProvider` in library code.
+  - `VCardReader` (2.1, 3.0, 4.0): **unfold on the bytes before decoding**, so a multi-byte UTF-8 character that
+    an exporter split across a fold survives (UTF-16 is decoded first). Quoted-printable (Android 2.1) is decoded
+    to bytes and then to text in the property's `CHARSET`, and a trailing `=` joins the next line; structured
+    values are split on unescaped separators *before* decoding. 2.1 bare parameters (`TEL;CELL;VOICE`), quoted
+    and comma-listed `TYPE`s, groups (`item1.TEL`) with Apple's `X-ABLabel` (`_$!<Mobile>!$_` is "Mobile", the
+    "Other" label is no label), `tel:` URIs (the extension is dropped), faxes skipped, nested `AGENT` cards
+    skipped, a final card without `END` kept. Names: `N`, else `FN` split at the last space; an organisation alone
+    gives no name. Ignored: `CATEGORIES`, `ORG`, `TITLE`, `URL`, `IMPP`, `X-` extensions, photos.
+  - `CsvReader`: RFC 4180 state machine, delimiter from the first record (`.tsv` is tab), blank records skipped,
+    ragged records padded or cut. `CsvMappingPresets` recognises Google's two exports and Outlook's from the
+    headers (otherwise common column names); `CsvDraftMapper` applies the mapping the user confirmed. Several
+    values in one cell ("a ::: b", Google) become several contact methods; Google's "* " label prefix is removed.
+  - **Birthdays are parsed strictly** (`BirthdayParser`): `yyyy-MM-dd`, `yyyyMMdd`, `--MM-dd`, `--MMdd`,
+    `yyyy/MM/dd` and `a/b/yyyy`, `a.b.yyyy`, `a-b-yyyy` read in the file's `DateOrder`; the year 1604 (Apple) or
+    `X-APPLE-OMIT-YEAR` means no year; Outlook's `0/0/00` means none. Two-digit years, month names, times and
+    anything impossible are "unreadable": the birthday is left out with a warning, never guessed. When the dates
+    do not prove the order (03/04/1990) the mapping step asks, and the preview says to check a birthday.
+- **Blocking problems and warnings** (`ImportCandidateBuilder`, `ImportProblem`, words in `ImportText`):
+  no usable first name, or a first or last name that is too long, blocks the row (shown, disabled, with the
+  reason). Everything else is a warning and the offending field is dropped or kept in another form (an email or
+  phone number that fails `ContactMethodRules` becomes an "other" detail labelled "Email"/"Phone"; more than 20
+  contact details keep the first 20). The builder runs the *real* `PersonProfileRules` and `ContactMethodRules`
+  until they report nothing, so every importable `ImportPersonRequest` is valid; `ImportAsync` validates it again.
+- **Duplicates through #27's matcher.** `PreviewAsync` loads the user's people once
+  (`DuplicateCandidateLoader.LoadAllAsync`, archived included), `Prepare`s them once and `Find`s per row; each
+  row is also compared with the rows *above* it in the file (`SameAsRowNumber`). A row with any duplicate starts
+  **unselected** but stays selectable. The matcher is O(rows x people): `PreparedCandidate` carries its keys as
+  arrays and `Find` uses indexed loops, because an enumerator allocated per pair made 2,000 x 2,000 take seconds
+  (`Two_thousand_rows_build_in_reasonable_time`).
+- **`IPeopleImportService`** (registered with `AddDataService`; Task-only): `PreviewAsync` is read-only (untracked,
+  today in the user's zone via `UserToday`) and `ImportAsync` is **one `AddRange` and one `SaveChangesAsync`**,
+  all or nothing (one transaction on SQL Server, proven in `PeopleImportSqlServerTests` with a failing command),
+  `ChangeTracker.Clear()` in `finally`. There are no foreign ids: an import sets **no relationship type and no
+  tags** (follow-up: import groups as tags), so there is no ownership check beyond `OwnerId`.
+  `PersonEntityBuilder` (`Relio.Data/People`) is the one place a `Person` and its contact methods are built from
+  a profile input: `CreateAsync`, `UpdateAsync` and the import share it.
+- **The page** keeps three steps in one component: choose a file, (CSV) `CsvMappingStep` (headers and cells are
+  text, never markup; the column list hides label columns and groups Outlook's address columns into one switch),
+  then `ImportPreviewList` (50 rows a page, `ImportSelection` survives paging and the filter, checkboxes are
+  MudCheckBox, duplicates link to the existing profile with `target=_blank`). A validation failure at import time
+  (today moved on, say) reloads the preview; any other failure says nothing was saved. Afterwards the snackbar says
+  "Imported N people" and the page opens `/people?sort=added`. After a file has been chosen MudBlazor leaves a
+  second `<input type=file>` beside the first: E2E tests use `.Last`.
+- **Fixtures are byte-exact.** `Relio.Application.Tests/People/Import/Fixtures/` holds synthetic files (fictional
+  people, `example.com`, numbers in the ranges reserved for fiction) and `.gitattributes` marks them
+  `-text -whitespace`, with an `.editorconfig` override, so CRLF, trailing spaces (folds) and the UTF-16 and
+  Windows-1252 bytes survive git and `git diff --check`. Write non-UTF-8 fixtures with a tool that writes raw
+  bytes and check them with a hex dump.
 
 ## End-to-end tests
 

@@ -70,6 +70,33 @@ public class PeoplePageTests
     }
 
     [Fact]
+    public async Task The_empty_state_offers_import()
+    {
+        await using var context = CreateContext(new FakePeopleService());
+
+        var cut = RenderAt(context);
+
+        var link = cut.Find("[data-testid='people-empty-import']");
+        link.GetAttribute("href").Should().Be("/people/import");
+        link.TextContent.Trim().Should().Be("Or import people from a file");
+    }
+
+    [Fact]
+    public async Task The_header_links_to_import()
+    {
+        var people = new FakePeopleService { ListPageResult = Result([Item("Ada")], 1, 0) };
+        await using var context = CreateContext(people);
+
+        var cut = RenderAt(context);
+
+        var import = cut.Find("[data-testid='people-import']");
+        import.GetAttribute("href").Should().Be("/people/import");
+        import.TextContent.Trim().Should().Be("Import");
+        cut.Find("[data-testid='people-add']").GetAttribute("href").Should().Be("/people/new");
+        cut.Find(".rl-page-header-actions").Children.Should().HaveCount(2);
+    }
+
+    [Fact]
     public async Task The_empty_state_action_navigates_to_the_create_page()
     {
         await using var context = CreateContext(new FakePeopleService());

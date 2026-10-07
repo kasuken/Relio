@@ -1,0 +1,273 @@
+@page "/people/import"
+@using Microsoft.AspNetCore.Components.Forms
+@using Relio.Application.People
+@using Relio.Application.People.Import
+@using Relio.Application.Security
+@using Relio.Web.Components.People.Import
+@implements IDisposable
+@inject IPeopleImportService ImportService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject ILogger<ImportPeople> Logger
+
+@* Import people from a vCard or CSV file (issue #29). Three steps on one page: choose a file, (for a CSV)
+   match the columns, then choose who to import and confirm. Nothing is saved until the person confirms.
+
+   The file is read in this circuit's memory, parsed by pure code in Relio.Application.People.Import
+   and dropped: the bytes and the decoded text are never kept in a field, and the file, its name, its
+   cells and the text of any exception are never stored or logged (see the gdpr-compliant skill). What
+   stays - the drafts and the preview - lives only in this page's fields and dies with the circuit.
+   The page title is generic like every people page. Nothing runs from a lifecycle method: there is
+   nothing to load until a file is chosen. *@
+<PageTitle>Import people - Relio</PageTitle>
+
+<MudLink Href="/people" Class="mb-4 d-inline-block" data-testid="import-back">Back to people</MudLink>
+
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">@ImportText.Title</MudText>
+<p class="rl-import-intro">@ImportText.Intro</p>
+<p class="rl-meta">@ImportText.PrivacyNote</p>
+
+@switch (_step)
+{
+    case ImportStep.Choose:
+        <div class="rl-import-choose" data-testid="import-choose">
+            @if (_fileProblem is { } problem)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Text" Elevation="0" Class="mb-3" data-testid="import-file-error">
+                    @ImportText.FileProblem(problem)
+                </MudAlert>
+            }
+
+            <div data-testid="import-file">
+                <MudFileUpload T="IBrowserFile"
+                               Accept=".vcf,.vcard,.csv,.tsv,.txt,text/vcard,text/x-vcard,text/csv"
+                               MaximumFileCount="1"
+                               OnFilesChanged="OnFileChosenAsync"
+                               Disabled="_busy">
+                    <CustomContent>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   DropShadow="false"
+                                   StartIcon="@Icons.Material.Outlined.UploadFile"
+                                   Disabled="_busy"
+                                   OnClick="@(() => context.OpenFilePickerAsync())"
+                                   data-testid="import-choose-file">
+                            @ImportText.ChooseFile
+                        </MudButton>
+                    </CustomContent>
+                </MudFileUpload>
+            </div>
+            <p class="rl-meta mt-2">@ImportText.Limits</p>
+
+            @if (_busy)
+            {
+                <div role="status" data-testid="import-reading">
+                    <MudProgressLinear Indeterminate="true" Class="mt-3" />
+                    <p class="rl-meta">@ImportText.Reading</p>
+                </div>
+            }
+        </div>
+        break;
+
+    case ImportStep.Map when _table is not null && _suggestion is not null && _mapping is not null:
+        <CsvMappingStep Table="_table"
+                        Suggestion="_suggestion"
+                        @bind-Mapping="_mapping"
+                        OnPreview="MapAndPreviewAsync"
+                        OnChooseAnother="Reset" />
+        break;
+
+    case ImportStep.Preview when _preview is not null && _selection is not null:
+        <ImportPreviewList Preview="_preview"
+                           Selection="_selection"
+                           Busy="_importing"
+                           OnImport="ImportAsync"
+                           OnCancel="Cancel" />
+        break;
+}
+
+@code {
+    private enum ImportStep
+    {
+        Choose,
+        Map,
+        Preview,
+    }
+
+    // Cancelled when the person leaves (Dispose), which also stops a read or a preview in flight.
+    private readonly CancellationTokenSource _cts = new();
+
+    private ImportStep _step = ImportStep.Choose;
+    private bool _busy;
+    private bool _importing;
+    private ImportFileProblem? _fileProblem;
+
+    // Only drafts and the preview are kept - never the file's bytes or its decoded text.
+    private CsvTable? _table;
+    private CsvMappingSuggestion? _suggestion;
+    private CsvColumnMapping? _mapping;
+    private ImportReadResult? _read;
+    private ImportPreview? _preview;
+    private ImportSelection? _selection;
+
+    private async Task OnFileChosenAsync(InputFileChangeEventArgs e)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _fileProblem = null;
+        try
+        {
+            // The file name is used to tell a vCard from a CSV, and nowhere else: not shown, not logged.
+            var file = e.File;
+            var bytes = await ImportFileReader.ReadAsync(file, _cts.Token);
+            if (!ImportFileDetector.TryDetect(file.Name, bytes, out var kind))
+            {
+                throw new ImportFileException(ImportFileProblem.NotContacts);
+            }
+
+            // Parsing runs here on the circuit: about a megabyte at most, a few milliseconds.
+            if (kind == ImportFileKind.VCard)
+            {
+                _read = VCardReader.Read(bytes);
+                await ShowPreviewAsync();
+            }
+            else
+            {
+                _table = CsvReader.Read(bytes, file.Name);
+                _suggestion = CsvMappingPresets.Suggest(_table);
+                _mapping = _suggestion.Mapping;
+                _step = ImportStep.Map;
+            }
+        }
+        catch (ImportFileException exception)
+        {
+            _fileProblem = exception.Problem;
+            ClearFile();
+        }
+        catch (OperationCanceledException)
+        {
+            // The person left the page.
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task MapAndPreviewAsync()
+    {
+        if (_table is null || _mapping is null || _busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            _read = CsvDraftMapper.Map(_table, _mapping);
+            await ShowPreviewAsync();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // Builds the preview of what was read: the only database call before the person confirms, and a
+    // read-only one (cleaning the rows and comparing them with the person's own list).
+    private async Task ShowPreviewAsync()
+    {
+        if (_read is null || _read.People.Count == 0)
+        {
+            _fileProblem = ImportFileProblem.NoPeople;
+            ClearFile();
+            return;
+        }
+
+        _preview = await ImportService.PreviewAsync(_read, _cts.Token);
+        _selection = new ImportSelection(_preview);
+        _step = ImportStep.Preview;
+    }
+
+    private async Task ImportAsync()
+    {
+        if (_importing || _selection is null)
+        {
+            return;
+        }
+
+        var requests = _selection.SelectedRequests();
+        if (requests.Count == 0)
+        {
+            return;
+        }
+
+        _importing = true;
+        try
+        {
+            var created = await ImportService.ImportAsync(requests, _cts.Token);
+            Snackbar.Saved(ImportText.Imported(created));
+            Navigation.NavigateTo(PeopleListQueryString.ToRelativeUri(new PeopleListQuery { Sort = PeopleSort.RecentlyAdded }));
+        }
+        catch (PeopleImportValidationException)
+        {
+            // The service checks every request again (today may have moved on, for one): refresh the preview.
+            Snackbar.Problem(ImportText.DetailsChanged);
+            await RefreshPreviewAsync();
+        }
+        catch (Exception exception) when (exception is not (OperationCanceledException or UnauthenticatedUserException))
+        {
+            // The type only: the message can hold content, and nothing about the file is logged.
+            Logger.LogError("People import failed: {ExceptionType}", exception.GetType().Name);
+            Snackbar.Problem(ImportText.ImportFailed);
+        }
+        finally
+        {
+            _importing = false;
+        }
+    }
+
+    private async Task RefreshPreviewAsync()
+    {
+        try
+        {
+            await ShowPreviewAsync();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void Cancel() => Navigation.NavigateTo("/people");
+
+    private void Reset()
+    {
+        ClearFile();
+        _fileProblem = null;
+    }
+
+    private void ClearFile()
+    {
+        _table = null;
+        _suggestion = null;
+        _mapping = null;
+        _read = null;
+        _preview = null;
+        _selection = null;
+        _step = ImportStep.Choose;
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        ClearFile();
+    }
+}

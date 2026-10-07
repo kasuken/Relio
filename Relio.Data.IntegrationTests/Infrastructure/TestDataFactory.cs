@@ -20,6 +20,9 @@ internal static class TestDataFactory
     public static PeopleService CreateService(RelioDbContext dbContext, string? ownerId) =>
         new(dbContext, new FakeCurrentUser(ownerId), TimeProvider.System);
 
+    public static PeopleImportService CreatePeopleImportService(RelioDbContext dbContext, string? ownerId) =>
+        new(dbContext, new FakeCurrentUser(ownerId), TimeProvider.System);
+
     public static PersonMergeService CreatePersonMergeService(RelioDbContext dbContext, string? ownerId) =>
         new(dbContext, new FakeCurrentUser(ownerId), TimeProvider.System);
 

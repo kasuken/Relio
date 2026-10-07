@@ -1,0 +1,177 @@
+@* The preview of an import (issue #29): every person found, with a checkbox, what would be imported
+   and what was wrong or similar. Nothing is saved until the person confirms below. Names, details and
+   problems are the person's own data and are rendered as text, never as markup. A blocked row is
+   shown, disabled, with the reason; a possible duplicate starts unticked but can be ticked. Paging and
+   the filter never change the selection, which lives in ImportSelection. The "possible duplicate"
+   links open the existing profile in a new tab so the preview survives. *@
+@using Relio.Application.People
+@using Relio.Application.People.Import
+
+<div data-testid="import-preview-list">
+    <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-2">@ImportText.PreviewHeading</MudText>
+
+    @if (Preview.Truncated)
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Text" Elevation="0" Class="mb-3" data-testid="import-truncated">@ImportText.Truncated</MudAlert>
+    }
+
+    <p class="rl-meta" role="status" data-testid="import-summary">@ImportText.Summary(Preview, Selection.Count)</p>
+
+    <div class="rl-import-tools">
+        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="SelectAll" Disabled="Busy" data-testid="import-select-all">Select all</MudButton>
+        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="SelectNone" Disabled="Busy" data-testid="import-select-none">Select none</MudButton>
+        <div data-testid="import-filter">
+            <MudSwitch T="bool" Value="_onlyToCheck" ValueChanged="OnFilterChanged" Label="Only show people to check" Color="Color.Primary" />
+        </div>
+    </div>
+
+    @if (Rows.Count == 0)
+    {
+        <p class="rl-meta" data-testid="import-nothing-to-check">Nobody needs checking.</p>
+    }
+    else
+    {
+        <ul class="rl-import-list" data-testid="import-list">
+            @foreach (var candidate in PageRows)
+            {
+                var row = candidate;
+                <li class="rl-import-row" data-testid="import-row" @key="row.RowId">
+                    <MudCheckBox T="bool"
+                                 Value="Selection.IsSelected(row.RowId)"
+                                 ValueChanged="@(selected => Select(row, selected))"
+                                 Disabled="@(!row.CanImport || Busy)"
+                                 Class="rl-import-check rl-serif"
+                                 data-testid="import-row-check">
+                        @(row.DisplayName.Length == 0 ? ImportText.Unnamed : row.DisplayName)
+                    </MudCheckBox>
+
+                    @if (row.Request is not null && ImportText.ContactSummary(row.Request) is { Length: > 0 } details)
+                    {
+                        <span class="rl-meta" data-testid="import-row-details">@details</span>
+                    }
+
+                    @if (row.Problems.Count > 0)
+                    {
+                        <ul class="rl-import-problems">
+                            @foreach (var problem in row.Problems)
+                            {
+                                <li data-testid="import-row-problem">
+                                    <MudIcon Icon="@(ImportProblems.IsBlocking(problem) ? Icons.Material.Outlined.Block : Icons.Material.Outlined.Info)" Size="Size.Small" aria-hidden="true" />
+                                    <span>@ImportText.Problem(problem)</span>
+                                </li>
+                            }
+                        </ul>
+                    }
+
+                    @if (row.ExistingMatches.Count > 0)
+                    {
+                        <p class="rl-meta rl-import-duplicate" data-testid="import-row-duplicate">
+                            @ImportText.MayAlreadyBeInYourList
+                            @foreach (var match in row.ExistingMatches)
+                            {
+                                <span class="rl-import-match" @key="match.Id">
+                                    <a class="rl-contact-link rl-serif"
+                                       href="@($"/people/{match.Id}")"
+                                       target="_blank"
+                                       rel="noopener"
+                                       data-testid="import-row-duplicate-link">@match.DisplayName<span class="rl-visually-hidden"> @PossibleDuplicateText.NewTabHint</span></a>
+                                    <span>(@PossibleDuplicateText.Describe(match))</span>
+                                </span>
+                            }
+                        </p>
+                    }
+
+                    @if (row.SameAsRowNumber is int sameAs)
+                    {
+                        <p class="rl-meta rl-import-duplicate" data-testid="import-row-same-as">@ImportText.SameAsRow(sameAs)</p>
+                    }
+                </li>
+            }
+        </ul>
+
+        @if (PageCount > 1)
+        {
+            <nav class="rl-people-pagination" aria-label="Import pages" data-testid="import-pagination">
+                <MudPagination Count="PageCount"
+                               Selected="_page"
+                               SelectedChanged="OnPageChanged"
+                               Color="Color.Primary"
+                               Variant="Variant.Text"
+                               DropShadow="false"
+                               BoundaryCount="1"
+                               MiddleCount="1"
+                               ShowFirstButton="false"
+                               ShowLastButton="false" />
+            </nav>
+        }
+    }
+
+    <div class="rl-form-actions">
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   DropShadow="false"
+                   Disabled="@(Selection.Count == 0 || Busy)"
+                   OnClick="OnImport"
+                   data-testid="import-confirm">
+            @ImportText.ImportButton(Selection.Count)
+        </MudButton>
+        <MudButton Variant="Variant.Text" Disabled="Busy" OnClick="OnCancel" data-testid="import-cancel">Cancel</MudButton>
+    </div>
+
+    @if (Busy)
+    {
+        <div role="status" data-testid="import-importing">
+            <MudProgressLinear Indeterminate="true" Class="mt-3" />
+            <p class="rl-meta">@ImportText.Importing</p>
+        </div>
+    }
+</div>
+
+@code {
+    private const int PageSize = 50;
+
+    private int _page = 1;
+    private bool _onlyToCheck;
+
+    /// <summary>What the file would import.</summary>
+    [Parameter, EditorRequired]
+    public ImportPreview Preview { get; set; } = default!;
+
+    /// <summary>Which rows are ticked; shared with the page, which reads it to import.</summary>
+    [Parameter, EditorRequired]
+    public ImportSelection Selection { get; set; } = default!;
+
+    /// <summary>True while the import runs: every control is disabled.</summary>
+    [Parameter]
+    public bool Busy { get; set; }
+
+    /// <summary>Raised when the person confirms.</summary>
+    [Parameter]
+    public EventCallback OnImport { get; set; }
+
+    /// <summary>Raised when the person gives up.</summary>
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private IReadOnlyList<ImportCandidate> Rows =>
+        _onlyToCheck ? [.. Preview.Candidates.Where(candidate => candidate.NeedsAttention)] : Preview.Candidates;
+
+    private int PageCount => Math.Max(1, (Rows.Count + PageSize - 1) / PageSize);
+
+    private IEnumerable<ImportCandidate> PageRows =>
+        Rows.Skip((Math.Min(_page, PageCount) - 1) * PageSize).Take(PageSize);
+
+    private void Select(ImportCandidate candidate, bool selected) => Selection.Set(candidate.RowId, selected);
+
+    private void SelectAll() => Selection.SelectAll();
+
+    private void SelectNone() => Selection.SelectNone();
+
+    private void OnPageChanged(int page) => _page = page;
+
+    private void OnFilterChanged(bool onlyToCheck)
+    {
+        _onlyToCheck = onlyToCheck;
+        _page = 1;
+    }
+}

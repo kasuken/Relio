@@ -54,7 +54,9 @@ public static class PossibleDuplicateMatcher
                 PersonNameNormalizer.Normalize(candidate.FirstName),
                 PersonNameNormalizer.Normalize(candidate.LastName),
                 PersonNameNormalizer.Normalize(candidate.Nickname),
-                PersonNameNormalizer.FullName(candidate.FirstName, candidate.LastName)))
+                PersonNameNormalizer.FullName(candidate.FirstName, candidate.LastName),
+                [.. candidate.EmailKeys],
+                [.. candidate.PhoneKeys]))
             .ToList());
     }
 
@@ -73,40 +75,46 @@ public static class PossibleDuplicateMatcher
 
         var matches = new List<(PreparedCandidate Candidate, List<PossibleDuplicateReason> Reasons, int Score)>();
 
-        foreach (var prepared in candidates.Items)
+        var items = candidates.Items;
+        var probeEmails = probe.EmailKeys.Count == 0 ? [] : probe.EmailKeys.ToArray();
+        var probePhones = probe.PhoneKeys.Count == 0 ? [] : probe.PhoneKeys.ToArray();
+        for (var position = 0; position < items.Count; position++)
         {
-            if (prepared.Source.Id == excludePersonId)
+            var prepared = items[position];
+            if (excludePersonId is Guid excluded && prepared.Source.Id == excluded)
             {
                 continue;
             }
 
-            var reasons = new List<PossibleDuplicateReason>(4);
+            // Allocated only for the rare candidate that matches: an import compares thousands of rows
+            // with thousands of people, and most pairs match nothing.
+            List<PossibleDuplicateReason>? reasons = null;
             var score = 0;
 
             if (IsSameName(probe, prepared))
             {
-                reasons.Add(PossibleDuplicateReason.SameName);
+                (reasons ??= new List<PossibleDuplicateReason>(4)).Add(PossibleDuplicateReason.SameName);
                 score += SameNameScore;
             }
             else if (IsSimilarName(probe, prepared))
             {
-                reasons.Add(PossibleDuplicateReason.SimilarName);
+                (reasons ??= new List<PossibleDuplicateReason>(4)).Add(PossibleDuplicateReason.SimilarName);
                 score += SimilarNameScore;
             }
 
-            if (SharesEmail(probe, prepared.Source))
+            if (SharesEmail(probeEmails, prepared.EmailKeys))
             {
-                reasons.Add(PossibleDuplicateReason.SameEmail);
+                (reasons ??= new List<PossibleDuplicateReason>(4)).Add(PossibleDuplicateReason.SameEmail);
                 score += ContactScore;
             }
 
-            if (SharesPhone(probe, prepared.Source))
+            if (SharesPhone(probePhones, prepared.PhoneKeys))
             {
-                reasons.Add(PossibleDuplicateReason.SamePhone);
+                (reasons ??= new List<PossibleDuplicateReason>(4)).Add(PossibleDuplicateReason.SamePhone);
                 score += ContactScore;
             }
 
-            if (reasons.Count > 0)
+            if (reasons is not null)
             {
                 matches.Add((prepared, reasons, score));
             }
@@ -185,16 +193,14 @@ public static class PossibleDuplicateMatcher
             : probe.Last.Length != candidate.Last.Length;
     }
 
-    private static bool SharesEmail(DuplicateProbe probe, DuplicateCandidate candidate)
+    // The two contact comparisons take arrays: an import runs them for millions of pairs, and the
+    // arrays (made once per probe and once per candidate) keep each pair free of enumerators,
+    // interface calls and allocations.
+    private static bool SharesEmail(string[] probeKeys, string[] candidateKeys)
     {
-        if (probe.EmailKeys.Count == 0 || candidate.EmailKeys.Count == 0)
+        foreach (var key in probeKeys)
         {
-            return false;
-        }
-
-        foreach (var key in probe.EmailKeys)
-        {
-            foreach (var other in candidate.EmailKeys)
+            foreach (var other in candidateKeys)
             {
                 if (string.Equals(key, other, StringComparison.Ordinal))
                 {
@@ -206,21 +212,20 @@ public static class PossibleDuplicateMatcher
         return false;
     }
 
-    private static bool SharesPhone(DuplicateProbe probe, DuplicateCandidate candidate)
+    private static bool SharesPhone(string[] probeKeys, string[] candidateKeys)
     {
-        if (probe.PhoneKeys.Count == 0 || candidate.PhoneKeys.Count == 0)
+        foreach (var key in probeKeys)
         {
-            return false;
-        }
-
-        foreach (var key in probe.PhoneKeys)
-        {
-            foreach (var other in candidate.PhoneKeys)
+            // Suffixes are compared as spans: PhoneSuffix would allocate two strings per pair.
+            var keyIsLong = DigitCount(key) >= PhoneSuffixLength;
+            foreach (var other in candidateKeys)
             {
+                // When the key has eight digits its last eight characters are all digits, so an equal
+                // suffix means the other number has at least eight digits too (no need to count them).
                 if (string.Equals(key, other, StringComparison.Ordinal)
-                    || (DigitCount(key) >= PhoneSuffixLength
-                        && DigitCount(other) >= PhoneSuffixLength
-                        && string.Equals(PhoneSuffix(key), PhoneSuffix(other), StringComparison.Ordinal)))
+                    || (keyIsLong
+                        && other.Length >= PhoneSuffixLength
+                        && key.AsSpan(key.Length - PhoneSuffixLength).SequenceEqual(other.AsSpan(other.Length - PhoneSuffixLength))))
                 {
                     return true;
                 }
@@ -237,12 +242,19 @@ public static class PossibleDuplicateMatcher
 /// </summary>
 public sealed class PreparedCandidates
 {
-    internal PreparedCandidates(IReadOnlyList<PreparedCandidate> items) => Items = items;
+    internal PreparedCandidates(List<PreparedCandidate> items) => Items = items;
 
     /// <summary>How many candidates the set holds.</summary>
     public int Count => Items.Count;
 
-    internal IReadOnlyList<PreparedCandidate> Items { get; }
+    internal List<PreparedCandidate> Items { get; }
 }
 
-internal sealed record PreparedCandidate(DuplicateCandidate Source, string First, string Last, string Nickname, string FullName);
+internal sealed record PreparedCandidate(
+    DuplicateCandidate Source,
+    string First,
+    string Last,
+    string Nickname,
+    string FullName,
+    string[] EmailKeys,
+    string[] PhoneKeys);

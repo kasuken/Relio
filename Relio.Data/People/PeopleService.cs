@@ -206,18 +206,12 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
                 throw new ForeignEntityNotOwnedException(ForeignEntityNames.ContactMethods);
             }
 
-            var person = new Person { OwnerId = ownerId };
-            ApplyProfile(person, request);
+            // The person and its contact methods are built by PersonEntityBuilder, shared with the import.
+            var person = PersonEntityBuilder.NewPerson(ownerId, request);
 
             foreach (var tag in tags.All)
             {
                 person.Tags.Add(tag);
-            }
-
-            var contactMethods = request.ContactMethods ?? [];
-            for (var position = 0; position < contactMethods.Count; position++)
-            {
-                person.ContactMethods.Add(CreateContactMethod(ownerId, contactMethods[position], position));
             }
 
             // Add traverses the whole graph, so the new person, its new contact methods and any new
@@ -270,7 +264,7 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
                 throw new ForeignEntityNotOwnedException(ForeignEntityNames.ContactMethods);
             }
 
-            ApplyProfile(person, request);
+            PersonEntityBuilder.ApplyProfile(person, request);
 
             person.Tags.Clear();
             foreach (var tag in tags.All)
@@ -293,12 +287,12 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
                 var input = contactMethods[position];
                 if (input.Id is Guid id)
                 {
-                    ApplyContactMethod(existing[id], input, position);
+                    PersonEntityBuilder.ApplyContactMethod(existing[id], input, position);
                     kept.Add(id);
                 }
                 else
                 {
-                    var added = CreateContactMethod(ownerId, input, position);
+                    var added = PersonEntityBuilder.CreateContactMethod(ownerId, input, position);
                     added.PersonId = person.Id;
                     dbContext.ContactMethods.Add(added);
                 }
@@ -508,44 +502,6 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
 
     private static bool IsTagNameConflict(DbUpdateException exception) =>
         SqlServerErrors.IsUniqueIndexViolation(exception, TagConfiguration.NameIndexName);
-
-    private static ContactMethod CreateContactMethod(string ownerId, ContactMethodInput input, int sortOrder)
-    {
-        var contactMethod = new ContactMethod { OwnerId = ownerId };
-        ApplyContactMethod(contactMethod, input, sortOrder);
-        return contactMethod;
-    }
-
-    /// <summary>
-    /// Writes a submitted row onto <paramref name="contactMethod"/>: the trimmed value, the label,
-    /// the comparison key from <see cref="ContactMethodRules.ToNormalizedValue"/> and the position.
-    /// </summary>
-    private static void ApplyContactMethod(ContactMethod contactMethod, ContactMethodInput input, int sortOrder)
-    {
-        var value = ContactMethodRules.NormalizeValue(input.Kind, input.Value);
-        contactMethod.Kind = input.Kind;
-        contactMethod.Label = ContactMethodRules.NormalizeLabel(input.Label);
-        contactMethod.Value = value;
-        contactMethod.NormalizedValue = ContactMethodRules.ToNormalizedValue(input.Kind, value);
-        contactMethod.SortOrder = sortOrder;
-    }
-
-    /// <summary>Writes every profile field of <paramref name="input"/> onto <paramref name="person"/>, normalized.</summary>
-    private static void ApplyProfile(Person person, IPersonProfileInput input)
-    {
-        person.FirstName = PersonProfileRules.NormalizeRequired(input.FirstName);
-        person.LastName = PersonProfileRules.NormalizeOptional(input.LastName);
-        person.Nickname = PersonProfileRules.NormalizeOptional(input.Nickname);
-        person.RelationshipTypeId = input.RelationshipTypeId;
-        person.HowWeMet = PersonProfileRules.NormalizeOptional(input.HowWeMet);
-        person.Details = PersonProfileRules.NormalizeOptional(input.Details);
-
-        // Validation guarantees day and month come together, and that a year never comes alone.
-        var hasBirthday = input.BirthdayDay is not null && input.BirthdayMonth is not null;
-        person.BirthdayDay = hasBirthday ? input.BirthdayDay : null;
-        person.BirthdayMonth = hasBirthday ? input.BirthdayMonth : null;
-        person.BirthdayYear = hasBirthday ? input.BirthdayYear : null;
-    }
 
     /// <summary>
     /// Throws <see cref="ForeignEntityNotOwnedException"/> when <paramref name="relationshipTypeId"/>

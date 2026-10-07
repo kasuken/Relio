@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Relio.Application.Accounts;
 using Relio.Application.Administration;
 using Relio.Application.People;
+using Relio.Application.People.Import;
 using Relio.Application.Profile;
 using Relio.Application.Security;
 using Relio.Application.Time;
@@ -110,12 +111,15 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
         var types = scope.ServiceProvider.GetRequiredService<IRelationshipTypeService>();
         var people = scope.ServiceProvider.GetRequiredService<IPeopleService>();
         var merge = scope.ServiceProvider.GetRequiredService<IPersonMergeService>();
+        var import = scope.ServiceProvider.GetRequiredService<IPeopleImportService>();
 
-        // PersonForm loads relationship types while a Save from an earlier form is still running.
+        // PersonForm loads relationship types while a Save from an earlier form is still running, and
+        // the import page previews a file while another tab saves.
         var act = async () => await Task.WhenAll(
             types.ListAsync(),
             people.ListAsync(),
             merge.ListCandidatesAsync(Guid.NewGuid()),
+            import.PreviewAsync(new ImportReadResult([new ImportPersonDraft(2, "Ada", null, null, null, false, null, [])], 1, false, 0)),
             people.FindPossibleDuplicatesAsync(new PossibleDuplicateQuery { FirstName = "Ada" }),
             people.CreateAsync(new CreatePersonRequest { FirstName = "Grace" }));
 

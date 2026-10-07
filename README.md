@@ -12,7 +12,7 @@ after your relationships, available as a hosted service or self-hosted.
 
 ## Features (MVP)
 
-- **People**: profiles with relationship type, contact methods, tags and birthdays
+- **People**: profiles with relationship type, contact methods, tags and birthdays, imported from a phone's vCard or a CSV file
 - **Timeline**: interactions and notes per person, in chronological order
 - **Reminders**: reconnect follow-ups and birthday reminders, by email and on the dashboard
 - **Difficult moments**: record tensions, triggers, resolutions and lessons learned

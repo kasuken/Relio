@@ -1,0 +1,14 @@
+BEGIN:VCARD
+VERSION:4.0
+FN:Dr. Zoë Anne Example
+N:Example;Zoë,Anne;;Dr.;
+BDAY:--0415
+TEL;VALUE=uri;TYPE="cell,voice":tel:+1-202-555-0143;ext=12
+EMAIL;TYPE=work:zoe.anne@example.com
+END:VCARD
+BEGIN:VCARD
+VERSION:4.0
+FN:Sam Weaver
+N:Weaver;Sam;;;
+BDAY;VALUE=text:circa 1800
+END:VCARD
