@@ -1,6 +1,10 @@
 @using Relio.Web.Security
 @using Microsoft.AspNetCore.Components.Endpoints
 @using Relio.Web.Components.Marketing
+@using Relio.Web.Configuration
+@inject Microsoft.Extensions.Options.IOptions<SeoOptions> SeoOptions
+@inject Microsoft.Extensions.Options.IOptions<HostedPoliciesOptions> PolicyOptions
+@inject IHostEnvironment HostEnvironment
 
 <!DOCTYPE html>
 <html lang="en">
@@ -9,6 +13,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
+    @if (!CanIndexPage)
+    {
+        <meta name="robots" content="noindex, nofollow" />
+    }
     <ResourcePreloader />
     <!--
         Applies the stored (or system) light/dark preference before first paint, to avoid a
@@ -51,4 +59,10 @@
     private bool IsMarketingPage =>
         HttpContext.GetEndpoint()?.Metadata.GetMetadata<ComponentTypeMetadata>()?.Type
             .IsDefined(typeof(MarketingPageAttribute), inherit: false) == true;
+
+    private bool CanIndexPage => IsMarketingPage
+        && HttpContext.Response.StatusCode < 400
+        && HostEnvironment.IsProduction()
+        && (SeoOptions.Value.IndexingEnabled
+            || (PolicyOptions.Value.Enabled && PolicyOptions.Value.IndexingEnabled));
 }

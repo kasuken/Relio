@@ -1,3 +1,4 @@
+@using Relio.Web.Configuration
 @inject Microsoft.Extensions.Options.IOptions<SeoOptions> SeoOptions
 
 <PageTitle>@FullTitle</PageTitle>
@@ -9,9 +10,12 @@
     <meta property="og:title" content="@FullTitle" />
     <meta property="og:description" content="@Description" />
     <meta property="og:url" content="@CanonicalUrl" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content="@SocialPreviewUrl" />
+    <meta property="og:image:alt" content="Relio - a private notebook for the people in your life" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="@FullTitle" />
     <meta name="twitter:description" content="@Description" />
+    <meta name="twitter:image" content="@SocialPreviewUrl" />
 </HeadContent>
 
 @code {
@@ -32,9 +36,11 @@
 
     /// <summary>Gets or sets the Open Graph page type.</summary>
     [Parameter]
-    public string OpenGraphType { get; set; } = "article";
+    public string OpenGraphType { get; set; } = "website";
 
     private string FullTitle => $"{Title} - {SeoOptions.Value.SiteName}";
 
     private string CanonicalUrl => SeoOptions.Value.GetCanonicalUrl(CanonicalPath);
+
+    private string SocialPreviewUrl => SeoOptions.Value.GetCanonicalUrl(SeoOptions.Value.SocialPreviewPath);
 }

@@ -274,7 +274,7 @@ public sealed class HostedPoliciesTests(RelioAppFixture fixture)
         robots.Should().Contain($"Sitemap: {PublicOrigin}/sitemap.xml");
         robots.Should().Contain("Allow: /privacy");
         robots.Should().Contain("Allow: /terms");
-        robots.Should().NotContain("/acceptable-use");
+        robots.Should().NotContain("Allow: /acceptable-use");
 
         using var sitemapResponse = await client.GetAsync("/sitemap.xml");
         sitemapResponse.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -287,6 +287,10 @@ public sealed class HostedPoliciesTests(RelioAppFixture fixture)
             .ToArray();
 
         locations.Should().Equal(
+            $"{PublicOrigin}/",
+            $"{PublicOrigin}/features",
+            $"{PublicOrigin}/pricing",
+            $"{PublicOrigin}/changelog",
             $"{PublicOrigin}/privacy",
             $"{PublicOrigin}/terms");
 

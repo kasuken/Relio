@@ -46,6 +46,29 @@ public sealed class MarketingOptionsValidationTests
         var validator = new SeoOptionsValidator(CreateEnvironment(Environments.Development));
 
         validator.Validate(Options.DefaultName, new SeoOptions()).Succeeded.Should().BeTrue();
+        new SeoOptions().GetCanonicalUrl("/").Should().Be("https://localhost/");
+    }
+
+    [Fact]
+    public void Indexing_requires_an_explicit_origin_and_is_off_by_default()
+    {
+        new SeoOptions().IndexingEnabled.Should().BeFalse();
+        var validator = new SeoOptionsValidator(CreateEnvironment(Environments.Production));
+        validator.Validate(Options.DefaultName, new SeoOptions { IndexingEnabled = true })
+            .Failed.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("//attacker.example/preview.png")]
+    [InlineData("/img/preview.png?token=secret")]
+    [InlineData("/img/../private.png")]
+    [InlineData("data:image/png;base64,xxx")]
+    [InlineData("/img/%2e%2e/secret.png")]
+    public void Social_preview_must_be_a_local_application_asset(string path)
+    {
+        var validator = new SeoOptionsValidator(CreateEnvironment(Environments.Development));
+        validator.Validate(Options.DefaultName, new SeoOptions { SocialPreviewPath = path })
+            .Failed.Should().BeTrue();
     }
 
     [Fact]
@@ -74,6 +97,7 @@ public sealed class MarketingOptionsValidationTests
 
     [Theory]
     [InlineData("relio.example")]
+    [InlineData("")]
     [InlineData("https://relio.example/path")]
     [InlineData("https://relio.example?token=secret")]
     [InlineData("javascript:alert(1)")]
@@ -86,7 +110,10 @@ public sealed class MarketingOptionsValidationTests
             new SeoOptions { PublicOrigin = origin });
 
         result.Failed.Should().BeTrue();
-        DescribeFailures(result).Should().NotContain(origin);
+        if (origin.Length > 0)
+        {
+            DescribeFailures(result).Should().NotContain(origin);
+        }
     }
 
     [Fact]
