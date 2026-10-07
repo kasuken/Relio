@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Relio.Data.Encryption;
 using Relio.Data.Reminders;
 using Relio.Domain;
 
@@ -27,6 +28,35 @@ public class UnsubscribeServiceTests
 
         var profile = await dbContext.UserProfiles.AsNoTracking().SingleAsync(p => p.OwnerId == "user-1");
         profile.ReminderEmailDelivery.Should().Be(ReminderEmailDelivery.None);
+    }
+
+    [Fact]
+    public async Task Encrypted_unsubscribe_token_keeps_a_stable_verifier_for_repeatable_lookup()
+    {
+        const string token = "synthetic-high-entropy-unsubscribe-token";
+        var options = CreateOptions();
+        await using var dbContext = new RelioDbContext(options, TimeProvider.System, FieldProtector);
+        dbContext.UserProfiles.Add(new UserProfile
+        {
+            OwnerId = "user-1",
+            TimeZoneId = "UTC",
+            ReminderEmailDelivery = ReminderEmailDelivery.DailyDigest,
+            UnsubscribeToken = token,
+        });
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+
+        var createdProfile = await dbContext.UserProfiles.AsNoTracking().SingleAsync();
+        createdProfile.UnsubscribeTokenVerifier.Should().Be(UnsubscribeTokenHash.Compute(token));
+
+        var service = new UnsubscribeService(dbContext);
+
+        (await service.UnsubscribeAsync(token)).Should().BeTrue();
+        (await service.UnsubscribeAsync(token)).Should().BeTrue();
+
+        var profile = await dbContext.UserProfiles.AsNoTracking().SingleAsync();
+        profile.ReminderEmailDelivery.Should().Be(ReminderEmailDelivery.None);
+        profile.UnsubscribeToken.Should().Be(token);
     }
 
     [Fact]
@@ -122,10 +152,11 @@ public class UnsubscribeServiceTests
 
     private static RelioDbContext CreateDbContext()
     {
-        var options = new DbContextOptionsBuilder<RelioDbContext>()
+        return new RelioDbContext(CreateOptions(), TimeProvider.System, FieldProtector);
+    }
+
+    private static DbContextOptions<RelioDbContext> CreateOptions() =>
+        new DbContextOptionsBuilder<RelioDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-
-        return new RelioDbContext(options, TimeProvider.System);
-    }
 }

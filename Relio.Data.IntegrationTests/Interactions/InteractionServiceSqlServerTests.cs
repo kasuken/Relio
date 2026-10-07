@@ -16,7 +16,7 @@ public sealed class InteractionServiceSqlServerTests(SqlServerDatabaseFixture fi
     [SqlServerFact]
     public async Task Create_update_and_delete_recalculate_each_participants_last_contact_date()
     {
-        var ownerId = TestDataFactory.NewOwnerId();
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
         var (firstPersonId, secondPersonId, thirdPersonId) = await SeedPeopleAsync(ownerId);
         var today = await TodayAsync(ownerId);
         var olderDate = today.AddDays(-3);
@@ -97,8 +97,8 @@ public sealed class InteractionServiceSqlServerTests(SqlServerDatabaseFixture fi
     [SqlServerFact]
     public async Task Foreign_participant_ids_and_foreign_interactions_are_indistinguishable_and_change_nothing()
     {
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var (personA, secondPersonA, thirdPersonA) = await SeedPeopleAsync(ownerA);
         var (personB, _, _) = await SeedPeopleAsync(ownerB);
         var todayA = await TodayAsync(ownerA);
@@ -143,7 +143,7 @@ public sealed class InteractionServiceSqlServerTests(SqlServerDatabaseFixture fi
     [SqlServerFact]
     public async Task Interaction_indexes_and_participant_constraints_are_present_in_the_migrated_database()
     {
-        var ownerId = TestDataFactory.NewOwnerId();
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
         var (personId, _, _) = await SeedPeopleAsync(ownerId);
         var interactionId = await CreateInteractionAsync(ownerId, personId, await TodayAsync(ownerId));
         await using var dbContext = fixture.CreateDbContext();

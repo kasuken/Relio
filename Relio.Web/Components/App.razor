@@ -1,3 +1,7 @@
+@using Relio.Web.Security
+@using Microsoft.AspNetCore.Components.Endpoints
+@using Relio.Web.Components.Marketing
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -10,11 +14,15 @@
         Applies the stored (or system) light/dark preference before first paint, to avoid a
         flash of the wrong theme. See wwwroot/js/theme.js and Relio.Web/Theme/ThemeModeState.cs.
     -->
-    <script src="@Assets["js/theme.js"]"></script>
+    <script src="@Assets["js/theme.js"]" nonce="@ContentSecurityPolicyNonce.Get(HttpContext)"></script>
     <link rel="stylesheet" href="@Assets["_content/MudBlazor/MudBlazor.min.css"]" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["Relio.Web.styles.css"]" />
-    <ImportMap />
+    @if (IsMarketingPage)
+    {
+        <link rel="stylesheet" href="@Assets["marketing.css"]" />
+    }
+    <ImportMap nonce="@ContentSecurityPolicyNonce.Get(HttpContext)" />
     <HeadOutlet />
 </head>
 
@@ -39,4 +47,8 @@
     // SSR" bullet of AGENTS.md "Accounts and authentication".
     private IComponentRenderMode? RenderModeForPage =>
         HttpContext.AcceptsInteractiveRouting() ? InteractiveServer : null;
+
+    private bool IsMarketingPage =>
+        HttpContext.GetEndpoint()?.Metadata.GetMetadata<ComponentTypeMetadata>()?.Type
+            .IsDefined(typeof(MarketingPageAttribute), inherit: false) == true;
 }

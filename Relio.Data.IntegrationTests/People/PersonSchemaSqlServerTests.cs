@@ -17,7 +17,8 @@ public sealed class PersonSchemaSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task Birthday_month_out_of_range_is_rejected_by_the_database()
     {
         await using var dbContext = fixture.CreateDbContext();
-        dbContext.People.Add(NewPerson(birthdayDay: 1, birthdayMonth: 13));
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
+        dbContext.People.Add(NewPerson(ownerId, birthdayDay: 1, birthdayMonth: 13));
 
         var act = () => dbContext.SaveChangesAsync();
 
@@ -28,7 +29,8 @@ public sealed class PersonSchemaSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task Birthday_day_out_of_range_is_rejected_by_the_database()
     {
         await using var dbContext = fixture.CreateDbContext();
-        dbContext.People.Add(NewPerson(birthdayDay: 32, birthdayMonth: 1));
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
+        dbContext.People.Add(NewPerson(ownerId, birthdayDay: 32, birthdayMonth: 1));
 
         var act = () => dbContext.SaveChangesAsync();
 
@@ -39,7 +41,8 @@ public sealed class PersonSchemaSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task Birthday_year_out_of_range_is_rejected_by_the_database()
     {
         await using var dbContext = fixture.CreateDbContext();
-        dbContext.People.Add(NewPerson(birthdayDay: 1, birthdayMonth: 1, birthdayYear: 10000));
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
+        dbContext.People.Add(NewPerson(ownerId, birthdayDay: 1, birthdayMonth: 1, birthdayYear: 10000));
 
         var act = () => dbContext.SaveChangesAsync();
 
@@ -50,7 +53,8 @@ public sealed class PersonSchemaSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task A_day_without_a_month_is_rejected_by_the_database()
     {
         await using var dbContext = fixture.CreateDbContext();
-        dbContext.People.Add(NewPerson(birthdayDay: 10));
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
+        dbContext.People.Add(NewPerson(ownerId, birthdayDay: 10));
 
         var act = () => dbContext.SaveChangesAsync();
 
@@ -61,7 +65,8 @@ public sealed class PersonSchemaSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task A_year_alone_is_rejected_by_the_database()
     {
         await using var dbContext = fixture.CreateDbContext();
-        dbContext.People.Add(NewPerson(birthdayYear: 1990));
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
+        dbContext.People.Add(NewPerson(ownerId, birthdayYear: 1990));
 
         var act = () => dbContext.SaveChangesAsync();
 
@@ -72,10 +77,11 @@ public sealed class PersonSchemaSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task No_birthday_a_birthday_without_a_year_and_a_complete_birthday_are_all_accepted()
     {
         await using var dbContext = fixture.CreateDbContext();
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
         dbContext.People.AddRange(
-            NewPerson(),
-            NewPerson(birthdayDay: 29, birthdayMonth: 2),
-            NewPerson(birthdayDay: 10, birthdayMonth: 12, birthdayYear: 1815));
+            NewPerson(ownerId),
+            NewPerson(ownerId, birthdayDay: 29, birthdayMonth: 2),
+            NewPerson(ownerId, birthdayDay: 10, birthdayMonth: 12, birthdayYear: 1815));
 
         var act = () => dbContext.SaveChangesAsync();
 
@@ -86,7 +92,7 @@ public sealed class PersonSchemaSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task A_relationship_type_name_is_unique_per_owner()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerId = TestDataFactory.NewOwnerId();
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
         await TestDataFactory.CreateRelationshipTypeAsync(dbContext, ownerId, "Friend");
 
         dbContext.RelationshipTypes.Add(new RelationshipType { OwnerId = ownerId, Name = "Friend" });
@@ -100,9 +106,11 @@ public sealed class PersonSchemaSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task Different_owners_can_each_have_Friend()
     {
         await using var dbContext = fixture.CreateDbContext();
-        await TestDataFactory.CreateRelationshipTypeAsync(dbContext, TestDataFactory.NewOwnerId(), "Friend");
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
+        await TestDataFactory.CreateRelationshipTypeAsync(dbContext, ownerA, "Friend");
 
-        dbContext.RelationshipTypes.Add(new RelationshipType { OwnerId = TestDataFactory.NewOwnerId(), Name = "Friend" });
+        dbContext.RelationshipTypes.Add(new RelationshipType { OwnerId = ownerB, Name = "Friend" });
         var act = () => dbContext.SaveChangesAsync();
 
         await act.Should().NotThrowAsync();
@@ -112,7 +120,8 @@ public sealed class PersonSchemaSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task A_person_cannot_point_at_a_relationship_type_that_does_not_exist()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var person = NewPerson();
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
+        var person = NewPerson(ownerId);
         person.RelationshipTypeId = Guid.NewGuid();
         dbContext.People.Add(person);
 
@@ -124,7 +133,7 @@ public sealed class PersonSchemaSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task Deleting_a_relationship_type_clears_it_from_people()
     {
-        var ownerId = TestDataFactory.NewOwnerId();
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid typeId;
         Guid personId;
         await using (var setup = fixture.CreateDbContext())
@@ -152,7 +161,8 @@ public sealed class PersonSchemaSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task Long_text_survives_at_its_column_limits()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var person = NewPerson();
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
+        var person = NewPerson(ownerId);
         person.FirstName = new string('a', Person.FirstNameMaxLength);
         person.HowWeMet = new string('b', Person.HowWeMetMaxLength);
         person.Details = new string('c', Person.DetailsMaxLength);
@@ -164,13 +174,13 @@ public sealed class PersonSchemaSqlServerTests(SqlServerDatabaseFixture fixture)
     }
 
     private static Person NewPerson(
-        string? ownerId = null,
+        string ownerId,
         int? birthdayDay = null,
         int? birthdayMonth = null,
         int? birthdayYear = null) =>
         new()
         {
-            OwnerId = ownerId ?? TestDataFactory.NewOwnerId(),
+            OwnerId = ownerId,
             FirstName = "Ada",
             BirthdayDay = birthdayDay,
             BirthdayMonth = birthdayMonth,

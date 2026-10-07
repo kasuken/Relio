@@ -1,6 +1,12 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Relio.Data.Accounts;
+using Relio.Data.Encryption;
 using Relio.Data.Identity;
+using Relio.Data.Reminders;
 using Relio.Domain;
 
 namespace Relio.Data;
@@ -11,7 +17,7 @@ namespace Relio.Data;
 /// </summary>
 /// <remarks>
 /// Audit timestamps (<see cref="IOwnedEntity.CreatedAtUtc"/>, <see cref="IOwnedEntity.UpdatedAtUtc"/>)
-/// are stamped here, from <paramref name="timeProvider"/>, on every <c>SaveChanges</c> call - callers
+/// are stamped here, from the injected <see cref="TimeProvider"/>, on every <c>SaveChanges</c> call - callers
 /// and application services never set them directly. <see cref="IOwnedEntity.OwnerId"/> is not
 /// touched here: it is set once by the service that creates the entity. This context does not
 /// apply a global query filter on owner id; see the "User-scoped data pattern" section of
@@ -28,10 +34,41 @@ namespace Relio.Data;
 /// <see cref="IOwnedEntity"/> - they are not user-owned data, they *are* the user - so they are
 /// untouched by <see cref="ApplyAuditTimestamps"/> below.
 /// </remarks>
-public sealed class RelioDbContext(DbContextOptions<RelioDbContext> options, TimeProvider timeProvider)
-    : IdentityDbContext<RelioUser>(options)
+public sealed partial class RelioDbContext : IdentityDbContext<RelioUser>
 {
-    private readonly TimeProvider _timeProvider = timeProvider;
+    private readonly TimeProvider _timeProvider;
+    private readonly IDataProtectionFieldProtector _fieldProtector;
+    private readonly FieldProtectionMode _fieldProtectionMode;
+
+    /// <summary>
+    /// Creates a Relio database context.
+    /// </summary>
+    /// <param name="options">The EF Core provider and connection options.</param>
+    /// <param name="timeProvider">The clock used for audit timestamps.</param>
+    /// <param name="fieldProtector">The shared, durable-key-ring field protector.</param>
+    /// <param name="fieldProtectionMode">The storage mode, normally encrypted.</param>
+    public RelioDbContext(
+        DbContextOptions<RelioDbContext> options,
+        TimeProvider timeProvider,
+        IDataProtectionFieldProtector fieldProtector,
+        FieldProtectionMode fieldProtectionMode = FieldProtectionMode.Encrypted)
+        : base(options)
+    {
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(fieldProtector);
+        if (!Enum.IsDefined(fieldProtectionMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(fieldProtectionMode));
+        }
+
+        _timeProvider = timeProvider;
+        _fieldProtector = fieldProtector;
+        _fieldProtectionMode = fieldProtectionMode;
+    }
+
+    internal Guid FieldProtectionModelIdentity => _fieldProtector.ModelCacheIdentity;
+
+    internal FieldProtectionMode FieldProtectionMode => _fieldProtectionMode;
 
     /// <summary>
     /// Lets one operation at a time run on this context. A Blazor circuit (and a prerender) shares one
@@ -70,6 +107,9 @@ public sealed class RelioDbContext(DbContextOptions<RelioDbContext> options, Tim
     /// <summary>User profiles (currently just the user's time zone, see epic #12), one per user.</summary>
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
 
+    /// <summary>Optional, retention-bounded product activity contributions.</summary>
+    public DbSet<ProductActivity> ProductActivities => Set<ProductActivity>();
+
     /// <summary>
     /// Pending sign-up invitations for an invitation-only instance (issue #19). Instance
     /// administration data, not user-owned: see <see cref="Administration.RegistrationInvitation"/>.
@@ -77,25 +117,129 @@ public sealed class RelioDbContext(DbContextOptions<RelioDbContext> options, Tim
     public DbSet<Administration.RegistrationInvitation> RegistrationInvitations => Set<Administration.RegistrationInvitation>();
 
     /// <inheritdoc />
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.ReplaceService<IModelCacheKeyFactory, RelioDbContextModelCacheKeyFactory>();
+    }
+
+    /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(RelioDbContext).Assembly);
+        OwnedEntityIdentityRelationships.Apply(modelBuilder);
+        ConfigureProtectedProperties(modelBuilder);
+        ConfigureProtectionVersions(modelBuilder);
     }
 
     /// <inheritdoc />
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
-        ApplyAuditTimestamps();
+        ApplySensitiveDataProtectionMetadata();
+        if (_fieldProtectionMode != FieldProtectionMode.LegacyBackfill)
+        {
+            ApplyAuditTimestamps();
+        }
+
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
     /// <inheritdoc />
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
-        ApplyAuditTimestamps();
+        ApplySensitiveDataProtectionMetadata();
+        if (_fieldProtectionMode != FieldProtectionMode.LegacyBackfill)
+        {
+            ApplyAuditTimestamps();
+        }
+
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void ConfigureProtectedProperties(ModelBuilder modelBuilder)
+    {
+        Configure(modelBuilder.Entity<Person>().Property(person => person.HowWeMet), ProtectedFieldPurposes.PersonHowWeMet);
+        Configure(modelBuilder.Entity<Person>().Property(person => person.Details), ProtectedFieldPurposes.PersonDetails);
+        Configure(modelBuilder.Entity<Note>().Property(note => note.Text), ProtectedFieldPurposes.NoteText);
+        Configure(modelBuilder.Entity<Interaction>().Property(interaction => interaction.Description), ProtectedFieldPurposes.InteractionDescription);
+        Configure(modelBuilder.Entity<Reminder>().Property(reminder => reminder.Title), ProtectedFieldPurposes.ReminderTitle);
+        Configure(
+            modelBuilder.Entity<IdentityUserToken<string>>().Property(token => token.Value),
+            ProtectedFieldPurposes.IdentityUserTokenValue);
+        Configure(
+            modelBuilder.Entity<UserProfile>().Property(profile => profile.UnsubscribeToken),
+            ProtectedFieldPurposes.UnsubscribeToken);
+    }
+
+    private void ConfigureProtectionVersions(ModelBuilder modelBuilder)
+    {
+        ConfigureProtectionVersion(modelBuilder.Entity<Person>());
+        ConfigureProtectionVersion(modelBuilder.Entity<Note>());
+        ConfigureProtectionVersion(modelBuilder.Entity<Interaction>());
+        ConfigureProtectionVersion(modelBuilder.Entity<Reminder>());
+        ConfigureProtectionVersion(modelBuilder.Entity<UserProfile>());
+        ConfigureProtectionVersion(modelBuilder.Entity<IdentityUserToken<string>>());
+    }
+
+    private void Configure(PropertyBuilder property, string purpose)
+    {
+        property.HasConversion(FieldProtectionValueConverter.Create(_fieldProtector, _fieldProtectionMode, purpose));
+    }
+
+    private static void ConfigureProtectionVersion<TEntity>(EntityTypeBuilder<TEntity> builder)
+        where TEntity : class
+    {
+        builder.Property<int>(FieldProtectionSchema.VersionPropertyName)
+            .IsRequired()
+            .HasDefaultValue(FieldProtectionSchema.LegacyVersion)
+            .IsConcurrencyToken();
+    }
+
+    private void ApplySensitiveDataProtectionMetadata()
+    {
+        if (_fieldProtectionMode == FieldProtectionMode.DesignTime)
+        {
+            throw new InvalidOperationException("The design-time context cannot write application data.");
+        }
+
+        if (_fieldProtectionMode != FieldProtectionMode.LegacyBackfill)
+        {
+            foreach (var entry in ChangeTracker.Entries<UserProfile>())
+            {
+                if (entry.State == EntityState.Added || entry.Property(profile => profile.UnsubscribeToken).IsModified)
+                {
+                    entry.Entity.UnsubscribeTokenVerifier = UnsubscribeTokenHash.Compute(entry.Entity.UnsubscribeToken);
+                }
+            }
+        }
+        else
+        {
+            return;
+        }
+
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State is not (EntityState.Added or EntityState.Modified)
+                || entry.Metadata.FindProperty(FieldProtectionSchema.VersionPropertyName) is null)
+            {
+                continue;
+            }
+
+            var version = entry.Property(FieldProtectionSchema.VersionPropertyName);
+            if (version.CurrentValue is not int currentVersion
+                || currentVersion < FieldProtectionSchema.LegacyVersion
+                || currentVersion > FieldProtectionSchema.CurrentVersion)
+            {
+                throw new InvalidOperationException("The row uses an unsupported protected-data version.");
+            }
+
+            version.CurrentValue = FieldProtectionSchema.CurrentVersion;
+            if (entry.State == EntityState.Modified)
+            {
+                version.IsModified = true;
+            }
+        }
     }
 
     private void ApplyAuditTimestamps()
@@ -104,6 +248,11 @@ public sealed class RelioDbContext(DbContextOptions<RelioDbContext> options, Tim
 
         foreach (var entry in ChangeTracker.Entries<IOwnedEntity>())
         {
+            if (TryApplyImportedAudit(entry.Entity))
+            {
+                continue;
+            }
+
             switch (entry.State)
             {
                 case EntityState.Added:

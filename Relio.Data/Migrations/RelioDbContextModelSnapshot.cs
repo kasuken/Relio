@@ -156,6 +156,12 @@ namespace Relio.Data.Migrations
                     b.Property<string>("Name")
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<int>("SensitiveDataProtectionVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<string>("Value")
                         .HasColumnType("nvarchar(max)");
 
@@ -363,7 +369,7 @@ namespace Relio.Data.Migrations
 
                     b.Property<string>("Description")
                         .IsRequired()
-                        .HasMaxLength(10000)
+                        .HasMaxLength(51024)
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Kind")
@@ -378,6 +384,12 @@ namespace Relio.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("SensitiveDataProtectionVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
@@ -449,9 +461,15 @@ namespace Relio.Data.Migrations
                     b.Property<Guid>("PersonId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("SensitiveDataProtectionVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<string>("Text")
                         .IsRequired()
-                        .HasMaxLength(10000)
+                        .HasMaxLength(51024)
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
@@ -496,8 +514,8 @@ namespace Relio.Data.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Details")
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
+                        .HasMaxLength(21024)
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
@@ -505,8 +523,8 @@ namespace Relio.Data.Migrations
                         .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("HowWeMet")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
+                        .HasMaxLength(6024)
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("IsArchived")
                         .HasColumnType("bit");
@@ -529,6 +547,12 @@ namespace Relio.Data.Migrations
 
                     b.Property<Guid?>("RelationshipTypeId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("SensitiveDataProtectionVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
 
                     b.Property<int?>("StayInTouchCadenceDays")
                         .HasColumnType("int");
@@ -556,6 +580,47 @@ namespace Relio.Data.Migrations
 
                             t.HasCheckConstraint("CK_People_BirthdayYear", "[BirthdayYear] IS NULL OR [BirthdayYear] BETWEEN 1 AND 9999");
                         });
+                });
+
+            modelBuilder.Entity("Relio.Domain.ProductActivity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly>("CohortStartedOnUtc")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateOnly>("LastActiveOnUtc")
+                        .HasColumnType("date");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("RetentionExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("ReturnedInDays30To59")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CohortStartedOnUtc");
+
+                    b.HasIndex("OwnerId")
+                        .IsUnique();
+
+                    b.HasIndex("RetentionExpiresAtUtc");
+
+                    b.ToTable("ProductActivities", (string)null);
                 });
 
             modelBuilder.Entity("Relio.Domain.RelationshipType", b =>
@@ -630,13 +695,19 @@ namespace Relio.Data.Migrations
                     b.Property<Guid>("PersonId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("SensitiveDataProtectionVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<DateOnly?>("SnoozedUntilDate")
                         .HasColumnType("date");
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasMaxLength(2024)
+                        .HasColumnType("nvarchar(2024)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
@@ -722,14 +793,25 @@ namespace Relio.Data.Migrations
                         .HasColumnType("nvarchar(50)")
                         .HasDefaultValue("DailyDigest");
 
+                    b.Property<int>("SensitiveDataProtectionVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<string>("TimeZoneId")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("UnsubscribeToken")
+                        .HasMaxLength(1344)
+                        .HasColumnType("nvarchar(1344)");
+
+                    b.Property<string>("UnsubscribeTokenVerifier")
                         .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
+                        .IsUnicode(false)
+                        .HasColumnType("char(64)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
@@ -739,7 +821,7 @@ namespace Relio.Data.Migrations
                     b.HasIndex("OwnerId")
                         .IsUnique();
 
-                    b.HasIndex("UnsubscribeToken");
+                    b.HasIndex("UnsubscribeTokenVerifier");
 
                     b.ToTable("UserProfiles");
                 });
@@ -812,11 +894,28 @@ namespace Relio.Data.Migrations
 
             modelBuilder.Entity("Relio.Domain.ContactMethod", b =>
                 {
+                    b.HasOne("Relio.Data.Identity.RelioUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_ContactMethods_AspNetUsers_OwnerId");
+
                     b.HasOne("Relio.Domain.Person", null)
                         .WithMany("ContactMethods")
                         .HasForeignKey("PersonId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Relio.Domain.Interaction", b =>
+                {
+                    b.HasOne("Relio.Data.Identity.RelioUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Interactions_AspNetUsers_OwnerId");
                 });
 
             modelBuilder.Entity("Relio.Domain.InteractionParticipant", b =>
@@ -826,6 +925,13 @@ namespace Relio.Data.Migrations
                         .HasForeignKey("InteractionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Relio.Data.Identity.RelioUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_InteractionParticipants_AspNetUsers_OwnerId");
 
                     b.HasOne("Relio.Domain.Person", "Person")
                         .WithMany()
@@ -840,6 +946,13 @@ namespace Relio.Data.Migrations
 
             modelBuilder.Entity("Relio.Domain.Note", b =>
                 {
+                    b.HasOne("Relio.Data.Identity.RelioUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Notes_AspNetUsers_OwnerId");
+
                     b.HasOne("Relio.Domain.Person", "Person")
                         .WithMany()
                         .HasForeignKey("PersonId")
@@ -851,6 +964,13 @@ namespace Relio.Data.Migrations
 
             modelBuilder.Entity("Relio.Domain.Person", b =>
                 {
+                    b.HasOne("Relio.Data.Identity.RelioUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_People_AspNetUsers_OwnerId");
+
                     b.HasOne("Relio.Domain.RelationshipType", "RelationshipType")
                         .WithMany()
                         .HasForeignKey("RelationshipTypeId")
@@ -859,8 +979,35 @@ namespace Relio.Data.Migrations
                     b.Navigation("RelationshipType");
                 });
 
+            modelBuilder.Entity("Relio.Domain.ProductActivity", b =>
+                {
+                    b.HasOne("Relio.Data.Identity.RelioUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_ProductActivities_AspNetUsers_OwnerId");
+                });
+
+            modelBuilder.Entity("Relio.Domain.RelationshipType", b =>
+                {
+                    b.HasOne("Relio.Data.Identity.RelioUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_RelationshipTypes_AspNetUsers_OwnerId");
+                });
+
             modelBuilder.Entity("Relio.Domain.Reminder", b =>
                 {
+                    b.HasOne("Relio.Data.Identity.RelioUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Reminders_AspNetUsers_OwnerId");
+
                     b.HasOne("Relio.Domain.Person", "Person")
                         .WithMany("Reminders")
                         .HasForeignKey("PersonId")
@@ -868,6 +1015,26 @@ namespace Relio.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Person");
+                });
+
+            modelBuilder.Entity("Relio.Domain.Tag", b =>
+                {
+                    b.HasOne("Relio.Data.Identity.RelioUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Tags_AspNetUsers_OwnerId");
+                });
+
+            modelBuilder.Entity("Relio.Domain.UserProfile", b =>
+                {
+                    b.HasOne("Relio.Data.Identity.RelioUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_UserProfiles_AspNetUsers_OwnerId");
                 });
 
             modelBuilder.Entity("Relio.Domain.Interaction", b =>

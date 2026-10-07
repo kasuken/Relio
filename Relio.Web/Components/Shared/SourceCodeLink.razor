@@ -1,0 +1,4 @@
+@using Relio.Web.Configuration
+@inject Microsoft.Extensions.Options.IOptions<SourceCodeOptions> SourceCodeOptions
+
+<a class="rl-source-code-link" href="@SourceCodeOptions.Value.SourceCodeUrl">Source code</a>

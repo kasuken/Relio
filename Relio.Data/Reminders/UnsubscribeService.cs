@@ -18,10 +18,12 @@ public sealed class UnsubscribeService(RelioDbContext dbContext) : IUnsubscribeS
             return false;
         }
 
+        var verifier = UnsubscribeTokenHash.Compute(token);
+
         try
         {
             var profile = await dbContext.UserProfiles
-                .FirstOrDefaultAsync(p => p.UnsubscribeToken == token, cancellationToken);
+                .FirstOrDefaultAsync(p => p.UnsubscribeTokenVerifier == verifier, cancellationToken);
 
             if (profile is null)
             {

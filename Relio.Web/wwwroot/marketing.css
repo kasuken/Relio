@@ -1,0 +1,100 @@
+.rl-marketing-shell {
+    display: flex;
+    min-height: 100vh;
+    flex-direction: column;
+}
+
+.rl-marketing-header {
+    display: flex;
+    width: min(var(--content-max), calc(100% - var(--space-12)));
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-inline: auto;
+    padding-block: var(--space-6);
+    border-bottom: 1px solid var(--line);
+}
+
+.rl-marketing-account-nav {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-4);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 20px;
+}
+
+.rl-marketing-main {
+    width: min(var(--measure), calc(100% - var(--space-12)));
+    min-width: 0;
+    flex: 1;
+    margin-inline: auto;
+    padding-block: var(--space-8) var(--space-12);
+}
+
+.rl-policy-document {
+    min-width: 0;
+}
+
+.rl-policy-document-header {
+    margin-block-end: var(--space-8);
+    padding-block-end: var(--space-6);
+    border-bottom: 1px solid var(--line);
+}
+
+.rl-policy-document h1 {
+    margin: 0 0 var(--space-3);
+    overflow-wrap: anywhere;
+    font-family: var(--font-serif);
+    font-size: 32px;
+    font-weight: 500;
+    line-height: 38px;
+}
+
+.rl-policy-review-note {
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 18px;
+}
+
+.rl-policy-copy {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    font-family: var(--font-serif);
+    font-size: 17px;
+    line-height: 27px;
+}
+
+.rl-policy-unavailable h1 {
+    margin-block-end: var(--space-4);
+}
+
+.rl-policy-unavailable p {
+    margin: 0;
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 22px;
+}
+
+@media (max-width: 600px) {
+    .rl-marketing-header,
+    .rl-marketing-main {
+        width: calc(100% - var(--space-8));
+    }
+
+    .rl-marketing-header {
+        padding-block: var(--space-4);
+    }
+
+    .rl-marketing-main {
+        padding-block: var(--space-6) var(--space-8);
+    }
+}

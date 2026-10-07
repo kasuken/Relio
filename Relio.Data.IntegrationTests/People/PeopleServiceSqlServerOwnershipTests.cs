@@ -21,8 +21,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task GetAsync_for_another_users_person_returns_null()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
 
         var serviceForB = TestDataFactory.CreateService(dbContext, ownerB);
@@ -35,8 +35,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task ListPageAsync_only_lists_and_counts_the_current_users_people()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
         await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Ann", isArchived: true);
         await TestDataFactory.CreatePersonAsync(dbContext, ownerB, "Bob");
@@ -55,7 +55,7 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task GetAsync_for_a_nonexistent_person_also_returns_null()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
 
         var serviceForA = TestDataFactory.CreateService(dbContext, ownerA);
         var result = await serviceForA.GetAsync(Guid.NewGuid());
@@ -68,8 +68,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task ListAsync_only_returns_the_current_users_people()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
         await TestDataFactory.CreatePersonAsync(dbContext, ownerB, "Bob");
 
@@ -83,7 +83,7 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task ListAsync_excludes_archived_people_by_default()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
 
         var serviceForA = TestDataFactory.CreateService(dbContext, ownerA);
@@ -97,8 +97,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task UpdateAsync_for_another_users_person_returns_false_and_does_not_modify_it()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
 
         var serviceForB = TestDataFactory.CreateService(dbContext, ownerB);
@@ -113,8 +113,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task DeleteAsync_for_another_users_person_returns_false()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
 
         var deleted = await TestDataFactory.CreateService(dbContext, ownerB).DeleteAsync(personId);
@@ -127,8 +127,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task ArchiveAsync_for_another_users_person_returns_false_and_does_not_archive_it()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
 
         var serviceForB = TestDataFactory.CreateService(dbContext, ownerB);
@@ -143,8 +143,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task RestoreAsync_for_another_users_person_returns_false_and_does_not_restore_it()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
         await TestDataFactory.CreateService(dbContext, ownerA).ArchiveAsync(personId);
 
@@ -160,8 +160,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task CreateAsync_cannot_attach_another_users_tag()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var tagIdOwnedByB = await TestDataFactory.CreateTagAsync(dbContext, ownerB, "family");
 
         var serviceForA = TestDataFactory.CreateService(dbContext, ownerA);
@@ -177,8 +177,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task UpdateAsync_cannot_attach_another_users_tag()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
         var tagIdOwnedByB = await TestDataFactory.CreateTagAsync(dbContext, ownerB, "family");
 
@@ -198,7 +198,7 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task CreateAsync_can_attach_the_current_users_own_tag()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
         var tagId = await TestDataFactory.CreateTagAsync(dbContext, ownerA, "family");
 
         var serviceForA = TestDataFactory.CreateService(dbContext, ownerA);
@@ -211,8 +211,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task CreateAsync_cannot_assign_another_users_relationship_type()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var typeIdOwnedByB = await TestDataFactory.CreateRelationshipTypeAsync(dbContext, ownerB, "Friend");
 
         var serviceForA = TestDataFactory.CreateService(dbContext, ownerA);
@@ -229,8 +229,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task UpdateAsync_cannot_assign_another_users_relationship_type()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
         var typeIdOwnedByB = await TestDataFactory.CreateRelationshipTypeAsync(dbContext, ownerB, "Friend");
 
@@ -247,7 +247,7 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     [SqlServerFact]
     public async Task CreateAsync_round_trips_every_optional_detail()
     {
-        var ownerA = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid personId;
         Guid typeId;
         await using (var writeContext = fixture.CreateDbContext())
@@ -287,7 +287,7 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task ListAsync_includes_the_relationship_type()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
         var typeId = await TestDataFactory.CreateRelationshipTypeAsync(dbContext, ownerA, "Colleague");
         var service = TestDataFactory.CreateService(dbContext, ownerA);
         await service.CreateAsync(new CreatePersonRequest { FirstName = "Elena", RelationshipTypeId = typeId });
@@ -301,8 +301,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task RelationshipTypeService_lists_only_the_current_users_types_in_order()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         await TestDataFactory.CreateRelationshipTypeAsync(dbContext, ownerA, "Friend", sortOrder: 1);
         await TestDataFactory.CreateRelationshipTypeAsync(dbContext, ownerA, "Family", sortOrder: 0);
         await TestDataFactory.CreateRelationshipTypeAsync(dbContext, ownerB, "Rival", sortOrder: 0);
@@ -316,8 +316,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task UpdateAsync_cannot_edit_another_users_contact_method()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
         var otherPersonId = await TestDataFactory.CreatePersonAsync(dbContext, ownerB, "Bob");
         var contactMethodIdOwnedByB = await TestDataFactory.CreateContactMethodAsync(dbContext, ownerB, otherPersonId, "bob@example.com");
@@ -342,7 +342,7 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task UpdateAsync_cannot_move_a_contact_method_to_another_person_of_the_same_user()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var firstPersonId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Alice");
         var secondPersonId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ann");
         var contactMethodId = await TestDataFactory.CreateContactMethodAsync(dbContext, owner, firstPersonId, "alice@example.com");
@@ -363,8 +363,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task UpdateAsync_never_attaches_another_users_tag_by_name()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
         var tagIdOwnedByB = await TestDataFactory.CreateTagAsync(dbContext, ownerB, "Climbing");
 
@@ -383,8 +383,8 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     public async Task FindPossibleDuplicatesAsync_never_matches_another_owners_people()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var theirs = await TestDataFactory.CreatePersonAsync(dbContext, ownerB, "John", "Smith");
         await TestDataFactory.CreatePersonAsync(dbContext, ownerB, "John", "Smith", isArchived: true);
         await TestDataFactory.CreateContactMethodAsync(dbContext, ownerB, theirs, "john@example.com");

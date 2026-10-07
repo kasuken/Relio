@@ -18,7 +18,7 @@ public sealed class NoteConfiguration : IEntityTypeConfiguration<Note>
 
         builder.Property(note => note.Text)
             .IsRequired()
-            .HasMaxLength(Note.TextMaxLength);
+            .HasMaxLength(Encryption.FieldProtectionSchema.MaxStoredLength(Note.TextMaxLength));
 
         builder.HasOne(note => note.Person)
             .WithMany()

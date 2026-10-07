@@ -1,0 +1,40 @@
+.rl-public-footer {
+    display: flex;
+    width: min(var(--content-max), calc(100% - var(--space-12)));
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-inline: auto;
+    padding-block: var(--space-4);
+    border-top: 1px solid var(--line);
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 18px;
+}
+
+.rl-public-footer-meta {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.rl-public-footer-year {
+    color: var(--text-muted);
+}
+
+@media (max-width: 600px) {
+    .rl-public-footer {
+        width: calc(100% - var(--space-8));
+        align-items: flex-start;
+    }
+
+    .rl-public-footer-meta {
+        gap: var(--space-3);
+    }
+}

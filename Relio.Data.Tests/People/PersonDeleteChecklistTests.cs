@@ -56,9 +56,7 @@ public class PersonDeleteChecklistTests
 
     private static List<IForeignKey> ForeignKeysToPerson()
     {
-        using var dbContext = new RelioDbContext(
-            new DbContextOptionsBuilder<RelioDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
-            TimeProvider.System);
+        using var dbContext = new RelioDbContext(new DbContextOptionsBuilder<RelioDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options, TimeProvider.System, FieldProtector);
 
         return dbContext.Model.FindEntityType(typeof(Person))!.GetReferencingForeignKeys().ToList();
     }

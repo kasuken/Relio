@@ -19,7 +19,7 @@ public sealed class PersonDeleteSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task DeleteAsync_removes_the_person_their_contact_methods_and_tag_links_and_keeps_the_tags()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ada");
         var otherPersonId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Grace");
         var chessId = await TestDataFactory.CreateTagAsync(dbContext, owner, "Chess");
@@ -53,7 +53,7 @@ public sealed class PersonDeleteSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task DeleteAsync_deletes_an_archived_person_and_a_second_delete_finds_nobody()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ada", isArchived: true);
         var service = TestDataFactory.CreateService(dbContext, owner);
 
@@ -68,7 +68,7 @@ public sealed class PersonDeleteSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task DeleteAsync_preserves_shared_interactions_until_the_last_participant_is_deleted()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var firstPersonId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ada");
         var secondPersonId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Grace");
         var today = DateOnly.FromDateTime(TimeProvider.System.GetUtcNow().UtcDateTime);
@@ -115,8 +115,8 @@ public sealed class PersonDeleteSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task DeleteAsync_for_another_users_person_returns_false_and_deletes_nothing()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
         await TestDataFactory.CreateContactMethodAsync(dbContext, ownerA, personId, "alice@example.com");
 
@@ -155,7 +155,7 @@ public sealed class PersonDeleteSqlServerTests(SqlServerDatabaseFixture fixture)
     public async Task Archive_and_restore_round_trip_on_SQL_Server()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var personId = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ada");
         var service = TestDataFactory.CreateService(dbContext, owner);
 

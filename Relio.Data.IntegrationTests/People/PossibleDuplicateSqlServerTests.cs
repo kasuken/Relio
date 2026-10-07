@@ -19,7 +19,7 @@ public sealed class PossibleDuplicateSqlServerTests(SqlServerDatabaseFixture fix
     public async Task FindPossibleDuplicatesAsync_translates_and_finds_similar_names_emails_and_phones()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var john = await TestDataFactory.CreatePersonAsync(dbContext, owner, "John", "Smith");
         var ada = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ada", "Byron");
         var grace = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Grace", "Hopper");
@@ -54,7 +54,7 @@ public sealed class PossibleDuplicateSqlServerTests(SqlServerDatabaseFixture fix
     public async Task FindPossibleDuplicatesAsync_includes_archived_people()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var archived = await TestDataFactory.CreatePersonAsync(dbContext, owner, "John", "Smith", isArchived: true);
 
         var result = await TestDataFactory.CreateService(dbContext, owner)
@@ -69,8 +69,8 @@ public sealed class PossibleDuplicateSqlServerTests(SqlServerDatabaseFixture fix
     public async Task FindPossibleDuplicatesAsync_never_matches_another_owners_people()
     {
         await using var dbContext = fixture.CreateDbContext();
-        var owner = TestDataFactory.NewOwnerId();
-        var other = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
+        var other = await TestDataFactory.CreateOwnerAsync(fixture);
         var theirs = await TestDataFactory.CreatePersonAsync(dbContext, other, "John", "Smith");
         await TestDataFactory.CreateContactMethodAsync(dbContext, other, theirs, "john@example.com");
         await TestDataFactory.CreateContactMethodAsync(dbContext, other, theirs, "+44 7700 900123", ContactMethodKind.Phone, 1);

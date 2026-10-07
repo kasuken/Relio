@@ -307,7 +307,7 @@ public class InteractionServiceTests
             builder.AddInterceptors(interceptor);
         }
 
-        return new RelioDbContext(builder.Options, new FakeTimeProvider(now ?? Now));
+        return new RelioDbContext(builder.Options, new FakeTimeProvider(now ?? Now), FieldProtector);
     }
 
     private static InteractionService CreateService(RelioDbContext dbContext, string ownerId = Owner, DateTimeOffset? now = null) =>

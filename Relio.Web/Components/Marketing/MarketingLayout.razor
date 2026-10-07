@@ -1,0 +1,18 @@
+@inherits LayoutComponentBase
+
+<div class="rl-app rl-marketing-shell">
+    <a href="#marketing-main" class="rl-skip-link">Skip to content</a>
+
+    <header class="rl-marketing-header">
+        <span class="rl-wordmark">Relio</span>
+        <nav aria-label="Account" class="rl-marketing-account-nav">
+            <a href="/Account/Login" data-enhance-nav="false">Sign in</a>
+        </nav>
+    </header>
+
+    <main id="marketing-main" class="rl-marketing-main" tabindex="-1">
+        @Body
+    </main>
+
+    <RelioPublicFooter />
+</div>

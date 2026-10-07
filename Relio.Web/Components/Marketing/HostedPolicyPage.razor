@@ -1,0 +1,49 @@
+@inject IHostedPolicyDocumentProvider PolicyDocuments
+@inject NavigationManager Navigation
+
+@if (_document is { } document)
+{
+    <SeoHeadContent Title="@document.Title"
+                    Description="@document.Description"
+                    CanonicalPath="@document.CanonicalPath" />
+
+    <article class="rl-policy-document" data-testid="policy-document" data-policy-kind="@document.Kind">
+        <header class="rl-policy-document-header">
+            <h1>@document.Title</h1>
+            <p class="rl-policy-review-note">
+                Version @document.Version. The instance operator recorded a human-review attestation on
+                @document.ReviewedAtUtc.UtcDateTime.ToString("d MMMM yyyy", CultureInfo.InvariantCulture).
+            </p>
+        </header>
+        <div class="rl-policy-copy" data-testid="policy-content">@document.Content</div>
+    </article>
+}
+else
+{
+    <article class="rl-policy-document rl-policy-unavailable" data-testid="policy-unavailable">
+        <h1>This page isn't available</h1>
+        <p>This policy page isn't enabled on this Relio instance.</p>
+    </article>
+}
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    [Parameter, EditorRequired]
+    public PolicyDocumentKind Kind { get; set; }
+
+    private HostedPolicyDocument? _document;
+
+    protected override void OnParametersSet()
+    {
+        _document = PolicyDocuments.GetDocument(Kind);
+        var context = HttpContext;
+        if (_document is not null || context is null || context.Response.HasStarted)
+        {
+            return;
+        }
+
+        Navigation.NotFound();
+    }
+}

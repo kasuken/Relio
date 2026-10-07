@@ -308,7 +308,7 @@ public class PeopleServiceCreateTests
         new DbContextOptionsBuilder<RelioDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
 
     private static RelioDbContext CreateDbContext(DbContextOptions<RelioDbContext> database, TimeProvider? timeProvider = null) =>
-        new(database, timeProvider ?? new FakeTimeProvider(Now));
+        new(database, timeProvider ?? new FakeTimeProvider(Now), FieldProtector);
 
     private static PeopleService CreateService(RelioDbContext dbContext, TimeProvider? timeProvider = null) =>
         new(dbContext, new FakeCurrentUser(Owner), timeProvider ?? new FakeTimeProvider(Now));

@@ -373,7 +373,7 @@ public class PeopleImportServiceTests
         var options = interceptors.Length == 0
             ? database
             : new DbContextOptionsBuilder<RelioDbContext>(database).AddInterceptors(interceptors).Options;
-        return new RelioDbContext(options, new FakeTimeProvider(Now));
+        return new RelioDbContext(options, new FakeTimeProvider(Now), FieldProtector);
     }
 
     private static PeopleImportService CreateService(RelioDbContext dbContext) =>

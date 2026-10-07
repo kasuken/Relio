@@ -3,6 +3,7 @@ using Relio.Application.Interactions;
 using Relio.Application.Notes;
 using Relio.Application.Security;
 using Relio.Application.Timeline;
+using Relio.Data.Identity;
 using Relio.Data.Interactions;
 using Relio.Data.Notes;
 using Relio.Data.People;
@@ -15,13 +16,49 @@ namespace Relio.Data.IntegrationTests.Infrastructure;
 internal static class TestDataFactory
 {
     /// <summary>
-    /// A fresh, random owner id. Every test uses its own owner ids rather than fixed
-    /// "user-a"/"user-b" constants, so tests sharing the one per-run database (see
-    /// <see cref="SqlServerDatabaseFixture"/>) never see each other's rows - every Relio query and
-    /// mutation is already scoped by <c>OwnerId</c>, so distinct owner ids are enough for
-    /// isolation without a database per test.
+    /// Generates a fresh owner id without creating a user. Tests that persist owner-scoped rows
+    /// in SQL Server must also create the corresponding Identity user; other test scopes can use
+    /// this pure generator when they seed users themselves.
     /// </summary>
+    /// <returns>A fresh owner id string.</returns>
     public static string NewOwnerId() => $"owner-{Guid.NewGuid():N}";
+
+    /// <summary>
+    /// Creates a synthetic Identity owner for SQL Server test data. The user and its default
+    /// relationship types are saved together, then the defaults are removed in a second setup save
+    /// so each test keeps control over the types it seeds.
+    /// </summary>
+    /// <param name="fixture">The shared SQL Server integration-test fixture.</param>
+    /// <param name="ownerId">An optional exact identity id for tests with a required key length.</param>
+    /// <returns>The id of the persisted synthetic user.</returns>
+    public static async Task<string> CreateOwnerAsync(SqlServerDatabaseFixture fixture, string? ownerId = null)
+    {
+        var userId = ownerId ?? NewOwnerId();
+        var email = $"owner-{Guid.NewGuid():N}@example.com";
+        var normalizedEmail = email.ToUpperInvariant();
+        var user = new RelioUser
+        {
+            Id = userId,
+            UserName = email,
+            NormalizedUserName = normalizedEmail,
+            Email = email,
+            NormalizedEmail = normalizedEmail,
+            EmailConfirmed = true,
+            SecurityStamp = Guid.NewGuid().ToString("N"),
+            ConcurrencyStamp = Guid.NewGuid().ToString("N"),
+        };
+        var defaultTypes = RelationshipType.CreateDefaults(user.Id);
+
+        await using var dbContext = fixture.CreateDbContext();
+        dbContext.Users.Add(user);
+        dbContext.RelationshipTypes.AddRange(defaultTypes);
+        await dbContext.SaveChangesAsync();
+
+        dbContext.RelationshipTypes.RemoveRange(defaultTypes);
+        await dbContext.SaveChangesAsync();
+
+        return user.Id;
+    }
 
     public static PeopleService CreateService(RelioDbContext dbContext, string? ownerId) =>
         new(dbContext, new FakeCurrentUser(ownerId), TimeProvider.System);

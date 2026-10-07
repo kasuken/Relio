@@ -1,0 +1,128 @@
+@page "/admin/metrics"
+@attribute [Authorize(Policy = RelioPolicies.Administrator)]
+
+@using System.Globalization
+@using Relio.Application.Metrics
+
+@inject IProductMetricsReportService MetricsReport
+
+<PageTitle>Product metrics - Relio</PageTitle>
+
+<div class="product-metrics-page">
+    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">Product metrics</MudText>
+    <MudText Typo="Typo.body1" Class="product-metrics-intro mb-6">
+        Instance-wide counts only. This report never shows account rows, names, notes or descriptions.
+    </MudText>
+
+    @if (_report is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" aria-label="Loading product metrics" />
+    }
+    else if (!_report.IsEnabled)
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" data-testid="metrics-disabled">
+            Product metrics are off. This instance collects no new activity and purges its contributions at startup and after the setting changes. In a multi-instance deployment, apply the off setting to every instance.
+        </MudAlert>
+    }
+    else
+    {
+        <section class="metrics-retention" aria-labelledby="metrics-retention-heading" data-testid="metrics-retention">
+            <div class="metrics-retention-result">
+                <MudText Typo="Typo.h3" HtmlTag="h2" id="metrics-retention-heading">30-day return</MudText>
+                @if (_report.RetentionRatePercent is { } retentionRate)
+                {
+                    <p class="metrics-rate" data-testid="metrics-retention-rate">@FormatPercent(retentionRate)</p>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary" data-testid="metrics-retention-count">
+                        @_report.ReturnedRetentionCohorts of @_report.EligibleRetentionCohorts completed cohorts
+                    </MudText>
+                }
+                else
+                {
+                    <p class="metrics-no-data" data-testid="metrics-retention-no-data">No completed cohorts yet</p>
+                }
+            </div>
+            <div class="metrics-definition">
+                <MudText Typo="Typo.body1">
+                    A cohort starts on a user's first observed activity date after metrics are enabled, not on account registration.
+                    A return counts only on cohort days 30–59; days 30 and 59 count, while day 29 and day 60 do not.
+                </MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mt-3">
+                    Only cohorts 60–89 UTC days old are complete enough to report. Contributions expire at the start of UTC day 90.
+                    No completed cohorts means no percentage, not 0%.
+                </MudText>
+            </div>
+        </section>
+
+        <section class="metrics-section" aria-labelledby="metrics-usage-heading">
+            <MudText Typo="Typo.h3" HtmlTag="h2" id="metrics-usage-heading" Class="mb-2">Usage totals</MudText>
+            <dl class="metrics-list">
+                <div class="metrics-row" data-testid="metrics-live-accounts">
+                    <dt>Live accounts</dt>
+                    <dd>@FormatCount(_report.LiveAccountCount)</dd>
+                    <dd class="mud-text-secondary metrics-note">
+                        All existing accounts, including disabled accounts and accounts awaiting email confirmation.
+                    </dd>
+                </div>
+                <div class="metrics-row" data-testid="metrics-people">
+                    <dt>People</dt>
+                    <dd>@FormatCount(_report.OwnedPeopleCount)</dd>
+                    <dd class="mud-text-secondary metrics-note">
+                        All owned profiles, including archived profiles.
+                    </dd>
+                </div>
+                <div class="metrics-row" data-testid="metrics-average-people">
+                    <dt>Average people per live account</dt>
+                    <dd>@FormatAverage(_report.AveragePeoplePerAccount)</dd>
+                    <dd class="mud-text-secondary metrics-note">
+                        Total people divided by all existing account rows, including disabled accounts; unavailable when there are no accounts.
+                    </dd>
+                </div>
+                <div class="metrics-row" data-testid="metrics-interactions">
+                    <dt>Interactions in @FormatMonth(_report.CurrentUtcMonthStart)</dt>
+                    <dd>@FormatCount(_report.InteractionsThisUtcMonth)</dd>
+                    <dd class="mud-text-secondary metrics-note">
+                        Counted by each stored OccurredOn date in the current UTC calendar month, without time-zone conversion.
+                    </dd>
+                </div>
+                <div class="metrics-row" data-testid="metrics-reminders">
+                    <dt>Saved reminders</dt>
+                    <dd>@FormatCount(_report.SavedReminderCount)</dd>
+                    <dd class="mud-text-secondary metrics-note">
+                        Includes completed reminders and reminders for archived people.
+                    </dd>
+                </div>
+                <div class="metrics-row" data-testid="metrics-reminder-accounts">
+                    <dt>Accounts with a reminder</dt>
+                    <dd>@FormatAccountProportion(_report.AccountsWithSavedReminders, _report.LiveAccountCount, _report.AccountsWithSavedRemindersPercent)</dd>
+                    <dd class="mud-text-secondary metrics-note">
+                        Accounts with at least one saved reminder divided by all existing account rows; unavailable when there are no accounts.
+                    </dd>
+                </div>
+            </dl>
+        </section>
+    }
+</div>
+
+@code {
+    private ProductMetricsReport? _report;
+
+    protected override async Task OnInitializedAsync() =>
+        _report = await MetricsReport.GetAsync();
+
+    private static string FormatCount(long? value) =>
+        value?.ToString("N0", CultureInfo.CurrentCulture) ?? "—";
+
+    private static string FormatAverage(decimal? value) =>
+        value?.ToString("0.0", CultureInfo.CurrentCulture) ?? "—";
+
+    private static string FormatPercent(decimal value) =>
+        $"{value.ToString("0.#", CultureInfo.CurrentCulture)}%";
+
+    private static string FormatMonth(DateOnly? monthStart) =>
+        monthStart?.ToString("MMMM yyyy", CultureInfo.CurrentCulture) ?? "the current UTC month";
+
+    private static string FormatAccountProportion(long? accounts, long? denominator, decimal? percent) =>
+        accounts is not null && denominator is not null && percent is not null
+            ? $"{FormatCount(accounts)} of {FormatCount(denominator)} ({FormatPercent(percent.Value)})"
+            : "—";
+}

@@ -18,7 +18,7 @@ internal static class UserManagerTestFactory
         var services = new ServiceCollection();
         services.AddSingleton(dbContext);
         services.AddLogging();
-        services.AddDataProtection();
+        ConfigureDataProtection(services);
         services.AddIdentityCore<RelioUser>(options =>
             {
                 options.Password.RequiredLength = 12;

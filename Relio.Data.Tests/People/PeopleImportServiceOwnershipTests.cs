@@ -91,7 +91,7 @@ public class PeopleImportServiceOwnershipTests
         new DbContextOptionsBuilder<RelioDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
 
     private static RelioDbContext CreateDbContext(DbContextOptions<RelioDbContext> database) =>
-        new(database, new FakeTimeProvider(Now));
+        new(database, new FakeTimeProvider(Now), FieldProtector);
 
     private static PeopleImportService CreateImportService(RelioDbContext dbContext, string userId) =>
         new(dbContext, new FakeCurrentUser(userId), new FakeTimeProvider(Now));

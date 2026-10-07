@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.HttpsPolicy;
 using MudBlazor;
 using MudBlazor.Services;
 using Microsoft.Extensions.Options;
@@ -13,7 +14,12 @@ using Relio.Data.Seeding;
 using Relio.Web.Background;
 using Relio.Web.Components;
 using Relio.Web.Components.Account;
+using Relio.Web.Configuration;
+using Relio.Web.Endpoints;
+using Relio.Web.Email;
+using Relio.Web.Encryption;
 using Relio.Web.Identity;
+using Relio.Web.Metrics;
 using Relio.Web.Security;
 using Relio.Web.Time;
 using Relio.Web.Theme;
@@ -21,9 +27,18 @@ using DataServiceCollectionExtensions = Relio.Data.DependencyInjection.ServiceCo
 using IdentityServiceCollectionExtensions = Relio.Web.Identity.ServiceCollectionExtensions;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Logging.AddRelioPrivacyLoggingFilters();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddRelioAuthenticationRateLimiting(builder.Configuration);
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(365);
+    options.IncludeSubDomains = false;
+    options.Preload = false;
+});
 
 // Calm, consistent snackbar behaviour (see docs/design-system/README.md): bottom of the
 // screen, one at a time, closeable, never stacking duplicate messages.
@@ -44,7 +59,11 @@ builder.Services.AddMudServices(config =>
 builder.Services.AddScoped<IThemeModeStore, JsThemeModeStore>();
 builder.Services.AddScoped<ThemeModeState>();
 
+builder.Services.AddRelioDataProtection(builder.Configuration, builder.Environment.ContentRootPath);
 builder.Services.AddRelioData(builder.Configuration);
+builder.Services.AddRelioMarketing(builder.Configuration);
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, ProductActivityCircuitHandler>();
+builder.Services.AddHostedService<ProductMetricsRetentionBackgroundService>();
 
 // ASP.NET Core Identity (epic #14): local accounts, password policy, cookie auth and the
 // email sender selected by Email:Provider. See Relio.Web.Identity.ServiceCollectionExtensions
@@ -59,6 +78,9 @@ builder.Services.AddScoped<AuthenticationStateProvider, RelioRevalidatingAuthent
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddRelioIdentity(builder.Configuration, builder.Environment);
+builder.Services.AddAccountSessionCookieValidation();
+builder.Services.AddAccountSessionRevocation();
+builder.Services.AddAccountDeletionConfirmationEmail(builder.Configuration);
 
 // ICurrentUser is the only way Application services read the signed-in user; it never depends
 // on HttpContext directly (see the "User-scoped data pattern" section of AGENTS.md).
@@ -84,9 +106,23 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+app.UseRelioSecurityHeaders();
+
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
+    app.UseExceptionHandler(new ExceptionHandlerOptions
+    {
+        ExceptionHandlingPath = "/Error",
+        CreateScopeForErrors = true,
+        SuppressDiagnosticsCallback = exceptionContext =>
+        {
+            app.Logger.LogError(
+                "HTTP request failed with exception type {ExceptionType}.",
+                exceptionContext.Exception.GetType().Name);
+            return true;
+        },
+    });
+    // HSTS is only useful to browsers after HTTPS responses; Development remains plain HTTP.
     app.UseHsts();
 }
 
@@ -126,6 +162,14 @@ else if (app.Environment.IsDevelopment())
     await scope.ServiceProvider.GetRequiredService<RelioDbContext>().Database.MigrateAsync();
 }
 
+app.Services.GetRequiredService<IDataProtectionStartupCheck>().Validate();
+using (var protectionScope = app.Services.CreateScope())
+{
+    await protectionScope.ServiceProvider
+        .GetRequiredService<Relio.Data.Encryption.SensitiveFieldBackfillService>()
+        .RunAsync();
+}
+
 // DemoDataSeeder itself refuses (logging an error) when the environment is Production, and does
 // nothing when DemoData:Enabled is not true - see its own remarks. Always runs after the schema
 // is ready (above) and is safe to run on every startup (idempotent).
@@ -148,6 +192,7 @@ app.Logger.LogInformation(
 
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -181,6 +226,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
     .AllowAnonymous();
 
 app.MapRelioIdentityEndpoints();
+app.MapRelioMarketingEndpoints();
 
 // Static assets (app.css, MudBlazor, _framework/blazor.web.js, fonts, favicon) must be anonymous:
 // the fallback authorization policy (AddRelioIdentity) would otherwise redirect every asset request

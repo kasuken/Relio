@@ -126,6 +126,6 @@ public class TwoFactorIdentityBehaviourTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
 
-        return new RelioDbContext(options, TimeProvider.System);
+        return new RelioDbContext(options, TimeProvider.System, FieldProtector);
     }
 }

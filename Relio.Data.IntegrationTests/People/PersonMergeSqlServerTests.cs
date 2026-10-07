@@ -20,7 +20,7 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task MergeAsync_moves_everything_and_deletes_the_duplicate_on_SQL_Server()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var seeded = await SeedAsync(owner);
         await using (var notes = fixture.CreateDbContext())
         {
@@ -84,7 +84,7 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task MergeAsync_applies_field_choices_and_the_later_last_contacted_date_on_SQL_Server()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var seeded = await SeedAsync(owner);
         await using var dbContext = fixture.CreateDbContext();
 
@@ -110,7 +110,7 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task MergeAsync_runs_every_write_in_one_transaction()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var seeded = await SeedAsync(owner);
         var commands = new RecordingCommandInterceptor();
         var saves = new CountingSaveInterceptor();
@@ -128,7 +128,7 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task A_failure_in_the_middle_of_the_save_rolls_everything_back()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var seeded = await SeedAsync(owner);
         var failure = new FailOnPersonDeleteInterceptor();
         await using var dbContext = CreateOneStatementPerCommandContext(failure);
@@ -163,7 +163,7 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task A_duplicate_deleted_during_the_merge_returns_NotFound_and_changes_nothing()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         var seeded = await SeedAsync(owner);
         var deleteDuplicate = new DeletePersonOnFirstSaveInterceptor(fixture, seeded.DuplicateId);
         await using var dbContext = fixture.CreateDbContext(deleteDuplicate);
@@ -208,8 +208,8 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task MergeAsync_with_another_owners_duplicate_returns_NotFound_and_changes_nothing()
     {
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var a = await SeedAsync(ownerA);
         var b = await SeedAsync(ownerB);
         await using var dbContext = fixture.CreateDbContext();
@@ -228,8 +228,8 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
     [SqlServerFact]
     public async Task ListCandidatesAsync_suggests_duplicates_and_never_lists_another_owners_people()
     {
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var a = await SeedAsync(ownerA);
         var b = await SeedAsync(ownerB);
         await using var dbContext = fixture.CreateDbContext();
@@ -253,7 +253,7 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
             .UseSqlServer(fixture.ConnectionString, sqlServer => sqlServer.MaxBatchSize(1))
             .AddInterceptors(interceptors)
             .Options;
-        return new RelioDbContext(options, TimeProvider.System);
+        return new RelioDbContext(options, TimeProvider.System, FieldProtector);
     }
 
     private static Task<int> CountTagLinksAsync(RelioDbContext dbContext, Guid personId) =>

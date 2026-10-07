@@ -201,7 +201,8 @@ public class PeopleServiceDuplicateTests
     private static DbContextOptions<RelioDbContext> NewDatabase() =>
         new DbContextOptionsBuilder<RelioDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
 
-    private static RelioDbContext CreateDbContext(DbContextOptions<RelioDbContext> database) => new(database, TimeProvider.System);
+    private static RelioDbContext CreateDbContext(DbContextOptions<RelioDbContext> database) =>
+        new(database, TimeProvider.System, FieldProtector);
 
     private static PeopleService CreateService(RelioDbContext dbContext) =>
         new(dbContext, new FakeCurrentUser(Owner), TimeProvider.System);

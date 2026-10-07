@@ -25,10 +25,10 @@ public sealed class PersonConfiguration : IEntityTypeConfiguration<Person>
             .HasMaxLength(Person.NicknameMaxLength);
 
         builder.Property(p => p.HowWeMet)
-            .HasMaxLength(Person.HowWeMetMaxLength);
+            .HasMaxLength(Encryption.FieldProtectionSchema.MaxStoredLength(Person.HowWeMetMaxLength));
 
         builder.Property(p => p.Details)
-            .HasMaxLength(Person.DetailsMaxLength);
+            .HasMaxLength(Encryption.FieldProtectionSchema.MaxStoredLength(Person.DetailsMaxLength));
 
         // Computed from the three Birthday* columns and DisplayName from the names: never mapped,
         // never usable in a query.

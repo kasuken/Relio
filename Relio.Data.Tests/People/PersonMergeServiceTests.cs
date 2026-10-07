@@ -271,9 +271,7 @@ public class PersonMergeServiceTests
         await using var seedContext = CreateDbContext(database);
         var seeded = await SeedAsync(seedContext);
         var counter = new CountingSaveChangesInterceptor();
-        await using var dbContext = new RelioDbContext(
-            new DbContextOptionsBuilder<RelioDbContext>(database).AddInterceptors(counter).Options,
-            new FakeTimeProvider(Now));
+        await using var dbContext = new RelioDbContext(new DbContextOptionsBuilder<RelioDbContext>(database).AddInterceptors(counter).Options, new FakeTimeProvider(Now), FieldProtector);
 
         await CreateService(dbContext).MergeAsync(Request(seeded));
 
@@ -323,9 +321,7 @@ public class PersonMergeServiceTests
     {
         var database = NewDatabase();
         var counter = new CountingSaveChangesInterceptor();
-        await using var dbContext = new RelioDbContext(
-            new DbContextOptionsBuilder<RelioDbContext>(database).AddInterceptors(counter).Options,
-            new FakeTimeProvider(Now));
+        await using var dbContext = new RelioDbContext(new DbContextOptionsBuilder<RelioDbContext>(database).AddInterceptors(counter).Options, new FakeTimeProvider(Now), FieldProtector);
         var id = Guid.NewGuid();
 
         await FluentActions.Awaiting(() => CreateService(dbContext).MergeAsync(new MergePeopleRequest { PrimaryId = id, DuplicateId = id }))
@@ -458,9 +454,7 @@ public class PersonMergeServiceTests
         var database = NewDatabase();
         await using var seedContext = CreateDbContext(database);
         var seeded = await SeedAsync(seedContext);
-        await using var dbContext = new RelioDbContext(
-            new DbContextOptionsBuilder<RelioDbContext>(database).AddInterceptors(new FailOnceSaveChangesInterceptor()).Options,
-            new FakeTimeProvider(Now));
+        await using var dbContext = new RelioDbContext(new DbContextOptionsBuilder<RelioDbContext>(database).AddInterceptors(new FailOnceSaveChangesInterceptor()).Options, new FakeTimeProvider(Now), FieldProtector);
         var service = CreateService(dbContext);
 
         await FluentActions.Awaiting(() => service.MergeAsync(Request(seeded)))
@@ -578,7 +572,7 @@ public class PersonMergeServiceTests
         new DbContextOptionsBuilder<RelioDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
 
     private static RelioDbContext CreateDbContext(DbContextOptions<RelioDbContext> database) =>
-        new(database, new FakeTimeProvider(Now));
+        new(database, new FakeTimeProvider(Now), FieldProtector);
 
     private static PersonMergeService CreateService(RelioDbContext dbContext) =>
         new(dbContext, new FakeCurrentUser(Owner), new FakeTimeProvider(Now));

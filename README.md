@@ -42,6 +42,23 @@ dotnet user-secrets set ConnectionStrings:Relio "Server=localhost;Database=Relio
 
 When hosting, set the `ConnectionStrings__Relio` environment variable instead.
 
+Relio also requires a **durable, externally stored, protected Data Protection key ring**, including
+in Development and with the InMemory provider. On Windows, configure a stable development name and
+machine-protected keys outside the checkout:
+
+```powershell
+$keyDirectory = Join-Path $env:LOCALAPPDATA 'Relio\development-keys'
+dotnet user-secrets set DataProtection:ApplicationName Relio.Development --project Relio.Web
+dotnet user-secrets set DataProtection:KeyRingPath $keyDirectory --project Relio.Web
+dotnet user-secrets set DataProtection:ProtectionMode Dpapi --project Relio.Web
+```
+
+Linux, containers and shared deployments use certificate-protected keys instead. Follow
+[data protection](docs/security/data-protection.md) for provisioning, rotation and recovery.
+Back up the key ring and its required private-key material: losing them makes encrypted data
+unrecoverable. The application refuses missing configuration or unauthenticatable stored data;
+it never substitutes an ephemeral or plaintext production key ring.
+
 ```bash
 dotnet restore Relio.slnx
 dotnet build Relio.slnx
@@ -64,7 +81,8 @@ and returns unhealthy when it cannot be reached.
 Relio uses ASP.NET Core Identity with local accounts only (no social login). Register at
 `/Account/Register`; a strong password is required (at least 12 characters, with upper and lower
 case, a digit and a symbol - see AGENTS.md for the rationale). Every page except the account pages
-and the health endpoints requires sign-in.
+and the health endpoints requires sign-in. Static assets and crawler endpoints are anonymous;
+operator-enabled, reviewed policy pages are also public.
 
 Sign in at `/Account/Login`; "Remember me" issues a persistent cookie that survives closing the
 browser, otherwise the session cookie ends when the browser does. Five failed sign-ins in a row
@@ -121,8 +139,52 @@ DELETE FROM AspNetUserTokens WHERE UserId = @id;  -- the authenticator key and t
 UPDATE AspNetUsers SET TwoFactorEnabled = 0, SecurityStamp = CONVERT(nvarchar(36), NEWID()) WHERE Id = @id;
 ```
 
-The authenticator key and recovery codes are stored in `AspNetUserTokens` as Identity keeps them, in
-plain text, so protect the database and its backups the way you protect the password hashes.
+Authenticator keys and recovery codes in `AspNetUserTokens` are encrypted at the EF storage boundary,
+along with private narrative fields and unsubscribe credentials. Passwords remain Identity-managed
+hashes. Names, contacts, dates and lookup metadata remain readable; protect the database and backups
+as well as the separately stored key ring.
+
+### Privacy and your data
+
+**Your data** in Settings opens `/settings/data`. Complete JSON exports include archived people,
+contacts, relationship types, tags, interactions and participation, notes and pins, reminders and
+portable profile settings. Credentials and bearer tokens are excluded. An optional bounded
+product-activity contribution is included for subject access, but is not restored into analytics.
+The vCard download contains people and contact details only.
+
+JSON restore is available only in a fresh account. It validates the whole graph, assigns new local
+identifiers and ownership, preserves historical audit timestamps, and saves atomically. Reminder
+email delivery is off afterwards and a new local unsubscribe credential is issued. Downloads
+contain **decrypted private data**: store them securely and delete unnecessary copies. Files are
+processed in memory, not stored or logged by the app. See
+[data portability](docs/security/data-portability.md) for the format and limits.
+
+**Delete your account** in Settings opens `/Account/Manage/DeleteAccount`, offers an export first,
+and requires your current password and explicit confirmation. Deletion removes the live account
+and its owned data atomically; the last active administrator must establish another active
+administrator first. Other local sessions are redirected immediately, and other instances reject
+the account on the next request or circuit activity. A configured email provider sends a minimal
+confirmation after deletion; a delivery failure does not undo the deletion. Backups have separate
+operator-managed retention. See [account erasure](docs/security/account-erasure.md).
+
+Upgrades apply `ProtectSensitiveFieldsAndAddProductMetrics` and `EnforceOwnedAccountLifetimes`.
+Existing orphan owner ids must be resolved before the required account-owner foreign keys can be
+installed; migrations never adopt or silently delete them. Back up the database and matching
+protected keys before upgrading. The protected-storage migration deliberately refuses downgrade:
+rollback requires restoring the pre-upgrade backup and its keys.
+
+Optional hosted features are off by default. `HostedFeatures:ProductMetrics:Enabled=true` enables
+an administrator-only aggregate report at `/admin/metrics`, with no per-user dashboard, content,
+IP addresses or device identifiers. First-observed activity cohorts expire after 90 days;
+disabling collection purges contributions on each configured instance. Account denominators
+include all existing accounts, including disabled ones. See
+[product metrics](docs/security/product-metrics.md) before enabling it.
+
+The source-code link is always available. Public `/privacy`, `/terms` and `/acceptable-use` pages
+are **not published by default**, and Relio ships no legal policy text. An operator must supply
+external UTF-8 documents and attest that each version has been reviewed before enabling policy
+hosting. This configuration is an engineering publication gate, not legal approval. See
+[policy hosting](docs/security/policy-hosting.md).
 
 ### Administration and sign-up control
 
@@ -140,8 +202,9 @@ single-use link (valid for `Registration:InvitationLifetime`, 7 days by default)
 themselves; Relio does not email invitations, shows the link once, and the link only works for that
 address. An unknown `Registration:Mode` value stops the app at startup rather than leaving sign-up open.
 
-Disabling an account stops it from signing in and ends its open sessions within
-`Account:Session:ValidationInterval` (30 minutes by default; lower it to end sessions sooner).
+Disabling an account stops it from signing in and rejects its next HTTP request or inbound
+circuit activity. A completely idle session is also revalidated within
+`Account:Session:ValidationInterval` (30 minutes by default).
 Nothing the account owns is changed, and enabling it again restores access. You can't disable your
 own account.
 

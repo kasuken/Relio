@@ -1,0 +1,180 @@
+@page "/Account/Manage/DeleteAccount"
+@attribute [Authorize]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using Relio.Application.Accounts
+@using Relio.Application.Security
+@using Relio.Data.Identity
+@using Relio.Web.Email
+@using Relio.Web.Security
+
+@inject IAccountDeletionService AccountDeletion
+@inject ICurrentUser CurrentUser
+@inject IAccountSessionRevocationNotifier Revocations
+@inject SignInManager<RelioUser> SignInManager
+@inject IAccountDeletionConfirmationSender ConfirmationSender
+@inject ILogger<DeleteAccount> Logger
+@inject NavigationManager Navigation
+
+<PageTitle>Delete your account - Relio</PageTitle>
+
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-4" data-testid="delete-account-heading">
+    Delete your account
+</MudText>
+
+<MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-6">
+    This permanently deletes your Relio account and the people, interactions, notes, reminders,
+    relationship types, tags and other data owned by it from the live database. You can't undo
+    this. Backups are managed separately by the person who runs this Relio instance.
+</MudAlert>
+
+<MudText Typo="Typo.body1" Class="mb-3">
+    Download a copy of your data before deleting your account:
+</MudText>
+<MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="/settings/data"
+           data-testid="delete-account-export-first" Class="mb-6">
+    Export your data
+</MudButton>
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="delete-account-error">
+        @_errorMessage
+    </MudAlert>
+}
+
+<EditForm Model="Input" FormName="delete-account" OnValidSubmit="DeleteAccountAsync" method="post">
+    <DataAnnotationsValidator />
+
+    @* Plain HTML inputs are required for static SSR forms; MudBlazor inputs have no posted
+       name/value without a live circuit. The EditForm supplies the antiforgery token. *@
+    <div class="rl-field">
+        <label for="delete-account-password">Current password</label>
+        <input id="delete-account-password" name="Input.CurrentPassword" type="password" required
+               autocomplete="current-password" data-testid="delete-account-password" />
+        <ValidationMessage For="@(() => Input!.CurrentPassword)" />
+    </div>
+
+    <div class="rl-field mt-4">
+        <label class="d-flex align-start gap-3" for="delete-account-confirm">
+            <input id="delete-account-confirm" name="Input.Confirmed" type="checkbox" value="true" required
+                   data-testid="delete-account-confirm" />
+            <span>I understand this permanently deletes my account and live data and cannot be undone.</span>
+        </label>
+    </div>
+
+    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Error"
+               FullWidth="true" data-testid="delete-account-submit" Class="mt-4">
+        Delete my account permanently
+    </MudButton>
+</EditForm>
+
+<MudText Typo="Typo.body2" Class="mud-text-secondary mt-6">
+    <MudLink Href="/settings" data-testid="delete-account-back">Back to settings</MudLink>
+</MudText>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel? Input { get; set; }
+
+    private string? _errorMessage;
+
+    protected override void OnInitialized() => Input ??= new();
+
+    private async Task DeleteAccountAsync()
+    {
+        AccountDeletionResult result;
+        try
+        {
+            result = await AccountDeletion.DeleteAsync(
+                new AccountDeletionRequest(Input!.CurrentPassword, Input.Confirmed),
+                HttpContext.RequestAborted);
+        }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(
+                "Account deletion outcome could not be confirmed ({ExceptionType}).",
+                exception.GetType().Name);
+            _errorMessage =
+                "We couldn't confirm whether your account was deleted. Try signing in; if you cannot, contact the person who runs this instance.";
+            return;
+        }
+
+        if (result.Status != AccountDeletionStatus.Deleted)
+        {
+            _errorMessage = result.Status switch
+            {
+                AccountDeletionStatus.ConfirmationRequired =>
+                    "Confirm that you understand this deletion is permanent.",
+                AccountDeletionStatus.CurrentPasswordIncorrect =>
+                    "Your current password is incorrect.",
+                AccountDeletionStatus.AccountUnavailable =>
+                    "This account is no longer available. Sign in again before continuing.",
+                AccountDeletionStatus.LastActiveAdministrator =>
+                    "This is the only active administrator. Add another active administrator before deleting this account.",
+                AccountDeletionStatus.ConcurrentChange =>
+                    "The account changed while deletion was in progress. No changes were saved; please try again.",
+                _ => "The account could not be deleted. Please try again.",
+            };
+            return;
+        }
+
+        var userId = CurrentUser.UserId;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            try
+            {
+                await Revocations.RevokeActiveAsync(userId, AccountSessionRevocationReason.Deleted);
+            }
+            catch (Exception exception)
+            {
+                // Erasure has committed; a circuit notification failure must not prevent cookie
+                // sign-out or make the completed deletion appear to have failed.
+                Logger.LogWarning(
+                    "Account deletion circuit notification failed ({ExceptionType}).",
+                    exception.GetType().Name);
+            }
+        }
+
+        await SignInManager.SignOutAsync();
+
+        var delivery = ConfirmationSender.IsAvailable ? "failed" : "not-configured";
+        if (ConfirmationSender.IsAvailable && !string.IsNullOrWhiteSpace(result.ConfirmationAddress))
+        {
+            try
+            {
+                await ConfirmationSender.SendAsync(result.ConfirmationAddress, HttpContext.RequestAborted);
+                delivery = "sent";
+            }
+            catch (Exception exception)
+            {
+                // The database commit is final. Report delivery separately; never log the
+                // recipient, message, password, or exception message/stack (which may contain PII).
+                Logger.LogWarning(
+                    "Account deletion confirmation delivery failed ({ExceptionType}).",
+                    exception.GetType().Name);
+                delivery = "failed";
+            }
+        }
+
+        Navigation.NavigateTo($"/Account/AccountDeleted?delivery={delivery}", forceLoad: true);
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "Enter your current password.")]
+        public string CurrentPassword { get; set; } = string.Empty;
+
+        public bool Confirmed { get; set; }
+    }
+}

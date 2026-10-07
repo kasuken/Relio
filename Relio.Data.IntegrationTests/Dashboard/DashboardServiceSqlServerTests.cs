@@ -15,7 +15,7 @@ public sealed class DashboardServiceSqlServerTests(SqlServerDatabaseFixture fixt
     [SqlServerFact]
     public async Task GetAsync_translates_bounded_sections_and_reads_shared_interactions_without_n_plus_one_queries()
     {
-        var ownerId = TestDataFactory.NewOwnerId();
+        var ownerId = await TestDataFactory.CreateOwnerAsync(fixture);
         var today = UserCalendar.Today(TimeProvider.System, TimeZoneInfo.Utc);
         var commandCounter = new ReaderCommandCounter();
         await using var dbContext = fixture.CreateDbContext(commandCounter);
@@ -81,8 +81,8 @@ public sealed class DashboardServiceSqlServerTests(SqlServerDatabaseFixture fixt
     [SqlServerFact]
     public async Task GetAsync_scopes_each_section_and_related_rows_to_the_current_owner()
     {
-        var ownerA = TestDataFactory.NewOwnerId();
-        var ownerB = TestDataFactory.NewOwnerId();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
         var today = UserCalendar.Today(TimeProvider.System, TimeZoneInfo.Utc);
         await using var dbContext = fixture.CreateDbContext();
         dbContext.UserProfiles.AddRange(

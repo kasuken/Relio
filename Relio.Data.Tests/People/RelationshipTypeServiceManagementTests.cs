@@ -367,9 +367,7 @@ public class RelationshipTypeServiceManagementTests
     public async Task A_failed_save_leaves_nothing_tracked_for_the_next_save()
     {
         var database = NewDatabase();
-        await using var dbContext = new RelioDbContext(
-            new DbContextOptionsBuilder<RelioDbContext>(database).AddInterceptors(new FailOnceSaveChangesInterceptor()).Options,
-            TimeProvider.System);
+        await using var dbContext = new RelioDbContext(new DbContextOptionsBuilder<RelioDbContext>(database).AddInterceptors(new FailOnceSaveChangesInterceptor()).Options, TimeProvider.System, FieldProtector);
 
         var act = () => CreateService(dbContext, Owner).CreateAsync("Mentor");
         await act.Should().ThrowAsync<InvalidOperationException>();
@@ -406,7 +404,7 @@ public class RelationshipTypeServiceManagementTests
         new DbContextOptionsBuilder<RelioDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
 
     internal static RelioDbContext CreateDbContext(DbContextOptions<RelioDbContext> database) =>
-        new(database, TimeProvider.System);
+        new(database, TimeProvider.System, FieldProtector);
 
     internal static RelationshipTypeService CreateService(RelioDbContext dbContext, string? ownerId) =>
         new(dbContext, new FakeCurrentUser(ownerId));

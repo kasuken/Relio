@@ -20,8 +20,8 @@ public sealed class RelationshipTypeServiceSqlServerTests(SqlServerDatabaseFixtu
     [SqlServerFact]
     public async Task ListWithUsageAsync_translates_and_counts_people_including_archived()
     {
-        var owner = TestDataFactory.NewOwnerId();
-        var other = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
+        var other = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         var friend = await TestDataFactory.CreateRelationshipTypeAsync(dbContext, owner, "Friend", 0);
         var family = await TestDataFactory.CreateRelationshipTypeAsync(dbContext, owner, "Family", 1);
@@ -40,7 +40,7 @@ public sealed class RelationshipTypeServiceSqlServerTests(SqlServerDatabaseFixtu
     [SqlServerFact]
     public async Task CreateAsync_refuses_a_name_that_differs_only_in_case()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         await TestDataFactory.CreateRelationshipTypeAsync(dbContext, owner, "Friend", 0);
         dbContext.ChangeTracker.Clear();
@@ -53,7 +53,7 @@ public sealed class RelationshipTypeServiceSqlServerTests(SqlServerDatabaseFixtu
     [SqlServerFact]
     public async Task RenameAsync_can_change_only_the_casing()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         var id = await TestDataFactory.CreateRelationshipTypeAsync(dbContext, owner, "friend", 0);
         dbContext.ChangeTracker.Clear();
@@ -67,7 +67,7 @@ public sealed class RelationshipTypeServiceSqlServerTests(SqlServerDatabaseFixtu
     [SqlServerFact]
     public async Task CreateAsync_reports_a_name_taken_at_the_same_moment_as_NameTaken_and_saves_nothing()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         // Just before the save of "Mentor", another request creates "mentor" - which the unique
         // index then refuses.
         var interceptor = new RunOnFirstSaveInterceptor(async ct =>
@@ -93,7 +93,7 @@ public sealed class RelationshipTypeServiceSqlServerTests(SqlServerDatabaseFixtu
     [SqlServerFact]
     public async Task RenameAsync_reports_a_name_taken_at_the_same_moment_as_NameTaken()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid id;
         await using (var setup = fixture.CreateDbContext())
         {
@@ -120,7 +120,7 @@ public sealed class RelationshipTypeServiceSqlServerTests(SqlServerDatabaseFixtu
     [SqlServerFact]
     public async Task DeleteAsync_moves_people_and_removes_the_type_in_one_save()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid friend, acquaintance, ada, bo;
         await using (var setup = fixture.CreateDbContext())
         {
@@ -144,7 +144,7 @@ public sealed class RelationshipTypeServiceSqlServerTests(SqlServerDatabaseFixtu
     [SqlServerFact]
     public async Task DeleteAsync_that_fails_in_the_database_changes_nothing()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid friend, acquaintance, ada;
         await using (var setup = fixture.CreateDbContext())
         {
@@ -168,7 +168,7 @@ public sealed class RelationshipTypeServiceSqlServerTests(SqlServerDatabaseFixtu
     [SqlServerFact]
     public async Task DeleteAsync_without_a_target_clears_people()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid friend, ada;
         await using (var setup = fixture.CreateDbContext())
         {
@@ -188,7 +188,7 @@ public sealed class RelationshipTypeServiceSqlServerTests(SqlServerDatabaseFixtu
     [SqlServerFact]
     public async Task A_person_assigned_while_the_type_is_being_deleted_is_cleared_by_the_database()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid friend;
         await using (var setup = fixture.CreateDbContext())
         {
@@ -214,8 +214,8 @@ public sealed class RelationshipTypeServiceSqlServerTests(SqlServerDatabaseFixtu
     [SqlServerFact]
     public async Task DeleteAsync_cannot_move_people_to_another_owners_type()
     {
-        var owner = TestDataFactory.NewOwnerId();
-        var other = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
+        var other = await TestDataFactory.CreateOwnerAsync(fixture);
         Guid friend, foreign, ada;
         await using (var setup = fixture.CreateDbContext())
         {
@@ -236,8 +236,8 @@ public sealed class RelationshipTypeServiceSqlServerTests(SqlServerDatabaseFixtu
     [SqlServerFact]
     public async Task RenameAsync_and_DeleteAsync_for_another_owners_type_return_false()
     {
-        var owner = TestDataFactory.NewOwnerId();
-        var other = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
+        var other = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         var foreign = await TestDataFactory.CreateRelationshipTypeAsync(dbContext, other, "Mentor", 0);
         dbContext.ChangeTracker.Clear();
@@ -253,7 +253,7 @@ public sealed class RelationshipTypeServiceSqlServerTests(SqlServerDatabaseFixtu
     [SqlServerFact]
     public async Task Relationship_type_name_index_is_unique_and_named_as_the_service_expects()
     {
-        var owner = TestDataFactory.NewOwnerId();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
         await using var dbContext = fixture.CreateDbContext();
         await TestDataFactory.CreateRelationshipTypeAsync(dbContext, owner, "Friend", 0);
 

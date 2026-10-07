@@ -551,7 +551,7 @@ public class ReminderSchedulerRunnerTests
         var options = new DbContextOptionsBuilder<RelioDbContext>()
             .UseInMemoryDatabase(dbName)
             .Options;
-        return new RelioDbContext(options, timeProvider);
+        return new RelioDbContext(options, timeProvider, FieldProtector);
     }
 
     private static RelioUser CreateUser(string id, string email, bool emailConfirmed = true, bool isDisabled = false) =>
