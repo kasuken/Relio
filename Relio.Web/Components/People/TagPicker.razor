@@ -1,0 +1,118 @@
+@* The tag part of the person form (issue #24): the chosen tags as removable chips above one search
+   box. Typing lists the user's matching tags and, when the text is not an existing tag's name, a
+   "Create tag" line; choosing either adds a chip. Nothing is saved here - a tag that does not exist
+   yet is only a name until the form is saved, and the service creates it in the same save, so
+   abandoning the form leaves no stray tag behind. It is an autocomplete, not a chip set, because the
+   list of tags can grow and an autocomplete works the same way on a phone. *@
+@using Relio.Application.People
+@using Relio.Domain
+
+@if (Selected.Count > 0)
+{
+    <div class="rl-tag-list" data-testid="person-tags-selected">
+        @foreach (var tag in Selected)
+        {
+            <span data-testid="person-tag-chip" @key="tag.Name">
+                @* The remove button is our own, not the chip's: MudChip's close button is named just
+                   "Close", which a screen reader would read out once per tag with nothing to tell
+                   them apart. *@
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="rl-tag">
+                    @tag.Name
+                    <MudTooltip Text="Remove">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Close"
+                                       Size="Size.Small"
+                                       Class="rl-tag-remove"
+                                       OnClick="@(() => RemoveAsync(tag))"
+                                       aria-label="@($"Remove tag {tag.Name}")"
+                                       data-testid="person-tag-remove" />
+                    </MudTooltip>
+                </MudChip>
+            </span>
+        }
+    </div>
+}
+
+<div data-testid="person-tags-field">
+    <MudAutocomplete T="TagOption"
+                     @ref="_autocomplete"
+                     Label="Tags"
+                     HelperText="Type to find a tag, or to create a new one."
+                     Variant="Variant.Outlined"
+                     SearchFunc="Search"
+                     ToStringFunc="@(option => option?.Name)"
+                     MinCharacters="0"
+                     MaxItems="null"
+                     CoerceText="false"
+                     CoerceValue="false"
+                     Disabled="@AtLimit"
+                     ValueChanged="OnChosenAsync"
+                     Error="@(!string.IsNullOrEmpty(Error))"
+                     ErrorText="@Error">
+        <ItemTemplate Context="option">
+            @if (option.IsNew)
+            {
+                <span>Create tag “@option.Name”</span>
+            }
+            else
+            {
+                <span>@option.Name</span>
+            }
+        </ItemTemplate>
+    </MudAutocomplete>
+    @if (AtLimit)
+    {
+        <MudText Typo="Typo.caption" HtmlTag="div" Class="mud-text-secondary">A person can have up to @TagNameRules.MaxPerPerson tags.</MudText>
+    }
+</div>
+
+@code {
+    private MudAutocomplete<TagOption>? _autocomplete;
+
+    /// <summary>Every tag the user has, to offer.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<Tag> Available { get; set; } = [];
+
+    /// <summary>The chosen tags. The form owns the list.</summary>
+    [Parameter, EditorRequired]
+    public List<TagSelection> Selected { get; set; } = [];
+
+    /// <summary>A message about the tags, if the last save was refused for one.</summary>
+    [Parameter]
+    public string? Error { get; set; }
+
+    /// <summary>Raised after a tag is added or removed.</summary>
+    [Parameter]
+    public EventCallback Changed { get; set; }
+
+    private bool AtLimit => Selected.Count >= TagNameRules.MaxPerPerson;
+
+    private Task<IEnumerable<TagOption>> Search(string? text, CancellationToken cancellationToken) =>
+        Task.FromResult<IEnumerable<TagOption>>(TagSuggestions.For(text, Available, Selected));
+
+    private async Task OnChosenAsync(TagOption? option)
+    {
+        if (option is null)
+        {
+            return;
+        }
+
+        if (!AtLimit && !Selected.Any(tag => TagNameRules.Comparer.Equals(tag.Name, option.Name)))
+        {
+            Selected.Add(new TagSelection(option.Id, option.Name));
+            await Changed.InvokeAsync();
+        }
+
+        // Empty the box for the next tag. After the state change above, or the cleared value would
+        // be re-applied by the render that follows.
+        if (_autocomplete is not null)
+        {
+            await _autocomplete.ClearAsync();
+        }
+    }
+
+    private async Task RemoveAsync(TagSelection tag)
+    {
+        Selected.Remove(tag);
+        await Changed.InvokeAsync();
+    }
+}

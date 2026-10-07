@@ -32,4 +32,13 @@ public interface IPersonProfileInput
 
     /// <summary>Anything else worth remembering. Optional.</summary>
     string? Details { get; }
+
+    /// <summary>The person's whole list of contact methods, in order. Null or empty means none.</summary>
+    IReadOnlyList<ContactMethodInput>? ContactMethods { get; }
+
+    /// <summary>Ids of existing tags to attach. Null or empty means none by id.</summary>
+    IReadOnlyCollection<Guid>? TagIds { get; }
+
+    /// <summary>Names of tags to attach, created for the user when none of theirs has that name. Null or empty means none.</summary>
+    IReadOnlyCollection<string>? NewTagNames { get; }
 }

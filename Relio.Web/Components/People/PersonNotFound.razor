@@ -1,0 +1,15 @@
+@* The panel for a person that does not exist or is not the signed-in user's. The two look exactly
+   the same on purpose, so a link can never be used to find out whether someone else's person
+   exists. Shared by the profile and the edit page. *@
+@inject NavigationManager Navigation
+
+<div data-testid="person-not-found">
+    <EmptyState Title="This person isn't in your list"
+                Message="The link may be wrong, or they were removed."
+                ActionLabel="Back to people"
+                OnAction="BackToPeople" />
+</div>
+
+@code {
+    private void BackToPeople() => Navigation.NavigateTo("/people");
+}

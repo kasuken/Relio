@@ -50,8 +50,49 @@ public static class PersonProfileRules
         AddIfTooLong(errors, input.Details, Person.DetailsMaxLength, PersonValidationError.DetailsTooLong);
 
         ValidateBirthday(input, today, errors);
+        ValidateContactMethodCount(input, errors);
+        ValidateTags(input, errors);
 
         return errors;
+    }
+
+    /// <summary>
+    /// The per-row contact method problems in <paramref name="input"/>: what the format rules in
+    /// <see cref="ContactMethodRules"/> say about each submitted row. Kept apart from
+    /// <see cref="Validate"/> because each problem carries a row index, not just a code.
+    /// </summary>
+    public static IReadOnlyList<ContactMethodProblem> ValidateContactMethods(IPersonProfileInput input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        return ContactMethodRules.ValidateAll(input.ContactMethods);
+    }
+
+    private static void ValidateContactMethodCount(IPersonProfileInput input, List<PersonValidationError> errors)
+    {
+        if (input.ContactMethods?.Count > ContactMethodRules.MaxPerPerson)
+        {
+            errors.Add(PersonValidationError.TooManyContactMethods);
+        }
+    }
+
+    private static void ValidateTags(IPersonProfileInput input, List<PersonValidationError> errors)
+    {
+        var newNames = (input.NewTagNames ?? [])
+            .Select(TagNameRules.Normalize)
+            .OfType<string>()
+            .Distinct(TagNameRules.Comparer)
+            .ToList();
+
+        if (newNames.Any(name => name.Length > Tag.NameMaxLength))
+        {
+            errors.Add(PersonValidationError.TagNameTooLong);
+        }
+
+        var tagCount = (input.TagIds?.Distinct().Count() ?? 0) + newNames.Count;
+        if (tagCount > TagNameRules.MaxPerPerson)
+        {
+            errors.Add(PersonValidationError.TooManyTags);
+        }
     }
 
     private static void AddIfTooLong(

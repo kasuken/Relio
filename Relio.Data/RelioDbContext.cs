@@ -49,6 +49,9 @@ public sealed class RelioDbContext(DbContextOptions<RelioDbContext> options, Tim
     /// <summary>The current user's tags.</summary>
     public DbSet<Tag> Tags => Set<Tag>();
 
+    /// <summary>The current user's people's contact methods (email, phone, ...), filtered explicitly by services like everything else.</summary>
+    public DbSet<ContactMethod> ContactMethods => Set<ContactMethod>();
+
     /// <summary>The current user's relationship types ("Friend", "Colleague", ...), seeded per user at registration.</summary>
     public DbSet<RelationshipType> RelationshipTypes => Set<RelationshipType>();
 

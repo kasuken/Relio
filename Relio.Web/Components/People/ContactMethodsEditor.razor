@@ -1,0 +1,158 @@
+@* The contact methods part of the person form (issue #24): a list of rows - kind, optional label,
+   value, remove - and an "Add a contact method" button. It edits the rows it is given (the form owns
+   them and sends them), and shows the messages the form worked out from the service's codes; it
+   validates nothing itself. Rows keep a Key so each keeps its own input state and errors when other
+   rows are added or removed. There is deliberately no re-ordering: rows are kept in the order they
+   were added (the form is used on a phone, and drag and drop is not an accessible way to do it). *@
+@using Relio.Application.People
+@using Relio.Domain
+
+<fieldset class="rl-fieldset" data-testid="person-contact-methods">
+    <legend>Contact methods</legend>
+    <MudText Typo="Typo.caption" HtmlTag="div" Class="mud-text-secondary mb-2">
+        Email, phone, address or a social handle. Labels like Work or Mobile are optional.
+    </MudText>
+
+    @foreach (var (row, index) in Rows.Select((row, index) => (row, index)))
+    {
+        <div class="rl-contact-row" role="group" aria-label="Contact method @(index + 1)" data-testid="person-contact-method-row" @key="row.Key">
+            <MudGrid Spacing="2">
+                <MudItem xs="6" sm="3">
+                    <div data-testid="person-contact-method-kind-field">
+                        <MudSelect T="ContactMethodKind"
+                                   @bind-Value="row.Kind"
+                                   Label="Kind"
+                                   Variant="Variant.Outlined"
+                                   ToStringFunc="ContactMethodDisplay.KindName"
+                                   Error="@HasError(row, ContactMethodField.Kind)"
+                                   ErrorText="@ErrorFor(row, ContactMethodField.Kind)">
+                            @foreach (var kind in Kinds)
+                            {
+                                <MudSelectItem T="ContactMethodKind" Value="kind">@ContactMethodDisplay.KindName(kind)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </div>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <div data-testid="person-contact-method-label-field">
+                        <MudAutocomplete T="string"
+                                         @bind-Value="row.Label"
+                                         Label="Label (optional)"
+                                         Variant="Variant.Outlined"
+                                         SearchFunc="@((text, _) => Suggest(row, text))"
+                                         CoerceValue="true"
+                                         CoerceText="false"
+                                         ResetValueOnEmptyText="true"
+                                         MaxLength="ContactMethod.LabelMaxLength"
+                                         Error="@HasError(row, ContactMethodField.Label)"
+                                         ErrorText="@ErrorFor(row, ContactMethodField.Label)"
+                                         Class="rl-serif" />
+                    </div>
+                </MudItem>
+                <MudItem xs="10" sm="5">
+                    <div data-testid="person-contact-method-value-field">
+                        <MudTextField T="string"
+                                      @bind-Value="row.Value"
+                                      Label="@ContactMethodDisplay.ValueLabel(row.Kind)"
+                                      InputType="@InputTypeFor(row.Kind)"
+                                      Lines="@(row.Kind == ContactMethodKind.Address ? 2 : 1)"
+                                      Sizing="@(row.Kind == ContactMethodKind.Address ? InputSizing.Auto : InputSizing.Fixed)"
+                                      MaxLength="ContactMethod.ValueMaxLength"
+                                      Immediate="true"
+                                      Variant="Variant.Outlined"
+                                      Error="@HasError(row, ContactMethodField.Value)"
+                                      ErrorText="@ErrorFor(row, ContactMethodField.Value)"
+                                      UserAttributes="@NoAutofill"
+                                      Class="rl-serif" />
+                    </div>
+                </MudItem>
+                <MudItem xs="2" sm="1" Class="rl-contact-remove">
+                    <MudTooltip Text="Remove">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Close"
+                                       Variant="Variant.Outlined"
+                                       OnClick="@(() => RemoveAsync(row))"
+                                       aria-label="@($"Remove contact method {index + 1}")"
+                                       data-testid="person-contact-method-remove" />
+                    </MudTooltip>
+                </MudItem>
+            </MudGrid>
+        </div>
+    }
+
+    <div class="rl-contact-add">
+        <MudButton Variant="Variant.Text"
+                   StartIcon="@Icons.Material.Outlined.Add"
+                   Disabled="@AtLimit"
+                   OnClick="AddAsync"
+                   data-testid="person-contact-method-add">
+            Add a contact method
+        </MudButton>
+        @if (AtLimit)
+        {
+            <MudText Typo="Typo.caption" HtmlTag="div" Class="mud-text-secondary">A person can have up to @ContactMethodRules.MaxPerPerson contact methods.</MudText>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(GroupError))
+    {
+        <MudText Typo="Typo.caption" HtmlTag="div" Color="Color.Error" role="alert" data-testid="person-contact-methods-error">@GroupError</MudText>
+    }
+</fieldset>
+
+@code {
+    // A foreach, not a for: the item content is rendered later (see PersonForm).
+    private static readonly ContactMethodKind[] Kinds = Enum.GetValues<ContactMethodKind>();
+
+    private static readonly Dictionary<string, object> NoAutofill = new() { ["autocomplete"] = "off" };
+
+    /// <summary>The rows to edit, in the order shown. The form owns the list.</summary>
+    [Parameter, EditorRequired]
+    public List<ContactMethodFormRow> Rows { get; set; } = [];
+
+    /// <summary>The message to show under each input, by the row's <see cref="ContactMethodFormRow.Key"/>.</summary>
+    [Parameter]
+    public IReadOnlyDictionary<(Guid Key, ContactMethodField Field), string> Errors { get; set; } =
+        new Dictionary<(Guid, ContactMethodField), string>();
+
+    /// <summary>A message about the group as a whole (too many contact methods).</summary>
+    [Parameter]
+    public string? GroupError { get; set; }
+
+    /// <summary>Raised after a row is added or removed, so the form can drop messages that no longer apply.</summary>
+    [Parameter]
+    public EventCallback Changed { get; set; }
+
+    private bool AtLimit => Rows.Count >= ContactMethodRules.MaxPerPerson;
+
+    private bool HasError(ContactMethodFormRow row, ContactMethodField field) => Errors.ContainsKey((row.Key, field));
+
+    private string? ErrorFor(ContactMethodFormRow row, ContactMethodField field) =>
+        Errors.TryGetValue((row.Key, field), out var message) ? message : null;
+
+    private static InputType InputTypeFor(ContactMethodKind kind) => kind switch
+    {
+        ContactMethodKind.Email => InputType.Email,
+        ContactMethodKind.Phone => InputType.Telephone,
+        _ => InputType.Text,
+    };
+
+    private static Task<IEnumerable<string>> Suggest(ContactMethodFormRow row, string? text) =>
+        Task.FromResult<IEnumerable<string>>(ContactLabelSuggestions.For(row.Kind, text));
+
+    private async Task AddAsync()
+    {
+        if (AtLimit)
+        {
+            return;
+        }
+
+        Rows.Add(new ContactMethodFormRow());
+        await Changed.InvokeAsync();
+    }
+
+    private async Task RemoveAsync(ContactMethodFormRow row)
+    {
+        Rows.Remove(row);
+        await Changed.InvokeAsync();
+    }
+}

@@ -64,8 +64,26 @@ internal sealed class FakePeopleService : IPeopleService
         return Task.FromResult(person);
     }
 
-    public Task<bool> UpdateAsync(Guid personId, UpdatePersonRequest request, CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException();
+    /// <summary>Every update, with the id it was for, in order.</summary>
+    public List<(Guid PersonId, UpdatePersonRequest Request)> Updated { get; } = [];
+
+    /// <summary>What <see cref="UpdateAsync"/> returns: <see langword="false"/> means the person is gone.</summary>
+    public bool UpdateResult { get; set; } = true;
+
+    /// <summary>Thrown by (and then cleared from) the next <see cref="UpdateAsync"/> call.</summary>
+    public Exception? ThrowOnNextUpdate { get; set; }
+
+    public Task<bool> UpdateAsync(Guid personId, UpdatePersonRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ThrowOnNextUpdate is { } exception)
+        {
+            ThrowOnNextUpdate = null;
+            throw exception;
+        }
+
+        Updated.Add((personId, request));
+        return Task.FromResult(UpdateResult);
+    }
 
     public Task<bool> ArchiveAsync(Guid personId, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
@@ -85,5 +103,19 @@ internal sealed class FakeRelationshipTypeService : IRelationshipTypeService
     {
         ListCalls++;
         return Task.FromResult<IReadOnlyList<RelationshipType>>(Types.ToList());
+    }
+}
+
+/// <summary>An <see cref="ITagService"/> that lists whatever a test sets, and counts the calls.</summary>
+internal sealed class FakeTagService : ITagService
+{
+    public List<Tag> Tags { get; } = [];
+
+    public int ListCalls { get; private set; }
+
+    public Task<IReadOnlyList<Tag>> ListAsync(CancellationToken cancellationToken = default)
+    {
+        ListCalls++;
+        return Task.FromResult<IReadOnlyList<Tag>>(Tags.ToList());
     }
 }

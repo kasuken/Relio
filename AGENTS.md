@@ -57,7 +57,13 @@ for every new owned entity and service; do not invent new plumbing per feature.
   filtered explicitly like everything else, with an index on `(OwnerId, PersonId)`. When delete
   arrives (#26), `PeopleService` gets one private `RemoveDependentsAsync(ownerId, personId)` and every
   new child adds one `RemoveRange(...)` line to it: the InMemory provider only cascades *tracked*
-  dependents, and the database cascade is the SQL Server backstop.
+  dependents, and the database cascade is the SQL Server backstop. `ContactMethod` (#24) is the first
+  child; **#26's `RemoveDependentsAsync` and #59's account deletion must include `ContactMethods`**.
+- **New children are added with `DbSet.Add` explicitly.** `OwnedEntity` gives every instance a non-empty
+  `Guid` up front, so an entity that is merely *reachable* from a tracked parent (added to its collection)
+  is discovered by EF Core as an existing row, tracked `Modified`, and the save fails with a
+  `DbUpdateConcurrencyException` for an UPDATE that touches no row. `Add` on a brand new graph
+  (`People.Add(person)` in create) is fine; on an update, add each new child and each new `Tag` to its own `DbSet`.
 
 **Application (`Relio.Application`).**
 - Read the signed-in user only through `ICurrentUser` (`Security/ICurrentUser.cs`) - never
@@ -733,11 +739,18 @@ Established by issue #22 under epic #21. The routes are pages, not dialogs: `/pe
 - **All of them are interactive** (MudBlazor inputs only bind over a circuit - see the static SSR note
   under "Accounts and authentication"); never add `[ExcludeFromInteractiveRouting]` to a people page.
   Each page has exactly one `h1` (`FocusOnNavigate` targets it) and sets no `AutoFocus`.
-- **`Components/People/PersonForm.razor`** is the one form for a person: add (#22) and, later, edit
-  (#24) and the duplicate warning (#27) plug into it. It binds to `PersonFormModel`, shows one message
-  per field from `PersonFormMessages`, and is a real `<form novalidate>` (so Enter submits and the
-  browser's own "fill out this field" bubble never pre-empts Relio's message). Loop `MudSelectItem`s
-  with `foreach`, never `for`: the item content renders after the loop has finished.
+- **`Components/People/PersonForm.razor`** is the one form for a person: add (#22), edit (#24) and,
+  later, the duplicate warning (#27) plug into it. It binds to `PersonFormModel`, shows one message
+  per field from `PersonFormMessages`, and is a `<form novalidate>` (so the browser's own "fill out
+  this field" bubble never pre-empts Relio's message) **with no submit button**: Save is a
+  `ButtonType.Button` with `OnClick`, because Enter inside the tag or label autocomplete would otherwise
+  submit the whole form (and Enter is how a tag is chosen). A form without a submit button and with
+  several text inputs is never submitted implicitly, so Enter in a text field does nothing. Loop
+  `MudSelectItem`s with `foreach`, never `for`: the item content renders after the loop has finished.
+  The services that fill its pickers (`IRelationshipTypeService`, then `ITagService`) are awaited one
+  after the other, which is the simplest thing; the database lane would queue them anyway
+  (`ITagService` is registered with `AddDataService` like every data service, and
+  `DatabaseLaneSqlServerTests` covers the edit page's pickers loading while a save runs).
 - **Browser tab titles stay generic** (`Person - Relio`, `Add a person - Relio`): titles land in
   browser history and tab lists, and a person's name is private. A person that does not exist and
   one that belongs to someone else show the identical "This person isn't in your list" panel.
@@ -777,6 +790,76 @@ Established by issue #22 under epic #21. The routes are pages, not dialogs: `/pe
   The list loads after the circuit connects, so an E2E test waits for `people-count` (or
   `people-all-archived`) **before** asserting that something is absent. Never assert relative-date
   wording ("12 days ago") against demo data - it moves every day; use bUnit with a fixed "today".
+
+### Edit, contact methods and tags (issue #24)
+
+- **Route and page.** `/people/{PersonId:guid}/edit` (`Components/Pages/EditPerson.razor`) loads through
+  `IPeopleService.GetAsync` in `OnParametersSetAsync`, shows the shared `PersonNotFound` panel (also used
+  by the profile) for a missing or foreign person, and renders `<PersonForm @key="_person.Id" Person=...>`
+  so another person's edit page is a fresh form, never the first person's half-edited values. Archived
+  people are editable. The title is the generic `Edit person - Relio` and the single `h1` is "Edit
+  details" (no name). The `HeadOutlet` is static, so a `PageTitle` only changes on a full page load,
+  not on a client-side navigation; E2E tests check titles after `GotoAsync`.
+- **`ContactMethod`** (`Relio.Domain`, table `ContactMethods`, migration `AddContactMethods`): `Kind`
+  (`Email|Phone|Address|Social|Other`) stored **as a string** with a check constraint
+  (`CK_ContactMethods_Kind` - a new kind needs a migration that rewrites it), `Label` 50, `Value` **300**
+  (the roadmap said 500: `(OwnerId, NormalizedValue)` is a 450 + 300 character `nvarchar` key, 1,500
+  bytes, under SQL Server's 1,700-byte limit; a test inserts the widest possible row), `NormalizedValue`
+  300, `SortOrder`. Cascade on `PersonId`; indexes `(OwnerId, PersonId)` and `(OwnerId, NormalizedValue)`
+  (the lookup #27 and #28 match on).
+- **`ContactMethodRules`** (Application, pure) owns normalization and the comparison key
+  (`ToNormalizedValue`: email lower-cased; phone = leading `+` plus ASCII digits, no `00` rewriting; social
+  without leading `@`, lower-cased; address/other whitespace-collapsed, lower-cased; idempotent and never
+  longer than the trimmed value) and validation (`ValidateAll` reports `ContactMethodProblem(index, code)`).
+  #27, #28 and #29 **reuse** it; do not write `NormalizedValue` any other way. Email/phone checks are
+  plausibility checks, not delivery guarantees. `TagNameRules` does the same for tag names
+  (`Normalize`, `Comparer` = invariant culture ignoring case, kana type and width - an approximation of the
+  SQL Server `CI_AS` collation, accents stay distinct). Max 20 contact methods and 20 tags per person.
+- **The request carries the whole list.** `UpdatePersonRequest.ContactMethods` is diffed by id: matched
+  rows are edited, rows missing from the request are deleted, rows with no id are added, and `SortOrder`
+  is the position in the request (no re-ordering UI; new rows go at the end). Every id must be one of
+  *this person's* contact methods, else `ForeignEntityNotOwnedException("contact methods")`: that covers
+  another user's, another person's, one that never existed, and one deleted in another tab, all with the
+  same message. `CreatePersonRequest` accepts the same list and tags, but any id on create is foreign. All
+  foreign ids (relationship type, tags, contact methods) are checked **before** anything is mutated or
+  any tag created; a person that is not the user's returns `false` before any of that. Repeating an id
+  in one request is a malformed request (`ArgumentException`), not a validation error.
+- **Tags are created by typing** (`NewTagNames`): names are matched against the user's own tags in
+  code with `TagNameRules.Comparer` (InMemory is case-sensitive), unmatched names become new `Tag` rows
+  in the **same** `SaveChanges` as the person (an abandoned form leaves no stray tag), and the unique
+  `(OwnerId, Name)` index stays the authority: a lost race (`SqlException` 2601/2627 naming
+  `IX_Tags_OwnerId_Name`) becomes `PersonValidationError.TagNameConflict`, the form reloads its tags and
+  asks the user to choose the tag from the list (proven with a `SaveChangesInterceptor` in
+  `ContactMethodSqlServerTests`). `ITagService.ListAsync` is read-only until #25. `ForeignEntityNotOwnedException`
+  now has `EntityName` (constants in `ForeignEntityNames`) so the form tells a stale relationship type, tag
+  and contact method apart; the message is unchanged and never contains an id or a value.
+- **Last write wins, with stale-tab detection.** There is no concurrency token. A save from a stale tab
+  replaces tags and fields, and drops contact methods that were added elsewhere in the meantime; the one
+  thing it notices is a contact method it still shows that no longer exists, answered by a "This profile
+  changed in another tab or window" alert with Reload. `Person.UpdatedAtUtc` is not bumped when only tags
+  or contact methods change.
+- **Contact data is never logged, never in a URL, and only links through `ContactLinks`.** Blazor does not
+  sanitise attribute values, so `ContactLinks.HrefFor` is the only place an `href` is built from a contact
+  method: `mailto:` for an email made of ordinary address characters, `tel:` from the normalized phone number
+  with at least 3 digits, nothing for address, social or other. The value inputs carry `autocomplete="off"`.
+  The profile lists tags as labels (not links); the people **list shows no tags** (minimisation; #53).
+- **Form pieces.** `ContactMethodsEditor` (rows of kind, label autocomplete with per-kind suggestions in
+  `ContactLabelSuggestions`, value, remove; add button disabled at 20; messages by row `Key` so a skipped
+  blank row never shifts an error onto another row) and `TagPicker` (chips plus a `MudAutocomplete<TagOption>`
+  from `TagSuggestions`; the remove buttons are our own with `aria-label="Remove tag {name}"` because
+  `MudChip`'s close button is just "Close"). `PersonFormModel.FromPerson` starts the form from a person;
+  a new row with no value and no label is not sent, but a saved row whose text was cleared **is** (so it
+  asks for a value instead of being deleted silently). A kind change swaps the input type (`email`,
+  `tel`, text; `MudTextField` with `Sizing.Auto` renders a `textarea`, so only the address row uses it).
+- **EF.** `AddRelioData` states `UseQuerySplittingBehavior(SingleQuery)` for SQL Server (loading a person
+  with tags and contact methods is two collection includes, which warns otherwise); queries never call
+  `AsSingleQuery`/`AsSplitQuery` (relational-only, and E2E runs on InMemory).
+- **Tests.** Race tests use a `SaveChangesInterceptor` that writes through a second context
+  (`InsertTagOnFirstSaveInterceptor`, `SqlServerDatabaseFixture.CreateDbContext(params IInterceptor[])`);
+  database cascades are proven with `ExecuteDeleteAsync` (it bypasses the tracker). bUnit tests that click
+  an autocomplete option use `WaitForAssertion` (the choice is handled asynchronously). `PeopleTestHelpers.CreatePersonAsync`
+  seeds a person with contact methods through the real service. Demo data now has contact methods (reserved
+  example domains and fictional numbers only); a demo database seeded earlier is not backfilled.
 
 ## End-to-end tests
 

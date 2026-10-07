@@ -4,7 +4,8 @@ namespace Relio.Domain;
 /// A person the current user has a relationship with: the profile the rest of Relio hangs off.
 /// Built on the user-scoped data pattern (issue #10) and fleshed out by issue #22 with a nickname,
 /// a relationship type, a birthday (the year is optional), how the user met them and free-form
-/// details. Later issues in epic #21 add contact methods, interactions, notes and reminders.
+/// details, and by issue #24 with contact methods and tags. Later issues add interactions, notes
+/// and reminders.
 /// </summary>
 public sealed class Person : OwnedEntity
 {
@@ -84,6 +85,12 @@ public sealed class Person : OwnedEntity
     /// enforced by <c>Relio.Data.People.PeopleService</c>, not by the database.
     /// </summary>
     public ICollection<Tag> Tags { get; set; } = new List<Tag>();
+
+    /// <summary>
+    /// How to reach this person (issue #24), ordered by <see cref="ContactMethod.SortOrder"/>. Each
+    /// has the same owner as the person; they are deleted with it.
+    /// </summary>
+    public ICollection<ContactMethod> ContactMethods { get; set; } = new List<ContactMethod>();
 
     /// <summary>A display-friendly name composed from <see cref="FirstName"/> and <see cref="LastName"/>.</summary>
     public string DisplayName => FormatDisplayName(FirstName, LastName);

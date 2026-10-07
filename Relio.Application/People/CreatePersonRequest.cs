@@ -43,4 +43,17 @@ public sealed record CreatePersonRequest : IPersonProfileInput
     /// service throws <see cref="Relio.Application.Ownership.ForeignEntityNotOwnedException"/>.
     /// </summary>
     public IReadOnlyCollection<Guid>? TagIds { get; init; }
+
+    /// <summary>
+    /// Names of tags to attach. A name that matches one of the user's tags (ignoring case) attaches
+    /// that tag; any other is created for the user in the same save. Blank names are ignored.
+    /// </summary>
+    public IReadOnlyCollection<string>? NewTagNames { get; init; }
+
+    /// <summary>
+    /// The person's contact methods, in order. A new person has none yet, so every
+    /// <see cref="ContactMethodInput.Id"/> must be <see langword="null"/>: one that is not makes
+    /// the service throw <see cref="Relio.Application.Ownership.ForeignEntityNotOwnedException"/>.
+    /// </summary>
+    public IReadOnlyList<ContactMethodInput>? ContactMethods { get; init; }
 }

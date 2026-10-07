@@ -3,7 +3,6 @@
 @using Relio.Domain
 @using Relio.Web.Time
 @inject IPeopleService PeopleService
-@inject NavigationManager Navigation
 
 @* The page title is generic on purpose: titles land in browser history and tab lists, and a
    person's name is private (see the gdpr-compliant skill). *@
@@ -14,12 +13,7 @@
     @if (_person is null)
     {
         @* A person that does not exist and one that belongs to someone else look exactly the same. *@
-        <div data-testid="person-not-found">
-            <EmptyState Title="This person isn't in your list"
-                        Message="The link may be wrong, or they were removed."
-                        ActionLabel="Back to people"
-                        OnAction="BackToPeople" />
-        </div>
+        <PersonNotFound />
     }
     else
     {
@@ -34,9 +28,48 @@
                     <span class="rl-meta" data-testid="person-relationship">@_person.RelationshipType.Name</span>
                 }
             </div>
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Outlined.Edit"
+                       Href="@($"/people/{_person.Id}/edit")"
+                       Class="rl-person-header-action"
+                       data-testid="person-edit">
+                Edit
+            </MudButton>
         </header>
 
+        @if (_person.Tags.Count > 0)
+        {
+            @* Labels, not links: nothing here filters by a tag yet. *@
+            <div class="rl-tag-list" data-testid="person-tags">
+                @foreach (var tag in _person.Tags.OrderBy(tag => tag.Name, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="rl-tag" Text="@tag.Name" data-testid="person-tag" />
+                }
+            </div>
+        }
+
         <dl class="rl-facts">
+            @foreach (var contactMethod in _person.ContactMethods.OrderBy(contactMethod => contactMethod.SortOrder))
+            {
+                var href = ContactLinks.HrefFor(contactMethod.Kind, contactMethod.Value, contactMethod.NormalizedValue);
+                <div data-testid="person-contact-method">
+                    <dt>
+                        <MudIcon Icon="@ContactMethodDisplay.Icon(contactMethod.Kind)" Size="Size.Small" aria-hidden="true" />
+                        <span data-testid="person-contact-method-heading">@ContactMethodDisplay.Heading(contactMethod.Kind, contactMethod.Label)</span>
+                    </dt>
+                    <dd class="rl-entry-text rl-multiline">
+                        @if (href is not null)
+                        {
+                            @* The only href built from a contact method, and only through ContactLinks. *@
+                            <a class="rl-contact-link" href="@href" data-testid="person-contact-method-link">@contactMethod.Value</a>
+                        }
+                        else
+                        {
+                            <span data-testid="person-contact-method-value">@contactMethod.Value</span>
+                        }
+                    </dd>
+                </div>
+            }
             @if (_person.Nickname is not null)
             {
                 <div>
@@ -85,6 +118,4 @@
         _person = await PeopleService.GetAsync(PersonId);
         _loaded = true;
     }
-
-    private void BackToPeople() => Navigation.NavigateTo("/people");
 }

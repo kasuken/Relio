@@ -35,4 +35,19 @@ public enum PersonValidationError
 
     /// <summary>The birthday, with its year, is after today in the user's time zone.</summary>
     BirthdayInTheFuture,
+
+    /// <summary>More than <c>ContactMethodRules.MaxPerPerson</c> contact methods were submitted.</summary>
+    TooManyContactMethods,
+
+    /// <summary>More than <c>TagNameRules.MaxPerPerson</c> distinct tags (existing and new together) were submitted.</summary>
+    TooManyTags,
+
+    /// <summary>A new tag name is longer than <c>Tag.NameMaxLength</c>.</summary>
+    TagNameTooLong,
+
+    /// <summary>
+    /// A new tag name was taken, by a tag whose name the database treats as the same, between
+    /// reading the user's tags and saving. Reported only when the unique index refuses the save.
+    /// </summary>
+    TagNameConflict,
 }

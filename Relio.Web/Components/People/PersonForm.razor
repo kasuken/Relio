@@ -1,9 +1,15 @@
-@* The form for a person's profile (issue #22): add a person now, edit one in issue #24. Interactive
-   (MudBlazor inputs bind live over the circuit, which is why the people pages are not static SSR
-   like the account pages). Only the first name is required. The service is the authority on what
-   is valid - this component only words the codes it reports (PersonFormMessages) - and it never
-   reads the clock itself: a birthday in the future is rejected by the service, in the user's own
-   time zone. *@
+@* The form for a person's profile: add a person (issue #22, no Person parameter) or edit one (issue
+   #24, the Person to start from). Interactive (MudBlazor inputs bind live over the circuit, which is
+   why the people pages are not static SSR like the account pages). Only the first name is required.
+   The service is the authority on what is valid - this component only words the codes it reports
+   (PersonFormMessages, ContactMethodFormMessages) - and it never reads the clock itself: a birthday
+   in the future is rejected by the service, in the user's own time zone.
+
+   Saving is a plain button, and the form has no submit button at all. Pressing Enter inside the tag
+   or label autocompletes would otherwise submit the whole form (and Enter is how a tag is chosen);
+   a form with no submit button and several text inputs is never submitted implicitly by a browser.
+   The two services that fill the pickers are awaited one after the other; they run in the database
+   lane either way, so a save still in flight cannot collide with them. *@
 @using System.Globalization
 @using Relio.Application.Ownership
 @using Relio.Application.People
@@ -11,9 +17,19 @@
 
 @inject IPeopleService PeopleService
 @inject IRelationshipTypeService RelationshipTypeService
+@inject ITagService TagService
+@inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 
-<form class="rl-form" data-testid="person-form" novalidate @onsubmit="SaveAsync" @onsubmit:preventDefault>
+<form class="rl-form" data-testid="person-form" novalidate @onsubmit:preventDefault>
+    @if (_stale)
+    {
+        <MudAlert Severity="Severity.Warning" data-testid="person-form-stale">
+            This profile changed in another tab or window. Reload to see the latest version, then make your changes again.
+            <MudButton Variant="Variant.Outlined" OnClick="Reload" Class="mt-2" data-testid="person-form-reload">Reload</MudButton>
+        </MudAlert>
+    }
+
     <div data-testid="person-first-name-field">
         <MudTextField T="string"
                       @bind-Value="_model.FirstName"
@@ -69,6 +85,16 @@
             }
         </MudSelect>
     </div>
+
+    <TagPicker Available="_tags"
+               Selected="_model.Tags"
+               Error="@ErrorFor(PersonFormField.Tags)"
+               Changed="OnTagsChanged" />
+
+    <ContactMethodsEditor Rows="_model.ContactMethods"
+                          Errors="_contactErrors"
+                          GroupError="@ErrorFor(PersonFormField.ContactMethods)"
+                          Changed="OnContactMethodsChanged" />
 
     <fieldset class="rl-fieldset" data-testid="person-birthday">
         <legend>Birthday</legend>
@@ -154,16 +180,17 @@
     </div>
 
     <div class="rl-form-actions">
-        <MudButton ButtonType="ButtonType.Submit"
+        <MudButton ButtonType="ButtonType.Button"
                    Variant="Variant.Filled"
                    Color="Color.Primary"
                    DropShadow="false"
                    Disabled="_saving"
+                   OnClick="SaveAsync"
                    data-testid="person-form-save">
-            Add person
+            @(IsEditing ? "Save changes" : "Add person")
         </MudButton>
         <MudButton Variant="Variant.Text"
-                   Href="/people"
+                   Href="@CancelHref"
                    data-testid="person-form-cancel">
             Cancel
         </MudButton>
@@ -171,23 +198,47 @@
 </form>
 
 @code {
-    private readonly PersonFormModel _model = new();
+    private PersonFormModel _model = new();
     private readonly Dictionary<PersonFormField, string> _errors = [];
+    private Dictionary<(Guid Key, ContactMethodField Field), string> _contactErrors = [];
     private IReadOnlyList<RelationshipType> _types = [];
+    private IReadOnlyList<Tag> _tags = [];
     private bool _saving;
+    private bool _stale;
 
     // A foreach, not a for: the item content is rendered later, and a for loop variable would be 13 by then.
     private static readonly int[] Months = Enumerable.Range(1, 12).ToArray();
 
-    /// <summary>Raised with the new person's id after a successful save, so the page can open the profile.</summary>
+    /// <summary>The person to edit, as <c>IPeopleService.GetAsync</c> returned it. Null adds a new person.</summary>
+    [Parameter]
+    public Person? Person { get; set; }
+
+    /// <summary>Raised with the person's id after a successful save, so the page can open the profile.</summary>
     [Parameter]
     public EventCallback<Guid> OnSaved { get; set; }
+
+    /// <summary>Raised when an edit finds the person gone (or not the user's): the page shows its not-found panel.</summary>
+    [Parameter]
+    public EventCallback OnNotFound { get; set; }
+
+    private bool IsEditing => Person is not null;
+
+    private string CancelHref => Person is { } person ? $"/people/{person.Id}" : "/people";
+
+    protected override void OnInitialized()
+    {
+        // Once: the model is the user's work in progress, so a re-render of the parent must not
+        // replace it (the edit page keys the form on the person, so another person is a new form).
+        _model = Person is null ? new PersonFormModel() : PersonFormModel.FromPerson(Person);
+    }
 
     protected override async Task OnInitializedAsync()
     {
         // Read-only on purpose: prerendering runs this once for the server-rendered HTML and again
-        // when the circuit connects.
+        // when the circuit connects. One after the other: the circuit's DbContext refuses two
+        // queries at the same time.
         _types = await RelationshipTypeService.ListAsync();
+        _tags = await TagService.ListAsync();
     }
 
     private bool HasError(PersonFormField field) => _errors.ContainsKey(field);
@@ -200,6 +251,12 @@
     private static string MonthName(int? month) =>
         month is int value ? CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(value) : string.Empty;
 
+    private void OnTagsChanged() => _errors.Remove(PersonFormField.Tags);
+
+    private void OnContactMethodsChanged() => _errors.Remove(PersonFormField.ContactMethods);
+
+    private void Reload() => Navigation.Refresh(forceReload: true);
+
     private async Task SaveAsync()
     {
         if (_saving)
@@ -209,31 +266,88 @@
 
         _saving = true;
         _errors.Clear();
+        _contactErrors = [];
+        IReadOnlyList<ContactMethodFormRow> sentRows = [];
 
         try
         {
-            var person = await PeopleService.CreateAsync(_model.ToCreateRequest());
-            Snackbar.Saved("Person added");
-            await OnSaved.InvokeAsync(person.Id);
+            Guid savedId;
+            if (Person is { } person)
+            {
+                var updated = await PeopleService.UpdateAsync(person.Id, _model.ToUpdateRequest(out sentRows));
+                if (!updated)
+                {
+                    await OnNotFound.InvokeAsync();
+                    return;
+                }
+
+                Snackbar.Saved("Changes saved");
+                savedId = person.Id;
+            }
+            else
+            {
+                var created = await PeopleService.CreateAsync(_model.ToCreateRequest(out sentRows));
+                Snackbar.Saved("Person added");
+                savedId = created.Id;
+            }
+
+            await OnSaved.InvokeAsync(savedId);
         }
         catch (PersonValidationException exception)
         {
-            foreach (var error in exception.Errors)
+            ShowValidation(exception, sentRows);
+            if (exception.Errors.Contains(PersonValidationError.TagNameConflict))
             {
-                var (field, message) = PersonFormMessages.For(error);
-                _errors.TryAdd(field, message);
+                await ReloadTagsAsync();
             }
         }
-        catch (ForeignEntityNotOwnedException)
+        catch (ForeignEntityNotOwnedException exception) when (exception.EntityName == ForeignEntityNames.RelationshipTypes)
         {
             // The chosen type is gone (removed in another tab, once issue #25 lets people remove them).
             Snackbar.Problem("That relationship type is no longer available. Choose another one.");
             _model.RelationshipTypeId = null;
             _types = await RelationshipTypeService.ListAsync();
         }
+        catch (ForeignEntityNotOwnedException exception) when (exception.EntityName == ForeignEntityNames.Tags)
+        {
+            Snackbar.Problem("One of those tags was removed. Check the tags and save again.");
+            await ReloadTagsAsync();
+            _model.Tags.RemoveAll(tag => tag.Id is Guid id && _tags.All(available => available.Id != id));
+        }
+        catch (ForeignEntityNotOwnedException exception) when (exception.EntityName == ForeignEntityNames.ContactMethods)
+        {
+            // A contact method this form still shows was deleted elsewhere: the page is out of date,
+            // and saving it would put back or lose rows without telling anyone.
+            _stale = true;
+        }
         finally
         {
             _saving = false;
         }
     }
+
+    private void ShowValidation(PersonValidationException exception, IReadOnlyList<ContactMethodFormRow> sentRows)
+    {
+        foreach (var error in exception.Errors)
+        {
+            var (field, message) = PersonFormMessages.For(error);
+            _errors.TryAdd(field, message);
+        }
+
+        // The index is a position in the rows that were sent (blank new rows are left out), and a
+        // row's key is what the editor shows its messages by. The first message per input wins.
+        foreach (var problem in exception.ContactMethodProblems)
+        {
+            if (problem.Index < 0 || problem.Index >= sentRows.Count)
+            {
+                continue;
+            }
+
+            var row = sentRows[problem.Index];
+            var (field, message) = ContactMethodFormMessages.For(problem.Error, row.Kind);
+            _contactErrors.TryAdd((row.Key, field), message);
+        }
+    }
+
+    private async Task ReloadTagsAsync() => _tags = await TagService.ListAsync();
 }

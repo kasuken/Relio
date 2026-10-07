@@ -2,8 +2,9 @@ namespace Relio.Application.People;
 
 /// <summary>
 /// Input for <c>IPeopleService.UpdateAsync</c>. It replaces the person's profile fields entirely -
-/// every field is written, so a field left out clears it - and the supplied <see cref="TagIds"/>
-/// replace the person's current tag set entirely. See <see cref="PersonProfileRules"/> for what is
+/// every field is written, so a field left out clears it - the supplied <see cref="TagIds"/> and
+/// <see cref="NewTagNames"/> replace the person's current tag set entirely, and
+/// <see cref="ContactMethods"/> is the person's whole list. See <see cref="PersonProfileRules"/> for what is
 /// rejected.
 /// </summary>
 public sealed record UpdatePersonRequest : IPersonProfileInput
@@ -45,4 +46,22 @@ public sealed record UpdatePersonRequest : IPersonProfileInput
     /// <see cref="Relio.Application.Ownership.ForeignEntityNotOwnedException"/>.
     /// </summary>
     public IReadOnlyCollection<Guid>? TagIds { get; init; }
+
+    /// <summary>
+    /// Names of tags to attach as well. A name that matches one of the user's tags (ignoring case)
+    /// attaches that tag; any other is created for the user in the same save, so abandoning an edit
+    /// never leaves an orphan tag behind. Blank names are ignored.
+    /// </summary>
+    public IReadOnlyCollection<string>? NewTagNames { get; init; }
+
+    /// <summary>
+    /// The person's <b>whole</b> list of contact methods, in the order they should be kept
+    /// (null or empty removes them all). Each item is applied by <see cref="ContactMethodInput.Id"/>:
+    /// one that matches an existing contact method of this person edits it, an existing one that is
+    /// not in the list is deleted, and one with a null id is added. An id that is not one of this
+    /// person's contact methods - another user's, another person's, or one that no longer exists
+    /// (the form is open in a stale tab) - makes the service throw
+    /// <see cref="Relio.Application.Ownership.ForeignEntityNotOwnedException"/> and change nothing.
+    /// </summary>
+    public IReadOnlyList<ContactMethodInput>? ContactMethods { get; init; }
 }

@@ -16,12 +16,14 @@ public class PersonFormTests
         FakePeopleService people,
         FakeRelationshipTypeService types,
         out IRenderedComponent<MudSnackbarProvider> snackbars,
-        out IRenderedComponent<MudPopoverProvider> popovers)
+        out IRenderedComponent<MudPopoverProvider> popovers,
+        FakeTagService? tags = null)
     {
         var context = new BunitContext();
         context.UseMudBlazor();
         context.Services.AddSingleton<IPeopleService>(people);
         context.Services.AddSingleton<IRelationshipTypeService>(types);
+        context.Services.AddSingleton<ITagService>(tags ?? new FakeTagService());
         popovers = context.Render<MudPopoverProvider>();
         snackbars = context.Render<MudSnackbarProvider>();
         return context;
@@ -212,7 +214,7 @@ public class PersonFormTests
     {
         var people = new FakePeopleService
         {
-            ThrowOnNextCreate = new ForeignEntityNotOwnedException("relationship types"),
+            ThrowOnNextCreate = new ForeignEntityNotOwnedException(ForeignEntityNames.RelationshipTypes),
         };
         var types = DefaultTypes();
         await using var context = CreateContext(people, types, out var snackbars, out _);

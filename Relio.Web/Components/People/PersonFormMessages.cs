@@ -22,6 +22,12 @@ public enum PersonFormField
 
     /// <summary>The details field.</summary>
     Details,
+
+    /// <summary>The contact methods group as a whole (a message that is not about one row).</summary>
+    ContactMethods,
+
+    /// <summary>The tag picker.</summary>
+    Tags,
 }
 
 /// <summary>
@@ -44,6 +50,10 @@ public static class PersonFormMessages
         PersonValidationError.BirthdayYearWithoutDayAndMonth => (PersonFormField.Birthday, "Add the day and month too, or clear the year."),
         PersonValidationError.BirthdayNotARealDate => (PersonFormField.Birthday, "That date doesn't exist. Check the day, month and year."),
         PersonValidationError.BirthdayInTheFuture => (PersonFormField.Birthday, "Enter a date in the past or today."),
+        PersonValidationError.TooManyContactMethods => (PersonFormField.ContactMethods, "A person can have up to 20 contact methods. Remove one to add another."),
+        PersonValidationError.TooManyTags => (PersonFormField.Tags, "A person can have up to 20 tags. Remove one to add another."),
+        PersonValidationError.TagNameTooLong => (PersonFormField.Tags, "Keep tag names to 50 characters or fewer."),
+        PersonValidationError.TagNameConflict => (PersonFormField.Tags, "A tag with a very similar name already exists. Choose it from the list."),
         _ => throw new ArgumentOutOfRangeException(nameof(error), error, "No message is defined for this validation error."),
     };
 }

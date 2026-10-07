@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Relio.Application.Administration;
+using Relio.Application.People;
 using Relio.Application.Time;
 using Relio.Data.Identity;
 using Relio.Domain;
@@ -25,7 +26,9 @@ namespace Relio.Data.Seeding;
 /// it - <see cref="IOwnedEntity.OwnerId"/> is set explicitly on every row, to the demo user's id -
 /// this class just plays the role the service layer normally plays, for seed data only. The
 /// demo user gets the default relationship types here (issue #22), as every new account does at
-/// registration; the sample people use most of them. All the sample text is invented.
+/// registration; the sample people use most of them. Some have contact methods (issue #24), using
+/// only reserved example domains and fictional numbers; a demo database that was seeded earlier is
+/// not backfilled. All the sample text is invented.
 /// </remarks>
 public sealed class DemoDataSeeder(
     RelioDbContext dbContext,
@@ -149,6 +152,19 @@ public sealed class DemoDataSeeder(
 
         Tag MakeTag(string name) => new() { OwnerId = ownerId, Name = name };
 
+        // Only reserved example domains (RFC 2606) and fictional numbers (+44 7700 900xxx and
+        // +1 202 555 01xx are set aside for drama and examples), so no real person is ever
+        // addressed. The comparison key comes from the same rule the service uses.
+        ContactMethod Contact(ContactMethodKind kind, string value, string? label, int sortOrder) => new()
+        {
+            OwnerId = ownerId,
+            Kind = kind,
+            Label = label,
+            Value = value,
+            NormalizedValue = ContactMethodRules.ToNormalizedValue(kind, value),
+            SortOrder = sortOrder,
+        };
+
         var family = MakeTag("Family");
         var friend = MakeTag("Friend");
         var work = MakeTag("Work");
@@ -168,7 +184,12 @@ public sealed class DemoDataSeeder(
                 HowWeMet = "At a talk about early computing, where she asked the question nobody else had thought of.",
                 Details = "Writes long, thoughtful letters.\nInterested in mathematics and music.\nPrefers a quiet table at the back.",
                 LastContactedOn = DaysAgo(3),
-                Tags = { mentor },
+                Tags = { mentor, friend },
+                ContactMethods =
+                {
+                    Contact(ContactMethodKind.Email, "ada@example.com", "Personal", 0),
+                    Contact(ContactMethodKind.Address, "12 Example Square\nLondon", "Home", 1),
+                },
             },
             new()
             {
@@ -191,6 +212,7 @@ public sealed class DemoDataSeeder(
                 BirthdayDay = 23,
                 LastContactedOn = DaysAgo(45),
                 Tags = { friend },
+                ContactMethods = { Contact(ContactMethodKind.Phone, "+1 202 555 0142", "Home", 0) },
             },
             new()
             {
@@ -206,6 +228,11 @@ public sealed class DemoDataSeeder(
                 BirthdayDay = 29,
                 LastContactedOn = today,
                 Tags = { family },
+                ContactMethods =
+                {
+                    Contact(ContactMethodKind.Phone, "+44 7700 900123", "Mobile", 0),
+                    Contact(ContactMethodKind.Email, "marco.rossi@example.com", null, 1),
+                },
             },
             new()
             {
@@ -217,6 +244,12 @@ public sealed class DemoDataSeeder(
                 Details = "Leads the design reviews.\nAllergic to cats.\nAsk about the allotment she is building.",
                 LastContactedOn = DaysAgo(12),
                 Tags = { work },
+                ContactMethods =
+                {
+                    Contact(ContactMethodKind.Email, "elena.conti@example.org", "Work", 0),
+                    Contact(ContactMethodKind.Phone, "+44 7700 900456", "Work", 1),
+                    Contact(ContactMethodKind.Social, "@elena.designs", "Instagram", 2),
+                },
             },
             new()
             {
@@ -243,6 +276,7 @@ public sealed class DemoDataSeeder(
                 BirthdayDay = 2,
                 LastContactedOn = DaysAgo(1),
                 Tags = { family },
+                ContactMethods = { Contact(ContactMethodKind.Email, "priya@example.net", null, 0) },
             },
             new()
             {

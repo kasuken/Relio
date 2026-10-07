@@ -66,6 +66,30 @@ internal static class TestDataFactory
         return tag.Id;
     }
 
+    /// <summary>Creates a contact method for <paramref name="personId"/>, with the comparison key the rules compute.</summary>
+    public static async Task<Guid> CreateContactMethodAsync(
+        RelioDbContext dbContext,
+        string ownerId,
+        Guid personId,
+        string value,
+        ContactMethodKind kind = ContactMethodKind.Email,
+        int sortOrder = 0)
+    {
+        var contactMethod = new ContactMethod
+        {
+            OwnerId = ownerId,
+            PersonId = personId,
+            Kind = kind,
+            Value = value,
+            NormalizedValue = Relio.Application.People.ContactMethodRules.ToNormalizedValue(kind, value),
+            SortOrder = sortOrder,
+        };
+        dbContext.ContactMethods.Add(contactMethod);
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+        return contactMethod.Id;
+    }
+
     public static async Task<Guid> CreateRelationshipTypeAsync(
         RelioDbContext dbContext, string ownerId, string name, int sortOrder = 0)
     {
