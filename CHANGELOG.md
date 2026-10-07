@@ -6,6 +6,17 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Detect possible duplicate people (issue #27), epic #21. Adding a person, or renaming one, now checks
+  your own list when you press Save and warns when up to five profiles look like the same person: the
+  same or a similar name (ignoring case, accents, punctuation and spacing - "Jon Smith" finds "John
+  Smith", "José García" finds "Jose Garcia", a missing last name or a matching nickname counts), the
+  same email address, or the same phone number (the last eight digits, so a country code does not
+  matter). Archived people are included and labelled. Each match opens in a new tab so the form you
+  were filling in survives, and **Save anyway** carries on; changing the name or contact details and
+  saving again checks again. The check is deliberately stricter for short names ("Mark" and "Mary" do
+  not warn). Other users' people are never compared, names are compared in memory only, and nothing
+  new is stored or logged. There is no migration. Follow-ups: checking on blur, a nickname dictionary
+  (Bob/Robert), and "Merge instead" from the warning (issue #28).
 - Archive, restore and delete people (issue #26), epic #21. Each profile has a **More** menu next to
   Edit with **Archive** (**Restore** for an archived person) and **Delete**. Archiving and restoring are
   reversible, so they happen at once and say "Person archived" / "Person restored"; an archived person

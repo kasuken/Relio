@@ -9,7 +9,10 @@
    or label autocompletes would otherwise submit the whole form (and Enter is how a tag is chosen);
    a form with no submit button and several text inputs is never submitted implicitly by a browser.
    The two services that fill the pickers are awaited one after the other; they run in the database
-   lane either way, so a save still in flight cannot collide with them. *@
+   lane either way, so a save still in flight cannot collide with them.
+
+   Possible duplicates (issue #27) are checked when Save is pressed, never while typing: the warning
+   replaces the save, and "Save anyway" carries on. In edit mode only a rename is checked. *@
 @using System.Globalization
 @using Relio.Application.Ownership
 @using Relio.Application.People
@@ -181,6 +184,12 @@
                       Class="rl-serif" />
     </div>
 
+    @if (_duplicates.Count > 0)
+    {
+        @* Next to the Save button that was just pressed (on a phone too). *@
+        <PossibleDuplicateWarning Matches="_duplicates" Busy="_saving" OnSaveAnyway="SaveAnywayAsync" />
+    }
+
     <div class="rl-form-actions">
         <MudButton ButtonType="ButtonType.Button"
                    Variant="Variant.Filled"
@@ -208,6 +217,14 @@
     private bool _saving;
     private bool _stale;
 
+    // Possible duplicates (issue #27). Checked only when the user presses Save, never while typing and
+    // never from a lifecycle method (prerendering runs those twice). The keys are the probe's
+    // normalized names and contact keys: in this component's memory only, never logged or stored.
+    private IReadOnlyList<PossibleDuplicate> _duplicates = [];
+    private string? _shownProbeKey;
+    private string? _acknowledgedProbeKey;
+    private string? _originalNameKey;
+
     // A foreach, not a for: the item content is rendered later, and a for loop variable would be 13 by then.
     private static readonly int[] Months = Enumerable.Range(1, 12).ToArray();
 
@@ -232,6 +249,16 @@
         // Once: the model is the user's work in progress, so a re-render of the parent must not
         // replace it (the edit page keys the form on the person, so another person is a new form).
         _model = Person is null ? new PersonFormModel() : PersonFormModel.FromPerson(Person);
+
+        // What the names were when the form opened, so an edit is only checked when it renames.
+        _originalNameKey = Person is null
+            ? null
+            : DuplicateProbe.Create(new PossibleDuplicateQuery
+            {
+                FirstName = Person.FirstName,
+                LastName = Person.LastName,
+                Nickname = Person.Nickname,
+            }).NameKey;
     }
 
     protected override async Task OnInitializedAsync()
@@ -276,7 +303,14 @@
             Guid savedId;
             if (Person is { } person)
             {
-                var updated = await PeopleService.UpdateAsync(person.Id, _model.ToUpdateRequest(out sentRows));
+                var updateRequest = _model.ToUpdateRequest(out sentRows);
+                if (await ShouldStopForDuplicatesAsync(updateRequest))
+                {
+                    return;
+                }
+
+                _duplicates = [];
+                var updated = await PeopleService.UpdateAsync(person.Id, updateRequest);
                 if (!updated)
                 {
                     await OnNotFound.InvokeAsync();
@@ -288,7 +322,14 @@
             }
             else
             {
-                var created = await PeopleService.CreateAsync(_model.ToCreateRequest(out sentRows));
+                var createRequest = _model.ToCreateRequest(out sentRows);
+                if (await ShouldStopForDuplicatesAsync(createRequest))
+                {
+                    return;
+                }
+
+                _duplicates = [];
+                var created = await PeopleService.CreateAsync(createRequest);
                 Snackbar.Saved("Person added");
                 savedId = created.Id;
             }
@@ -326,6 +367,56 @@
         {
             _saving = false;
         }
+    }
+
+    /// <summary>
+    /// Asks the service whether the person being saved looks like someone already in the list, and
+    /// shows the warning instead of saving when it does. Skips the check (and saves) when the first
+    /// name is blank (the service reports that), when an edit does not rename the person, and when the
+    /// user already chose "Save anyway" for exactly these names and contact details.
+    /// </summary>
+    private async Task<bool> ShouldStopForDuplicatesAsync(IPersonProfileInput request)
+    {
+        if (PersonProfileRules.NormalizeRequired(request.FirstName).Length == 0)
+        {
+            _duplicates = [];
+            return false;
+        }
+
+        var query = PossibleDuplicateQuery.FromProfile(request, Person?.Id);
+        var probe = DuplicateProbe.Create(query);
+
+        if (Person is not null && probe.NameKey == _originalNameKey)
+        {
+            return false;
+        }
+
+        if (probe.Key == _acknowledgedProbeKey)
+        {
+            return false;
+        }
+
+        var matches = await PeopleService.FindPossibleDuplicatesAsync(query);
+        if (matches.Count == 0)
+        {
+            _duplicates = [];
+            return false;
+        }
+
+        _duplicates = matches;
+        _shownProbeKey = probe.Key;
+        return true;
+    }
+
+    private async Task SaveAnywayAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _acknowledgedProbeKey = _shownProbeKey;
+        await SaveAsync();
     }
 
     private void ShowValidation(PersonValidationException exception, IReadOnlyList<ContactMethodFormRow> sentRows)

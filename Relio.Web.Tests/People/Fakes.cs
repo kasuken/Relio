@@ -50,6 +50,18 @@ internal sealed class FakePeopleService : IPeopleService
             page, Known.Count(p => !p.IsArchived), Known.Count(p => p.IsArchived)));
     }
 
+    /// <summary>Every query <see cref="FindPossibleDuplicatesAsync"/> was called with, in order.</summary>
+    public List<PossibleDuplicateQuery> DuplicateQueries { get; } = [];
+
+    /// <summary>What <see cref="FindPossibleDuplicatesAsync"/> returns; when unset, no matches.</summary>
+    public Func<PossibleDuplicateQuery, IReadOnlyList<PossibleDuplicate>>? Duplicates { get; set; }
+
+    public Task<IReadOnlyList<PossibleDuplicate>> FindPossibleDuplicatesAsync(PossibleDuplicateQuery query, CancellationToken cancellationToken = default)
+    {
+        DuplicateQueries.Add(query);
+        return Task.FromResult(Duplicates?.Invoke(query) ?? []);
+    }
+
     public Task<Person> CreateAsync(CreatePersonRequest request, CancellationToken cancellationToken = default)
     {
         if (ThrowOnNextCreate is { } exception)

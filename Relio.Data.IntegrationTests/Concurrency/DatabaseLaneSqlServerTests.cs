@@ -114,6 +114,7 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
         var act = async () => await Task.WhenAll(
             types.ListAsync(),
             people.ListAsync(),
+            people.FindPossibleDuplicatesAsync(new PossibleDuplicateQuery { FirstName = "Ada" }),
             people.CreateAsync(new CreatePersonRequest { FirstName = "Grace" }));
 
         await act.Should().NotThrowAsync();

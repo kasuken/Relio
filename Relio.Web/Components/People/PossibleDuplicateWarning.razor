@@ -1,0 +1,59 @@
+@* The possible-duplicate warning (issue #27): up to five of the user's own people who look like the one
+   being saved, each a link that opens in a new tab (so the half-filled form survives), and a
+   "Save anyway" button. A calm warning, never an error and never a blocker. The names are the user's
+   words, set in the serif and rendered as text. MudAlert has role="alert", so a screen reader
+   announces it once when it appears. *@
+@using Relio.Application.People
+
+<MudAlert Severity="Severity.Warning"
+          Variant="Variant.Text"
+          Elevation="0"
+          Class="rl-duplicate-warning"
+          data-testid="person-duplicate-warning">
+    <p class="rl-duplicate-title">@PossibleDuplicateText.Title</p>
+    <p class="rl-duplicate-intro">@PossibleDuplicateText.Intro(Matches.Count)</p>
+    <ul class="rl-duplicate-list" data-testid="person-duplicate-list">
+        @foreach (var match in Matches)
+        {
+            <li class="rl-duplicate-item" data-testid="person-duplicate-item" @key="match.Id">
+                <a class="rl-duplicate-link rl-entry-text"
+                   href="@($"/people/{match.Id}")"
+                   target="_blank"
+                   rel="noopener"
+                   data-testid="person-duplicate-link">
+                    @match.DisplayName
+                    <MudIcon Icon="@Icons.Material.Outlined.OpenInNew" Size="Size.Small" aria-hidden="true" />
+                    <span class="rl-visually-hidden">@PossibleDuplicateText.NewTabHint</span>
+                </a>
+                <span class="rl-meta" data-testid="person-duplicate-reason">@PossibleDuplicateText.Describe(match)</span>
+                @ItemActions?.Invoke(match)
+            </li>
+        }
+    </ul>
+    <MudButton Variant="Variant.Outlined"
+               Color="Color.Primary"
+               OnClick="OnSaveAnyway"
+               Disabled="Busy"
+               Class="rl-duplicate-save-anyway"
+               data-testid="person-duplicate-save-anyway">
+        Save anyway
+    </MudButton>
+</MudAlert>
+
+@code {
+    /// <summary>The people that look like the one being saved. Never empty when this is shown.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<PossibleDuplicate> Matches { get; set; } = [];
+
+    /// <summary>True while a save is running: "Save anyway" is disabled.</summary>
+    [Parameter]
+    public bool Busy { get; set; }
+
+    /// <summary>Raised when the user chooses to save anyway.</summary>
+    [Parameter]
+    public EventCallback OnSaveAnyway { get; set; }
+
+    /// <summary>Extra content after each match (issue #28 puts "Merge instead" here).</summary>
+    [Parameter]
+    public RenderFragment<PossibleDuplicate>? ItemActions { get; set; }
+}

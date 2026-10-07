@@ -484,6 +484,53 @@ public class PeopleServiceOwnershipTests
     }
 
     [Fact]
+    public async Task FindPossibleDuplicatesAsync_never_matches_another_users_people()
+    {
+        await using var dbContext = CreateDbContext();
+        var activeId = await CreatePersonAsync(dbContext, UserB, "John");
+        var archived = new Person { OwnerId = UserB, FirstName = "John", IsArchived = true };
+        dbContext.People.Add(archived);
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+        var archivedId = archived.Id;
+        foreach (var id in new[] { activeId, archivedId })
+        {
+            await CreateContactMethodAsync(dbContext, UserB, id, "john@example.com");
+            await CreatePhoneAsync(dbContext, UserB, id, "+44 7700 900123");
+        }
+
+        var query = new PossibleDuplicateQuery
+        {
+            FirstName = "John",
+            ContactMethods =
+            [
+                new ContactMethodInput(null, ContactMethodKind.Email, null, "john@example.com"),
+                new ContactMethodInput(null, ContactMethodKind.Phone, null, "07700 900123"),
+            ],
+        };
+        var ownId = await CreatePersonAsync(dbContext, UserA, "John");
+
+        var forUserA = await CreateService(dbContext, UserA).FindPossibleDuplicatesAsync(query);
+        var forUserB = await CreateService(dbContext, UserB).FindPossibleDuplicatesAsync(query);
+
+        forUserA.Should().ContainSingle().Which.Id.Should().Be(ownId);
+        forUserB.Select(match => match.Id).Should().BeEquivalentTo([activeId, archivedId]);
+    }
+
+    [Fact]
+    public async Task FindPossibleDuplicatesAsync_excluding_another_users_person_id_changes_nothing()
+    {
+        await using var dbContext = CreateDbContext();
+        var mine = await CreatePersonAsync(dbContext, UserA, "John");
+        var theirs = await CreatePersonAsync(dbContext, UserB, "John");
+
+        var result = await CreateService(dbContext, UserA).FindPossibleDuplicatesAsync(
+            new PossibleDuplicateQuery { FirstName = "John", ExcludePersonId = theirs });
+
+        result.Should().ContainSingle().Which.Id.Should().Be(mine);
+    }
+
+    [Fact]
     public async Task Operations_without_an_authenticated_user_throw()
     {
         await using var dbContext = CreateDbContext();
@@ -548,6 +595,20 @@ public class PeopleServiceOwnershipTests
         await dbContext.SaveChangesAsync();
         dbContext.ChangeTracker.Clear();
         return contactMethod.Id;
+    }
+
+    private static async Task CreatePhoneAsync(RelioDbContext dbContext, string ownerId, Guid personId, string value)
+    {
+        dbContext.ContactMethods.Add(new ContactMethod
+        {
+            OwnerId = ownerId,
+            PersonId = personId,
+            Kind = ContactMethodKind.Phone,
+            Value = value,
+            NormalizedValue = ContactMethodRules.ToNormalizedValue(ContactMethodKind.Phone, value),
+        });
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
     }
 
     private static async Task<Guid> CreateTagAsync(RelioDbContext dbContext, string ownerId, string name)

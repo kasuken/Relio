@@ -49,6 +49,21 @@ public interface IPeopleService
     Task<PeopleListResult> ListPageAsync(PeopleListQuery query, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Finds up to <see cref="PossibleDuplicateMatcher.MaxResults"/> of the current user's people who
+    /// might be the person described by <paramref name="query"/>: the same or a similar name, the
+    /// same email address, or the same phone number (the rules are in
+    /// <see cref="PossibleDuplicateMatcher"/>), strongest first. Only the current user's people are
+    /// ever compared, and <b>archived people are included</b> (flagged by
+    /// <see cref="PossibleDuplicate.IsArchived"/>): an archived duplicate is still a duplicate.
+    /// <see cref="PossibleDuplicateQuery.ExcludePersonId"/> leaves one person out. A blank first name
+    /// means only the email and phone rules run, and a query with nothing to compare returns nothing.
+    /// Reads only: nothing is saved, cached or logged, so the answer always reflects the database now.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="query"/> is <see langword="null"/>.</exception>
+    /// <exception cref="Relio.Application.Security.UnauthenticatedUserException">Nobody is signed in.</exception>
+    Task<IReadOnlyList<PossibleDuplicate>> FindPossibleDuplicatesAsync(PossibleDuplicateQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a new person owned by the current user, with the contact methods and tags in the
     /// request. Text is trimmed and blank optional text is stored as nothing. Throws
     /// <see cref="PersonValidationException"/> (nothing is saved) when <paramref name="request"/>

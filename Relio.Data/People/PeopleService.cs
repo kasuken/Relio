@@ -167,6 +167,26 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<PossibleDuplicate>> FindPossibleDuplicatesAsync(
+        PossibleDuplicateQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        var ownerId = currentUser.RequireUserId();
+
+        var probe = DuplicateProbe.Create(query);
+        if (probe.First.Length == 0 && probe.EmailKeys.Count == 0 && probe.PhoneKeys.Count == 0)
+        {
+            return [];
+        }
+
+        // Read-only and untracked, so there is nothing to clear. The names are matched in memory and
+        // never persisted, cached or logged (see PossibleDuplicateMatcher).
+        var candidates = await DuplicateCandidateLoader.LoadAsync(dbContext, ownerId, probe, cancellationToken);
+        return PossibleDuplicateMatcher.Find(probe, candidates, query.ExcludePersonId);
+    }
+
+    /// <inheritdoc />
     public async Task<Person> CreateAsync(CreatePersonRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
