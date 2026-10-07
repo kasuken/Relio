@@ -85,16 +85,45 @@ public interface IPeopleService
     Task<bool> UpdateAsync(Guid personId, UpdatePersonRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Archives the person with <paramref name="personId"/>. Returns <see langword="false"/> when
-    /// it does not exist or does not belong to the current user; <see langword="true"/> on
-    /// success. Archiving an already-archived person is a no-op that still returns
-    /// <see langword="true"/>.
+    /// Archives the person with <paramref name="personId"/>: hidden from the people list by default,
+    /// reversible with <see cref="RestoreAsync"/>. Returns <see langword="false"/> when it does not
+    /// exist or does not belong to the current user (indistinguishable to the caller);
+    /// <see langword="true"/> on success. Archiving an already-archived person is a no-op that still
+    /// returns <see langword="true"/> and keeps the original <see cref="Person.ArchivedAtUtc"/>.
+    /// Never touches the person's contact methods, tags or (later) interactions, notes, reminders
+    /// and difficult moments: archiving hides, it does not remove.
     /// </summary>
+    /// <exception cref="Relio.Application.Security.UnauthenticatedUserException">Nobody is signed in.</exception>
     Task<bool> ArchiveAsync(Guid personId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Restores a previously archived person. Returns <see langword="false"/> when it does not
-    /// exist or does not belong to the current user; <see langword="true"/> on success.
+    /// Restores a previously archived person, with everything that was recorded about them. Returns
+    /// <see langword="false"/> when it does not exist or does not belong to the current user
+    /// (indistinguishable to the caller); <see langword="true"/> on success. Restoring a person who
+    /// is not archived is a no-op that still returns <see langword="true"/> and changes nothing, not
+    /// even <see cref="OwnedEntity.UpdatedAtUtc"/>.
     /// </summary>
+    /// <exception cref="Relio.Application.Security.UnauthenticatedUserException">Nobody is signed in.</exception>
     Task<bool> RestoreAsync(Guid personId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Permanently deletes the person with <paramref name="personId"/>, active or archived, and
+    /// everything that belongs to them - their contact methods and tag links today; later their
+    /// interactions, notes, reminders and difficult moments - in one save: either all of it goes or
+    /// none of it. The user's tags and relationship types are kept (only this person's links to the
+    /// tags go), and so are other people's links to the same tags. There is no undo and no soft
+    /// delete: archive instead when the person might matter again. Returns <see langword="false"/>
+    /// and deletes nothing when the person does not exist or does not belong to the current user
+    /// (indistinguishable to the caller, so deleting twice is <see langword="false"/> the second
+    /// time); <see langword="true"/> on success.
+    /// </summary>
+    /// <remarks>
+    /// Backups are outside the app's control and keep a deleted person until they expire (issue #65).
+    /// Two deletes of the same person racing from two tabs: the loser normally reads
+    /// <see langword="false"/>; in the tiny window between both loading the person and the first
+    /// save, the second save throws a <c>DbUpdateConcurrencyException</c> (nothing is half-deleted)
+    /// and the caller may treat it as "already gone".
+    /// </remarks>
+    /// <exception cref="Relio.Application.Security.UnauthenticatedUserException">Nobody is signed in.</exception>
+    Task<bool> DeleteAsync(Guid personId, CancellationToken cancellationToken = default);
 }

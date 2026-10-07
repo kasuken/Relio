@@ -7,8 +7,8 @@ using Relio.Domain;
 namespace Relio.Data.Tests.People;
 
 /// <summary>
-/// Proves the acceptance criterion of issue #10: user A cannot read, list, update, archive or
-/// restore user B's data, and cannot attach user B's tag to user A's person, through
+/// Proves the acceptance criterion of issue #10: user A cannot read, list, update, archive,
+/// restore or delete user B's data, and cannot attach user B's tag to user A's person, through
 /// <see cref="Relio.Data.People.PeopleService"/>.
 /// </summary>
 /// <remarks>
@@ -151,6 +151,44 @@ public class PeopleServiceOwnershipTests
         restored.Should().BeFalse();
         var stillArchived = await dbContext.People.AsNoTracking().SingleAsync(p => p.Id == personId);
         stillArchived.IsArchived.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_for_another_users_person_returns_false_and_deletes_nothing()
+    {
+        await using var dbContext = CreateDbContext();
+        var tag = new Tag { OwnerId = UserA, Name = "chess" };
+        var person = new Person { OwnerId = UserA, FirstName = "Alice", Tags = { tag } };
+        dbContext.Tags.Add(tag);
+        dbContext.People.Add(person);
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+        var personId = person.Id;
+        await CreateContactMethodAsync(dbContext, UserA, personId, "alice@example.com");
+
+        var deleted = await CreateService(dbContext, UserB).DeleteAsync(personId);
+
+        deleted.Should().BeFalse();
+        var untouched = await CreateService(dbContext, UserA).GetAsync(personId);
+        untouched!.FirstName.Should().Be("Alice");
+        untouched.ContactMethods.Should().ContainSingle();
+        untouched.Tags.Should().ContainSingle();
+        (await dbContext.ContactMethods.AsNoTracking().CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_reports_another_users_person_and_a_nonexistent_one_the_same_way()
+    {
+        await using var dbContext = CreateDbContext();
+        var personId = await CreatePersonAsync(dbContext, UserA, "Alice");
+        var serviceForUserB = CreateService(dbContext, UserB);
+
+        var foreign = await serviceForUserB.DeleteAsync(personId);
+        var missing = await serviceForUserB.DeleteAsync(Guid.NewGuid());
+
+        // The primary entity is "no result" in both cases: nothing says which one it was.
+        foreign.Should().BeFalse();
+        missing.Should().BeFalse();
     }
 
     [Fact]

@@ -700,9 +700,50 @@ a {
     margin-bottom: var(--space-6);
 }
 
-/* The Edit button sits at the end of the header, on its own line when the name is long. */
-.rl-person-header-action {
+/* Edit and the More menu sit together at the end of the header, on their own line when the name is long. */
+.rl-person-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
     margin-left: auto;
+}
+
+/* An archived person (issue #26): a quiet note under the header, in the calm voice of the rest of the
+   page - sunken ground and a hairline, no warning colour, no shadow. The Restore button is the way back. */
+.rl-archived-note {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--space-3);
+    max-width: var(--measure);
+    margin-bottom: var(--space-6);
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface-sunken);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+}
+
+.rl-archived-note-text {
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+
+.rl-archived-note p {
+    margin: 0;
+}
+
+.rl-archived-note-title {
+    font-weight: 600;
+    color: var(--text);
+}
+
+/* Both are 44px targets on a phone. */
+@media (max-width: 599.98px) {
+    .rl-person-header-actions .mud-button-root,
+    .rl-archived-note .mud-button-root {
+        min-height: 44px;
+    }
 }
 
 .rl-person-header-text {

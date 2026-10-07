@@ -1,8 +1,13 @@
 @page "/people/{PersonId:guid}"
 @using Relio.Application.People
+@using Relio.Application.Time
 @using Relio.Domain
 @using Relio.Web.Time
 @inject IPeopleService PeopleService
+@inject IUserTimeZoneService UserTimeZone
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
 
 @* The page title is generic on purpose: titles land in browser history and tab lists, and a
    person's name is private (see the gdpr-compliant skill). *@
@@ -20,7 +25,7 @@
         <MudLink Href="/people" Class="mb-4 d-inline-block" data-testid="person-back">People</MudLink>
 
         <header class="rl-person-header">
-            <MudAvatar Class="rl-avatar" Size="Size.Large" aria-hidden="true">@PersonInitials.For(_person.FirstName, _person.LastName)</MudAvatar>
+            <MudAvatar Class="@(_person.IsArchived ? "rl-avatar rl-avatar-archived" : "rl-avatar")" Size="Size.Large" aria-hidden="true">@PersonInitials.For(_person.FirstName, _person.LastName)</MudAvatar>
             <div class="rl-person-header-text">
                 <MudText Typo="Typo.h1" HtmlTag="h1" data-testid="person-name">@_person.DisplayName</MudText>
                 @if (_person.RelationshipType is not null)
@@ -28,14 +33,57 @@
                     <span class="rl-meta" data-testid="person-relationship">@_person.RelationshipType.Name</span>
                 }
             </div>
-            <MudButton Variant="Variant.Outlined"
-                       StartIcon="@Icons.Material.Outlined.Edit"
-                       Href="@($"/people/{_person.Id}/edit")"
-                       Class="rl-person-header-action"
-                       data-testid="person-edit">
-                Edit
-            </MudButton>
+            <div class="rl-person-header-actions" data-testid="person-actions">
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Outlined.Edit"
+                           Href="@($"/people/{_person.Id}/edit")"
+                           data-testid="person-edit">
+                    Edit
+                </MudButton>
+                @* A labelled menu through MudMenu's own Label/EndIcon, not an <ActivatorContent> around a
+                   separate button: that two-element activator never opened in a real browser (see
+                   ThemeModeMenu.razor). Archive and restore are reversible and ask nothing; delete asks. *@
+                <MudMenu Label="More"
+                         EndIcon="@Icons.Material.Outlined.ExpandMore"
+                         Variant="Variant.Outlined"
+                         AnchorOrigin="Origin.BottomRight"
+                         TransformOrigin="Origin.TopRight"
+                         Disabled="_busy"
+                         data-testid="person-actions-menu">
+                    @if (_person.IsArchived)
+                    {
+                        <MudMenuItem Icon="@Icons.Material.Outlined.Unarchive" OnClick="RestoreAsync" data-testid="person-restore-menu">Restore</MudMenuItem>
+                    }
+                    else
+                    {
+                        <MudMenuItem Icon="@Icons.Material.Outlined.Inventory2" OnClick="ArchiveAsync" data-testid="person-archive">Archive</MudMenuItem>
+                    }
+                    <MudDivider />
+                    <MudMenuItem Icon="@Icons.Material.Outlined.DeleteOutline" OnClick="DeleteAsync" data-testid="person-delete">Delete</MudMenuItem>
+                </MudMenu>
+            </div>
         </header>
+
+        @if (_person.IsArchived)
+        {
+            @* A quiet note, not an alert: archiving is calm and reversible. No live region and no
+               heading (the page has exactly one h1). *@
+            <div class="rl-archived-note" data-testid="person-archived">
+                <MudIcon Icon="@Icons.Material.Outlined.Inventory2" Size="Size.Small" aria-hidden="true" />
+                <div class="rl-archived-note-text">
+                    <p class="rl-archived-note-title" data-testid="person-archived-date">@_archivedText</p>
+                    <p class="rl-meta">@PersonArchiveText.ArchivedNoteDetail</p>
+                </div>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Outlined.Unarchive"
+                           OnClick="RestoreAsync"
+                           Disabled="_busy"
+                           data-testid="person-restore">
+                    Restore
+                </MudButton>
+            </div>
+        }
 
         @if (_person.Tags.Count > 0)
         {
@@ -105,6 +153,11 @@
 @code {
     private Person? _person;
     private bool _loaded;
+    private string _archivedText = string.Empty;
+
+    // True while an archive, restore or delete is in flight: a second click (or a second menu item)
+    // must not start another one, and the menu and the Restore button are disabled meanwhile.
+    private bool _busy;
 
     [Parameter]
     public Guid PersonId { get; set; }
@@ -115,7 +168,121 @@
         // keeps this component (a link from one profile to another). Read-only on purpose -
         // prerendering runs it twice.
         _loaded = false;
-        _person = await PeopleService.GetAsync(PersonId);
+        await LoadAsync();
         _loaded = true;
+    }
+
+    /// <summary>
+    /// Reads the person again from the service - never edits the local copy, so what is shown is
+    /// always what is stored - and, for an archived person, works out the archive date in the
+    /// viewer's calendar. The zone and "today" are read one after the other (the circuit's one
+    /// database lane would queue them anyway) and only when there is a note to show.
+    /// </summary>
+    private async Task LoadAsync()
+    {
+        _person = await PeopleService.GetAsync(PersonId);
+        if (_person is { IsArchived: true })
+        {
+            var zone = await UserTimeZone.GetTimeZoneAsync();
+            var today = await UserTimeZone.GetTodayAsync();
+            _archivedText = PersonArchiveText.ArchivedOn(_person.ArchivedAtUtc, zone, today);
+        }
+    }
+
+    private async Task ArchiveAsync()
+    {
+        if (_busy || _person is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var archived = await PeopleService.ArchiveAsync(PersonId);
+            if (!archived)
+            {
+                // Removed elsewhere in the meantime: the same panel as any person that isn't there.
+                _person = null;
+                return;
+            }
+
+            Snackbar.Info(PersonArchiveText.Archived);
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RestoreAsync()
+    {
+        if (_busy || _person is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var restored = await PeopleService.RestoreAsync(PersonId);
+            if (!restored)
+            {
+                _person = null;
+                return;
+            }
+
+            Snackbar.Info(PersonArchiveText.Restored);
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_busy || _person is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            // The one place a name appears outside the profile itself: the dialog has to be
+            // unmistakable about who goes. Nothing is deleted until "Delete permanently".
+            var confirmed = await DialogService.ShowConfirmAsync(
+                PersonArchiveText.DeleteTitle(_person.DisplayName),
+                PersonArchiveText.DeleteMessage,
+                confirmLabel: PersonArchiveText.DeleteConfirmLabel,
+                cancelLabel: "Cancel",
+                destructive: true);
+            if (!confirmed)
+            {
+                return;
+            }
+
+            var deleted = await PeopleService.DeleteAsync(PersonId);
+            if (!deleted)
+            {
+                _person = null;
+                return;
+            }
+
+            Snackbar.Info(PersonArchiveText.Deleted);
+
+            // replace: true takes this profile out of the history, so Back from the list never lands
+            // on the "isn't in your list" panel for someone just deleted. The one deliberate exception
+            // to the list's rule that navigation pushes (the list's own view changes still push).
+            // Nothing here touches state afterwards: the page is going away.
+            Navigation.NavigateTo("/people", replace: true);
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 }

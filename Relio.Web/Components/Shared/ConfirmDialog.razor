@@ -9,10 +9,11 @@
         <MudText Typo="Typo.body1">@Message</MudText>
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="Cancel">@CancelLabel</MudButton>
+        <MudButton OnClick="Cancel" data-testid="confirm-dialog-cancel">@CancelLabel</MudButton>
         <MudButton Variant="Variant.Filled"
                    Color="@(Destructive ? Color.Error : Color.Primary)"
-                   OnClick="Confirm">
+                   OnClick="Confirm"
+                   data-testid="confirm-dialog-confirm">
             @ConfirmLabel
         </MudButton>
     </DialogActions>
