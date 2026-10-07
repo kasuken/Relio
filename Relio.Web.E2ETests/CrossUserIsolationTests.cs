@@ -30,7 +30,7 @@ public class CrossUserIsolationTests(RelioAppFixture fixture)
         await page.Locator("[data-testid='register-password']").FillAsync("Str0ng-Passw0rd!");
         await page.Locator("[data-testid='register-confirm-password']").FillAsync("Str0ng-Passw0rd!");
         await page.Locator("[data-testid='register-submit']").ClickAsync();
-        await page.Locator("[data-testid='register-confirmation-continue']").WaitForAsync();
+        await page.Locator("[data-testid='onboarding-page']").WaitForAsync();
         await RelioAppFixture.ClosePageAsync(page);
 
         using var scope = fixture.App.CreateRealScope();

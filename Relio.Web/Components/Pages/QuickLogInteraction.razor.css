@@ -1,0 +1,12 @@
+.rl-quick-log {
+    max-width: var(--measure);
+}
+
+.rl-quick-log-intro {
+    margin-bottom: var(--space-6);
+}
+
+.rl-quick-log-picker {
+    max-width: var(--measure);
+    margin-bottom: var(--space-4);
+}

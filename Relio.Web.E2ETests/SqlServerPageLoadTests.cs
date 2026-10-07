@@ -47,6 +47,16 @@ public class SqlServerPageLoadTests(RelioAppFixture fixture)
             var page = await app.NewPageAsync();
             await RelioAppFixture.SignInAsDemoAsync(page);
 
+            var dashboardResponse = await page.GotoAsync("/");
+            dashboardResponse!.Status.Should().Be(200, "the dashboard prerender must not throw");
+            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/");
+            await Expect(page.GetByTestId("dashboard-log-interaction")).ToBeVisibleAsync();
+            await AssertCircuitSurvivesAsync(page);
+            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/interactions/new");
+            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Log an interaction", Exact = true }))
+                .ToBeVisibleAsync();
+            await AssertCircuitSurvivesAsync(page);
+
             // /settings: display name, time zone and sign-in security each load in OnInitializedAsync.
             var response = await page.GotoAsync("/settings");
             response!.Status.Should().Be(200, "the prerender must not throw");
@@ -129,6 +139,39 @@ public class SqlServerPageLoadTests(RelioAppFixture fixture)
             await AssertCircuitSurvivesAsync(page);
             await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, $"/people/{demoPeople[0]}/merge?with={demoPeople[1]}");
             await Expect(page.GetByTestId("merge-preview")).ToBeVisibleAsync();
+            await AssertCircuitSurvivesAsync(page);
+
+            var onboardingEmail = $"sql-onboarding-{Guid.NewGuid():N}@example.com";
+            const string onboardingPassword = "Str0ng-Passw0rd!";
+            using (var scope = app.Factory.CreateRealScope())
+            {
+                var manager = scope.ServiceProvider
+                    .GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<Relio.Data.Identity.RelioUser>>();
+                var user = new Relio.Data.Identity.RelioUser
+                {
+                    UserName = onboardingEmail,
+                    Email = onboardingEmail,
+                    EmailConfirmed = true,
+                };
+                (await manager.CreateAsync(user, onboardingPassword)).Succeeded.Should().BeTrue();
+                var dbContext = scope.ServiceProvider.GetRequiredService<RelioDbContext>();
+                dbContext.UserProfiles.Add(new UserProfile
+                {
+                    OwnerId = user.Id,
+                    OnboardingDismissed = false,
+                    TimeZoneId = "Pacific/Kiritimati",
+                });
+                dbContext.RelationshipTypes.AddRange(RelationshipType.CreateDefaults(user.Id));
+                await dbContext.SaveChangesAsync();
+            }
+
+            await page.GotoAsync("/Account/Login");
+            await page.GetByTestId("login-email").FillAsync(onboardingEmail);
+            await page.GetByTestId("login-password").FillAsync(onboardingPassword);
+            await page.GetByTestId("login-submit").ClickAsync();
+            await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/onboarding");
+            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Get started", Exact = true }))
+                .ToBeVisibleAsync();
             await AssertCircuitSurvivesAsync(page);
         }
         finally

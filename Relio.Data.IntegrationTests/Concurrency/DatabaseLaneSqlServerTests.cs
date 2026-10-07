@@ -4,8 +4,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Relio.Application.Accounts;
 using Relio.Application.Administration;
+using Relio.Application.Dashboard;
 using Relio.Application.Interactions;
 using Relio.Application.Notes;
+using Relio.Application.Onboarding;
 using Relio.Application.People;
 using Relio.Application.People.Import;
 using Relio.Application.Profile;
@@ -67,6 +69,28 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
         (await displayName!).Should().Be("Ada");
         (await zone!).Id.Should().Be("Europe/Rome");
         (await status!).IsEnabled.Should().BeFalse();
+    }
+
+    [SqlServerFact]
+    public async Task Dashboard_onboarding_and_quick_log_reads_share_the_database_lane()
+    {
+        var ownerId = await SeedProfileAsync("Pacific/Kiritimati", "Ada");
+        await using var provider = BuildProvider(ownerId);
+        await using var scope = provider.CreateAsyncScope();
+        var dashboard = scope.ServiceProvider.GetRequiredService<IDashboardService>();
+        var onboarding = scope.ServiceProvider.GetRequiredService<IOnboardingService>();
+        var interactions = scope.ServiceProvider.GetRequiredService<IInteractionService>();
+        var timeZone = scope.ServiceProvider.GetRequiredService<IUserTimeZoneService>();
+        var people = scope.ServiceProvider.GetRequiredService<IPeopleService>();
+        await people.CreateAsync(new CreatePersonRequest { FirstName = "Ada" });
+
+        var act = async () => await Task.WhenAll(
+            dashboard.GetAsync(),
+            onboarding.GetStateAsync(),
+            interactions.ListParticipantCandidatesAsync(Guid.Empty),
+            timeZone.GetTodayAsync());
+
+        await act.Should().NotThrowAsync();
     }
 
     [SqlServerFact]

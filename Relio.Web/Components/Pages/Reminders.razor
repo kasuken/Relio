@@ -40,11 +40,11 @@ else
                     <div class="d-flex flex-column gap-3" data-testid="reminders-reach-out-list">
                         @foreach (var reachOut in _overdueReachOuts)
                         {
-                            <MudCard Elevation="1" Class="pa-2" data-testid="@($"reach-out-card-{reachOut.PersonId}")">
-                                <MudCardContent Class="d-flex align-center justify-space-between pa-2">
-                                    <div class="d-flex align-center gap-3">
+                            <MudCard Elevation="1" Class="pa-2 rl-reminder-card" data-testid="@($"reach-out-card-{reachOut.PersonId}")">
+                                <MudCardContent Class="rl-reminder-card-content pa-2">
+                                    <div class="rl-reminder-card-main">
                                         <MudIcon Icon="@Icons.Material.Outlined.People" Color="Color.Primary" />
-                                        <div>
+                                        <div class="rl-reminder-card-copy">
                                             <div class="d-flex align-center gap-2 flex-wrap">
                                                 <MudLink Href="@($"/people/{reachOut.PersonId}")"
                                                          Typo="Typo.h4"
@@ -68,7 +68,8 @@ else
                                             </MudText>
                                         </div>
                                     </div>
-                                    <MudButton Variant="Variant.Outlined"
+                                    <MudButton Class="rl-reminder-card-primary-action"
+                                               Variant="Variant.Outlined"
                                                Color="Color.Primary"
                                                Size="Size.Small"
                                                OnClick="() => MarkContactedAsync(reachOut.PersonId)"
@@ -89,11 +90,11 @@ else
                     <div class="d-flex flex-column gap-3" data-testid="upcoming-birthdays-list">
                         @foreach (var birthday in _upcomingBirthdays)
                         {
-                            <MudCard Elevation="1" Class="pa-2" data-testid="@($"birthday-card-{birthday.PersonId}")">
-                                <MudCardContent Class="d-flex align-center justify-space-between pa-2">
-                                    <div class="d-flex align-center gap-3">
+                            <MudCard Elevation="1" Class="pa-2 rl-reminder-card" data-testid="@($"birthday-card-{birthday.PersonId}")">
+                                <MudCardContent Class="rl-reminder-card-content pa-2">
+                                    <div class="rl-reminder-card-main">
                                         <MudIcon Icon="@Icons.Material.Outlined.Cake" Color="@(birthday.IsDue ? Color.Warning : Color.Primary)" />
-                                        <div>
+                                        <div class="rl-reminder-card-copy">
                                             <div class="d-flex align-center gap-2 flex-wrap">
                                                 <MudLink Href="@($"/people/{birthday.PersonId}")"
                                                          Typo="Typo.h4"
@@ -145,16 +146,16 @@ else
                         var isOverdue = reminder.EffectiveDueDate < _today;
                         var isDueToday = reminder.EffectiveDueDate == _today;
 
-                        <MudCard Elevation="1" Class="pa-2" data-testid="@($"reminder-card-{reminder.Id}")">
-                            <MudCardContent Class="d-flex align-center justify-space-between pa-2">
-                                <div class="d-flex align-center gap-3">
+                        <MudCard Elevation="1" Class="pa-2 rl-reminder-card" data-testid="@($"reminder-card-{reminder.Id}")">
+                            <MudCardContent Class="rl-reminder-card-content pa-2">
+                                <div class="rl-reminder-card-main">
                                     <MudIconButton Icon="@Icons.Material.Outlined.CheckCircleOutline"
                                                    Color="Color.Primary"
                                                    Size="Size.Medium"
-                                                   aria-label="Mark as completed"
+                                                   aria-label="Mark reminder as completed"
                                                    OnClick="() => CompleteAsync(reminder)"
                                                    data-testid="@($"reminder-complete-{reminder.Id}")" />
-                                    <div>
+                                    <div class="rl-reminder-card-copy">
                                         <div class="d-flex align-center gap-2 flex-wrap">
                                             <MudLink Href="@($"/people/{reminder.PersonId}")"
                                                      Typo="Typo.h4"
@@ -180,28 +181,28 @@ else
                                             @reminder.Title
                                         </MudText>
                                         <MudText Typo="Typo.caption"
-                                                 Color="@(isOverdue ? Color.Error : (isDueToday ? Color.Warning : Color.Secondary))"
+                                                 Color="@(isOverdue || isDueToday ? Color.Warning : Color.Secondary)"
                                                  Class="mt-1 font-weight-bold"
                                                  data-testid="@($"reminder-due-{reminder.Id}")">
                                             @FormatDueText(reminder)
                                         </MudText>
                                     </div>
                                 </div>
-                                <div class="d-flex align-center gap-1">
+                                <div class="rl-reminder-card-actions">
                                     <MudIconButton Icon="@Icons.Material.Outlined.Snooze"
                                                    Size="Size.Small"
-                                                   aria-label="Snooze"
+                                                   aria-label="Snooze reminder"
                                                    OnClick="() => SnoozeAsync(reminder)"
                                                    data-testid="@($"reminder-snooze-{reminder.Id}")" />
                                     <MudIconButton Icon="@Icons.Material.Outlined.Edit"
                                                    Size="Size.Small"
-                                                   aria-label="Edit"
+                                                   aria-label="Edit reminder"
                                                    OnClick="() => EditAsync(reminder)"
                                                    data-testid="@($"reminder-edit-{reminder.Id}")" />
                                     <MudIconButton Icon="@Icons.Material.Outlined.DeleteOutline"
                                                    Color="Color.Error"
                                                    Size="Size.Small"
-                                                   aria-label="Delete"
+                                                   aria-label="Delete reminder"
                                                    OnClick="() => DeleteAsync(reminder)"
                                                    data-testid="@($"reminder-delete-{reminder.Id}")" />
                                 </div>
@@ -225,11 +226,11 @@ else
                 <div class="d-flex flex-column gap-3" data-testid="reminders-completed-list">
                     @foreach (var reminder in _completedReminders)
                     {
-                        <MudCard Elevation="1" Class="pa-2" data-testid="@($"reminder-completed-card-{reminder.Id}")">
-                            <MudCardContent Class="d-flex align-center justify-space-between pa-2">
-                                <div class="d-flex align-center gap-3">
+                        <MudCard Elevation="1" Class="pa-2 rl-reminder-card" data-testid="@($"reminder-completed-card-{reminder.Id}")">
+                            <MudCardContent Class="rl-reminder-card-content pa-2">
+                                <div class="rl-reminder-card-main">
                                     <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" />
-                                    <div>
+                                    <div class="rl-reminder-card-copy">
                                         <MudText Typo="Typo.subtitle1" Class="text-decoration-line-through mud-text-secondary">
                                             @reminder.Title (@reminder.PersonDisplayName)
                                         </MudText>
@@ -244,6 +245,7 @@ else
                                 <MudIconButton Icon="@Icons.Material.Outlined.DeleteOutline"
                                                Color="Color.Error"
                                                Size="Size.Small"
+                                               aria-label="Delete reminder"
                                                OnClick="() => DeleteAsync(reminder)"
                                                data-testid="@($"reminder-delete-completed-{reminder.Id}")" />
                             </MudCardContent>

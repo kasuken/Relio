@@ -29,6 +29,8 @@ public class AccountRegistrationServiceTests
         result.IsAdministrator.Should().BeTrue();
         var user = await UserManagerTestFactory.Create(dbContext).FindByIdAsync(result.UserId!);
         (await UserManagerTestFactory.Create(dbContext).IsInRoleAsync(user!, RelioRoles.Administrator)).Should().BeTrue();
+        (await dbContext.UserProfiles.AsNoTracking().SingleAsync(profile => profile.OwnerId == result.UserId))
+            .OnboardingDismissed.Should().BeFalse();
     }
 
     [Fact]
@@ -44,6 +46,8 @@ public class AccountRegistrationServiceTests
         second.IsAdministrator.Should().BeFalse();
         (await UserManagerTestFactory.Create(dbContext).GetUsersInRoleAsync(RelioRoles.Administrator))
             .Should().ContainSingle();
+        (await dbContext.UserProfiles.AsNoTracking().SingleAsync(profile => profile.OwnerId == second.UserId))
+            .OnboardingDismissed.Should().BeFalse();
     }
 
     [Fact]

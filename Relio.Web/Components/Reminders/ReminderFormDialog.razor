@@ -1,9 +1,11 @@
 @using Relio.Application.Ownership
 @using Relio.Application.People
 @using Relio.Application.Reminders
+@using Relio.Application.Time
 @using Relio.Domain
 @inject IReminderService ReminderService
 @inject IPeopleService PeopleService
+@inject IUserTimeZoneService UserTimeZone
 @inject ISnackbar Snackbar
 
 <MudDialog>
@@ -11,7 +13,7 @@
         <MudText Typo="Typo.h3">@(_isEdit ? "Edit reminder" : "New reminder")</MudText>
     </TitleContent>
     <DialogContent>
-        <div class="d-flex flex-column gap-4" style="min-width: 320px;">
+        <div class="rl-reminder-dialog-fields d-flex flex-column gap-4">
             @if (!_isEdit && PersonId is null)
             {
                 <MudSelect T="Guid"
@@ -119,9 +121,10 @@
     {
         _personId = PersonId ?? Guid.Empty;
         _title = InitialTitle ?? string.Empty;
+        var today = await UserTimeZone.GetTodayAsync();
         _dueDate = InitialDueDate.HasValue
             ? new DateTime(InitialDueDate.Value.Year, InitialDueDate.Value.Month, InitialDueDate.Value.Day)
-            : DateTime.Today;
+            : today.ToDateTime(TimeOnly.MinValue);
         _frequency = InitialFrequency ?? ReminderFrequency.Once;
         _customIntervalMonths = InitialCustomIntervalMonths ?? 1;
 

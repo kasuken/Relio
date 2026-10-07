@@ -41,7 +41,9 @@
 @* The form is always rendered (hidden once this step has ended): if the cookie runs out between
    showing this page and posting it, the post must still find a form with this name instead of failing. *@
 <div hidden="@_ended">
-    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">Enter your authenticator code</MudText>
+    <MudText Typo="Typo.h2" HtmlTag="@(_ended ? "h2" : "h1")" Class="mb-2">
+        Enter your authenticator code
+    </MudText>
     <MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
         Open the authenticator app on your phone and enter the 6-digit code it shows for Relio.
     </MudText>

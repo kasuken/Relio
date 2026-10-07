@@ -1,0 +1,188 @@
+@page "/interactions/new"
+@attribute [Authorize]
+@using Relio.Application.Interactions
+@using Relio.Web.Components.Interactions
+@inject IInteractionService InteractionService
+@inject ISnackbar Snackbar
+@inject ILogger<QuickLogInteraction> Logger
+@inject NavigationManager Navigation
+
+<PageTitle>Log an interaction - Relio</PageTitle>
+
+<section class="rl-quick-log" data-testid="quick-log-page">
+    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">Log an interaction</MudText>
+    <MudText Typo="Typo.body1" Class="mud-text-secondary rl-quick-log-intro">
+        Choose a person, then add what happened.
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true"
+                           Color="Color.Primary"
+                           aria-label="Loading people"
+                           data-testid="quick-log-loading" />
+    }
+    else if (_loadFailed)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" data-testid="quick-log-load-error">
+            The people in your list couldn't be loaded. Try again.
+        </MudAlert>
+        <MudButton Variant="Variant.Text"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Outlined.Refresh"
+                   OnClick="LoadPeopleAsync"
+                   Disabled="_loading"
+                   data-testid="quick-log-retry">
+            Try again
+        </MudButton>
+    }
+    else if (_people.Count == 0)
+    {
+        <div data-testid="quick-log-no-people">
+            <EmptyState HeadingTag="h2"
+                        Title="No active people yet"
+                        Message="Add or restore a person before logging an interaction."
+                        ActionLabel="Add a person"
+                        OnAction="AddPerson" />
+        </div>
+    }
+    else
+    {
+        <div class="rl-quick-log-picker" data-testid="quick-log-picker">
+            <MudAutocomplete T="InteractionParticipantOption"
+                             Label="Person"
+                             Variant="Variant.Outlined"
+                             Value="_selectedPerson"
+                             ValueChanged="OnPersonSelectedAsync"
+                             SearchFunc="SearchPeopleAsync"
+                             ToStringFunc="@(person => person?.DisplayName)"
+                             MinCharacters="0"
+                             OpenOnFocus="true"
+                             SelectValueOnTab="true"
+                             CoerceText="false"
+                             CoerceValue="false"
+                             Clearable="true"
+                             Disabled="@(_editorBusy || _navigationStarted)"
+                             Class="rl-serif"
+                             data-testid="quick-log-person-picker">
+                <ItemTemplate Context="person">
+                    <span class="rl-entry-text">@person.DisplayName</span>
+                </ItemTemplate>
+                <NoItemsTemplate>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">No active people match.</MudText>
+                </NoItemsTemplate>
+            </MudAutocomplete>
+        </div>
+
+        @if (_selectedPerson is { } selectedPerson)
+        {
+            <InteractionEditor @key="selectedPerson.PersonId"
+                               PersonId="selectedPerson.PersonId"
+                               ShowHeading="false"
+                               AllowAdditionalParticipants="false"
+                               BusyChanged="EditorBusyChangedAsync"
+                               Saved="InteractionSavedAsync"
+                               Cancelled="CancelAsync" />
+        }
+    }
+</section>
+
+@code {
+    private IReadOnlyList<InteractionParticipantOption> _people = [];
+    private InteractionParticipantOption? _selectedPerson;
+    private bool _loading;
+    private bool _loadFailed;
+    private bool _editorBusy;
+    private bool _navigationStarted;
+
+    protected override Task OnInitializedAsync() => LoadPeopleAsync();
+
+    private async Task LoadPeopleAsync()
+    {
+        if (_loading || _navigationStarted)
+        {
+            return;
+        }
+
+        _loading = true;
+        _loadFailed = false;
+        try
+        {
+            var candidates = await InteractionService.ListParticipantCandidatesAsync(Guid.Empty);
+            _people = candidates
+                .Where(person => !person.IsArchived)
+                .ToArray();
+            _selectedPerson = null;
+        }
+        catch (Exception exception)
+        {
+            _people = [];
+            _selectedPerson = null;
+            _loadFailed = true;
+            Logger.LogWarning(
+                "Quick-log people could not be loaded ({ExceptionType}).",
+                exception.GetType().Name);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private Task<IEnumerable<InteractionParticipantOption>> SearchPeopleAsync(
+        string? text,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<IEnumerable<InteractionParticipantOption>>(
+            QuickLogPersonSearch.Filter(_people, text));
+    }
+
+    private Task OnPersonSelectedAsync(InteractionParticipantOption? person)
+    {
+        if (_editorBusy || _navigationStarted)
+        {
+            return Task.CompletedTask;
+        }
+
+        _selectedPerson = person is null
+            ? null
+            : _people.FirstOrDefault(candidate =>
+                candidate.PersonId == person.PersonId && !candidate.IsArchived);
+        _editorBusy = _selectedPerson is not null;
+
+        return Task.CompletedTask;
+    }
+
+    private Task EditorBusyChangedAsync(bool busy)
+    {
+        _editorBusy = busy;
+        return Task.CompletedTask;
+    }
+
+    private Task InteractionSavedAsync()
+    {
+        if (_navigationStarted || _selectedPerson is not { } person)
+        {
+            return Task.CompletedTask;
+        }
+
+        _navigationStarted = true;
+        Snackbar.Add("Interaction logged", Severity.Success);
+        Navigation.NavigateTo($"/people/{person.PersonId}");
+        return Task.CompletedTask;
+    }
+
+    private void AddPerson() => Navigation.NavigateTo("/people/new");
+
+    private Task CancelAsync()
+    {
+        if (!_navigationStarted)
+        {
+            _navigationStarted = true;
+            Navigation.NavigateTo("/");
+        }
+
+        return Task.CompletedTask;
+    }
+}

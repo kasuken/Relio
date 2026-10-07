@@ -41,7 +41,9 @@
 
 @* Always rendered, hidden once this step has ended - see LoginWith2fa.razor. *@
 <div hidden="@_ended">
-    <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2">Sign in with a recovery code</MudText>
+    <MudText Typo="Typo.h2" HtmlTag="@(_ended ? "h2" : "h1")" Class="mb-2">
+        Sign in with a recovery code
+    </MudText>
     <MudText Typo="Typo.body1" Class="mud-text-secondary mb-6">
         Enter one of the recovery codes you saved when you turned on two-factor authentication. Each code works once.
     </MudText>

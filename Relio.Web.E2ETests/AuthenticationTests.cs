@@ -217,7 +217,7 @@ public class AuthenticationTests(RelioAppFixture fixture)
         await page.Locator("[data-testid='register-password']").FillAsync(ValidPassword);
         await page.Locator("[data-testid='register-confirm-password']").FillAsync(ValidPassword);
         await page.Locator("[data-testid='register-submit']").ClickAsync();
-        await page.Locator("[data-testid='register-confirmation-continue']").WaitForAsync();
+        await page.Locator("[data-testid='onboarding-page']").WaitForAsync();
         await RelioAppFixture.ClosePageAsync(page);
 
         return (email, ValidPassword);

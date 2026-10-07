@@ -1,0 +1,102 @@
+@using Relio.Application.Onboarding
+
+@inject IOnboardingService OnboardingService
+@inject ILogger<OnboardingPrompt> Logger
+
+@if (_loadFailed)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined"
+              Class="rl-onboarding-prompt"
+              data-testid="onboarding-prompt-error">
+        Your welcome guide couldn't be checked. Try again.
+        <MudButton Variant="Variant.Text" OnClick="LoadAsync" data-testid="onboarding-prompt-retry">
+            Try again
+        </MudButton>
+    </MudAlert>
+}
+else if (_isPending)
+{
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined"
+              Class="rl-onboarding-prompt"
+              data-testid="onboarding-prompt">
+        <div class="rl-onboarding-prompt-content">
+            <MudText Typo="Typo.subtitle1">Welcome to Relio</MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                Set your time zone and add a first person whenever you're ready.
+            </MudText>
+            <div class="rl-onboarding-prompt-actions">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Href="/onboarding"
+                           data-testid="onboarding-prompt-start">
+                    Get started
+                </MudButton>
+                <MudButton Variant="Variant.Text"
+                           Disabled="_busy"
+                           OnClick="SkipAsync"
+                           data-testid="onboarding-prompt-skip">
+                    Skip for now
+                </MudButton>
+            </div>
+            @if (_dismissFailed)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Error" data-testid="onboarding-prompt-dismiss-error">
+                    The guide couldn't be dismissed. Try again.
+                </MudText>
+            }
+        </div>
+    </MudAlert>
+}
+
+@code {
+    private bool _isPending;
+    private bool _loadFailed;
+    private bool _dismissFailed;
+    private bool _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loadFailed = false;
+        try
+        {
+            _isPending = (await OnboardingService.GetStateAsync()).IsPending;
+        }
+        catch (Exception exception)
+        {
+            _isPending = false;
+            _loadFailed = true;
+            Logger.LogError(
+                "Could not load dashboard onboarding prompt. Error type: {ExceptionType}",
+                exception.GetType().Name);
+        }
+    }
+
+    private async Task SkipAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _dismissFailed = false;
+        try
+        {
+            await OnboardingService.DismissAsync();
+            _isPending = false;
+        }
+        catch (Exception exception)
+        {
+            _dismissFailed = true;
+            Logger.LogError(
+                "Could not dismiss dashboard onboarding prompt. Error type: {ExceptionType}",
+                exception.GetType().Name);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

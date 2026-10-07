@@ -39,6 +39,11 @@ public sealed class UserProfileConfiguration : IEntityTypeConfiguration<UserProf
         builder.Property(p => p.UnsubscribeToken)
             .HasMaxLength(64);
 
+        builder.Property(p => p.OnboardingDismissed)
+            .IsRequired()
+            .HasDefaultValue(true)
+            .HasSentinel(true); // false is an explicit value for new registrations, not the SQL default.
+
         // Exactly one profile per user.
         builder.HasIndex(p => p.OwnerId).IsUnique();
 

@@ -1,0 +1,140 @@
+.dashboard-header {
+    max-width: var(--content-max);
+    align-items: flex-end;
+}
+
+.dashboard-header-actions {
+    justify-content: flex-end;
+}
+
+.dashboard-overview {
+    max-width: var(--content-max);
+}
+
+.dashboard-empty {
+    max-width: var(--content-max);
+    margin-bottom: var(--space-6);
+}
+
+.dashboard-section {
+    max-width: var(--content-max);
+    padding: var(--space-6) 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.dashboard-section:first-child {
+    padding-top: var(--space-2);
+}
+
+.dashboard-section-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-bottom: var(--space-3);
+}
+
+.dashboard-section-heading > div {
+    display: grid;
+    gap: var(--space-1);
+}
+
+.dashboard-list {
+    max-width: var(--measure);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.dashboard-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    min-height: 56px;
+    padding: var(--space-3) var(--space-2);
+    border-bottom: 1px solid var(--line);
+}
+
+.dashboard-row:last-child {
+    border-bottom: 0;
+}
+
+.dashboard-row-copy {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.dashboard-row-title,
+.dashboard-row-actions,
+.dashboard-participants {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+}
+
+.dashboard-user-text {
+    margin: var(--space-1) 0;
+    font-family: var(--font-serif);
+    font-size: 1.0625rem;
+    line-height: 1.5882;
+    overflow-wrap: anywhere;
+}
+
+.dashboard-warning {
+    margin: var(--space-1) 0 0;
+    color: var(--warning);
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+}
+
+.dashboard-empty-line {
+    max-width: var(--measure);
+    color: var(--text-muted);
+}
+
+.dashboard-interaction {
+    align-items: flex-start;
+}
+
+.dashboard-interaction-text {
+    max-width: var(--measure);
+}
+
+.dashboard-participants {
+    margin-top: var(--space-1);
+}
+
+.dashboard-row-actions {
+    flex: 0 0 auto;
+}
+
+@media (max-width: 599.98px) {
+    .dashboard-header {
+        align-items: flex-start;
+    }
+
+    .dashboard-header-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .dashboard-header-actions .mud-button-root {
+        flex: 1 1 100%;
+        min-height: 44px;
+    }
+
+    .dashboard-section-heading {
+        align-items: flex-start;
+    }
+
+    .dashboard-row {
+        align-items: flex-start;
+        gap: var(--space-2);
+    }
+
+    .dashboard-row-actions {
+        gap: 0;
+    }
+}

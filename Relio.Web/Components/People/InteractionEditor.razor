@@ -31,12 +31,15 @@
     }
     else
     {
-        <div class="rl-interaction-editor-heading">
-            <MudText Typo="Typo.h6" HtmlTag="h2">@(InteractionId is null ? "Log an interaction" : "Edit interaction")</MudText>
-            <MudText Typo="Typo.body2" Class="rl-meta">
-                This interaction is shared across every profile listed below. Changes affect everyone.
-            </MudText>
-        </div>
+        @if (ShowHeading)
+        {
+            <div class="rl-interaction-editor-heading">
+                <MudText Typo="Typo.h6" HtmlTag="h2">@(InteractionId is null ? "Log an interaction" : "Edit interaction")</MudText>
+                <MudText Typo="Typo.body2" Class="rl-meta">
+                    This interaction is shared across every profile listed below. Changes affect everyone.
+                </MudText>
+            </div>
+        }
 
         @if (_errorMessage is not null)
         {
@@ -81,33 +84,36 @@
             }
         </div>
 
-        <div class="rl-form-field" data-testid="interaction-participants-field">
-            <MudSelect T="Guid"
-                       MultiSelection="true"
-                       SelectedValues="_selectedParticipantIds"
-                       SelectedValuesChanged="ParticipantIdsChangedAsync"
-                       Label="People"
-                       Variant="Variant.Outlined"
-                       Disabled="_busy"
-                       data-testid="interaction-participants">
-                @foreach (var option in _participantOptions)
+        @if (AllowAdditionalParticipants)
+        {
+            <div class="rl-form-field" data-testid="interaction-participants-field">
+                <MudSelect T="Guid"
+                           MultiSelection="true"
+                           SelectedValues="_selectedParticipantIds"
+                           SelectedValuesChanged="ParticipantIdsChangedAsync"
+                           Label="People"
+                           Variant="Variant.Outlined"
+                           Disabled="_busy"
+                           data-testid="interaction-participants">
+                    @foreach (var option in _participantOptions)
+                    {
+                        <MudSelectItem T="Guid" Value="@option.PersonId">
+                            @option.DisplayName@(option.IsArchived ? " (archived)" : string.Empty)
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+                @foreach (var message in MessagesFor(
+                    InteractionValidationError.ParticipantsRequired,
+                    InteractionValidationError.ProfileParticipantRequired,
+                    InteractionValidationError.TooManyParticipants,
+                    InteractionValidationError.ParticipantIdInvalid,
+                    InteractionValidationError.DuplicateParticipant,
+                    InteractionValidationError.ArchivedParticipantNotAllowed))
                 {
-                    <MudSelectItem T="Guid" Value="@option.PersonId">
-                        @option.DisplayName@(option.IsArchived ? " (archived)" : string.Empty)
-                    </MudSelectItem>
+                    <MudText Color="Color.Error" Typo="Typo.caption" data-testid="interaction-participant-error">@message</MudText>
                 }
-            </MudSelect>
-            @foreach (var message in MessagesFor(
-                InteractionValidationError.ParticipantsRequired,
-                InteractionValidationError.ProfileParticipantRequired,
-                InteractionValidationError.TooManyParticipants,
-                InteractionValidationError.ParticipantIdInvalid,
-                InteractionValidationError.DuplicateParticipant,
-                InteractionValidationError.ArchivedParticipantNotAllowed))
-            {
-                <MudText Color="Color.Error" Typo="Typo.caption" data-testid="interaction-participant-error">@message</MudText>
-            }
-        </div>
+            </div>
+        }
 
         <div class="rl-form-field" data-testid="interaction-description-field">
             <MudTextField T="string"
@@ -169,6 +175,18 @@
     [Parameter]
     public Guid? InteractionId { get; set; }
 
+    /// <summary>Whether to render the heading and explanation for this editor.</summary>
+    [Parameter]
+    public bool ShowHeading { get; set; } = true;
+
+    /// <summary>Whether the editor lets the user add participants beyond the profile being viewed.</summary>
+    [Parameter]
+    public bool AllowAdditionalParticipants { get; set; } = true;
+
+    /// <summary>Raised when the editor starts or finishes loading or saving.</summary>
+    [Parameter]
+    public EventCallback<bool> BusyChanged { get; set; }
+
     /// <summary>Raised after the interaction has been saved successfully.</summary>
     [Parameter]
     public EventCallback Saved { get; set; }
@@ -192,6 +210,8 @@
 
         try
         {
+            await BusyChanged.InvokeAsync(true);
+
             if (InteractionId is { } interactionId)
             {
                 var interaction = await InteractionService.GetAsync(interactionId);
@@ -225,9 +245,12 @@
                 _selectedParticipantIds.Add(PersonId);
             }
 
-            _participantOptions = await InteractionService.ListParticipantCandidatesAsync(
-                PersonId,
-                _selectedParticipantIds.ToArray());
+            if (AllowAdditionalParticipants)
+            {
+                _participantOptions = await InteractionService.ListParticipantCandidatesAsync(
+                    PersonId,
+                    _selectedParticipantIds.ToArray());
+            }
         }
         catch (Exception)
         {
@@ -241,6 +264,7 @@
             if (version == _loadVersion)
             {
                 _loading = false;
+                await BusyChanged.InvokeAsync(false);
             }
         }
     }
@@ -268,6 +292,8 @@
         _validationErrors = [];
         try
         {
+            await BusyChanged.InvokeAsync(true);
+
             var occurredOn = _occurredOn is { } date
                 ? DateOnly.FromDateTime(date)
                 : default;
@@ -315,6 +341,7 @@
         finally
         {
             _busy = false;
+            await BusyChanged.InvokeAsync(false);
         }
     }
 

@@ -33,7 +33,7 @@
 
 @if (_created is not null)
 {
-    <MudAlert Severity="Severity.Success" Class="mb-4" data-testid="admin-invite-created">
+    <MudAlert Severity="Severity.Success" Class="mb-4 rl-invite-alert" data-testid="admin-invite-created">
         Send this link to @_created.Email. It works once and expires on @FormatDate(_created.ExpiresAtUtc). Relio won't show it again.
         <code class="rl-invite-link mt-2" data-testid="admin-invite-link">@_link</code>
         <MudButton Variant="Variant.Outlined" Size="Size.Small" Class="mt-2"

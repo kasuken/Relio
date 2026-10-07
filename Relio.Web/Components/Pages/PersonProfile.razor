@@ -275,15 +275,16 @@
                 <div class="d-flex flex-column gap-2" data-testid="person-reminders-list">
                     @foreach (var reminder in _reminders)
                     {
-                        <MudCard Elevation="0" Outlined="true" Class="pa-2" data-testid="@($"person-reminder-{reminder.Id}")">
-                            <div class="d-flex justify-space-between align-center">
-                                <div class="d-flex align-center gap-2">
+                        <MudCard Elevation="0" Outlined="true" Class="pa-2 rl-person-reminder-card" data-testid="@($"person-reminder-{reminder.Id}")">
+                            <div class="rl-person-reminder-content">
+                                <div class="rl-person-reminder-main">
                                     <MudIconButton Icon="@Icons.Material.Outlined.CheckCircleOutline"
                                                    Color="Color.Primary"
                                                    Size="Size.Small"
+                                                   aria-label="Mark reminder as completed"
                                                    OnClick="() => CompleteReminderAsync(reminder)"
                                                    data-testid="@($"person-reminder-complete-{reminder.Id}")" />
-                                    <div>
+                                    <div class="rl-person-reminder-copy">
                                         <MudText Typo="Typo.body1" Class="font-weight-bold">@reminder.Title</MudText>
                                         <MudText Typo="Typo.caption" Class="mud-text-secondary">
                                             Due @reminder.EffectiveDueDate.ToString("d MMM yyyy")
@@ -300,6 +301,7 @@
                                 </div>
                                 <MudIconButton Icon="@Icons.Material.Outlined.Snooze"
                                                Size="Size.Small"
+                                               aria-label="Snooze reminder"
                                                OnClick="() => SnoozeReminderAsync(reminder)"
                                                data-testid="@($"person-reminder-snooze-{reminder.Id}")" />
                             </div>

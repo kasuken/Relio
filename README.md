@@ -17,7 +17,8 @@ after your relationships, available as a hosted service or self-hosted.
   filter the combined history and load it in pages. Last-contact dates follow the latest interaction.
 - **Reminders**: reconnect follow-ups and birthday reminders, by email and on the dashboard
 - **Difficult moments**: record tensions, triggers, resolutions and lessons learned
-- **Dashboard**: upcoming reminders, recent interactions and recently added people
+- **Dashboard**: upcoming reminders and birthdays, people to reach out to, recent interactions
+  and recently added people
 - **Search**: find people by name and filter by tag or relationship type
 
 ## Tech stack
@@ -69,6 +70,18 @@ Sign in at `/Account/Login`; "Remember me" issues a persistent cookie that survi
 browser, otherwise the session cookie ends when the browser does. Five failed sign-ins in a row
 lock the account out for 15 minutes (`Account:Lockout`, configurable - see AGENTS.md's "Accounts
 and authentication" section).
+
+New accounts start with a short, optional guide at `/onboarding`: check your time zone, add a
+person and record an interaction. **Skip for now** opens the dashboard; completing or skipping
+the guide is remembered for your account, including on other devices. Existing accounts are not
+enrolled when upgrading.
+
+The dashboard shows up to five entries per section, with links to the full people and reminders
+views. Upcoming reminders cover the next 30 days and include overdue reminders; completed reminders
+and archived people are left out. **Log an interaction** in the dashboard, people list or app bar
+opens `/interactions/new`: choose an active person, record what happened and save. It uses the same
+editor as a person's profile, so the entry appears on the timeline and updates the last-contact date.
+Dates default to today in your saved time zone, not the server's time zone.
 
 Forgot your password? `/Account/ForgotPassword` emails a reset link (`Account:PasswordReset:TokenLifespan`,
 1 hour by default) that works once; the page always shows the same message regardless of whether
