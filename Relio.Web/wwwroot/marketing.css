@@ -103,6 +103,118 @@
     color: var(--text-muted);
 }
 
+.rl-marketing-main {
+    width: min(var(--content-max), calc(100% - var(--space-12)));
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.65;
+}
+
+.rl-marketing-main h1 {
+    margin-block: var(--space-4);
+    font-size: clamp(2rem, 4vw, 3rem);
+    line-height: 1.12;
+}
+
+.rl-marketing-main h2 {
+    margin-block: 0 var(--space-4);
+    font-size: 1.625rem;
+    line-height: 1.25;
+}
+
+.rl-marketing-main h3 {
+    margin-block: 0 var(--space-3);
+    font-size: 1.125rem;
+    line-height: 1.4;
+}
+
+.rl-marketing-main p {
+    max-width: var(--measure);
+    margin-block: var(--space-3) var(--space-6);
+}
+
+.rl-marketing-hero {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+    gap: var(--space-12);
+    padding-block: var(--space-8);
+}
+
+.rl-marketing-eyebrow {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.rl-marketing-lead {
+    font-size: 1.25rem;
+}
+
+.rl-marketing-example {
+    min-width: 0;
+    margin: 0;
+}
+
+.rl-marketing-example img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+}
+
+.rl-marketing-example figcaption {
+    margin-block-start: var(--space-3);
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.rl-marketing-section {
+    margin-block-start: var(--space-8);
+    padding-block: var(--space-8);
+    border-top: 1px solid var(--line);
+}
+
+.rl-marketing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: var(--space-8);
+}
+
+ol.rl-marketing-grid {
+    padding-inline-start: var(--space-6);
+}
+
+.rl-marketing-grid > * {
+    min-width: 0;
+}
+
+.rl-marketing-faq details {
+    max-width: var(--measure);
+    padding-block: var(--space-4);
+    border-bottom: 1px solid var(--line);
+}
+
+.rl-marketing-faq summary {
+    padding-block: var(--space-2);
+    color: var(--text);
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.rl-marketing-shell > footer {
+    width: min(var(--content-max), calc(100% - var(--space-8)));
+    margin-inline: auto;
+}
+
+@media (max-width: 800px) {
+    .rl-marketing-hero {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-6);
+    }
+}
+
 .rl-policy-copy {
     overflow-wrap: anywhere;
     white-space: pre-wrap;
