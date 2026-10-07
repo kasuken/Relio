@@ -15,24 +15,16 @@
     border-bottom: 1px solid var(--line);
 }
 
-.rl-marketing-account-nav {
-    display: flex;
-    min-width: 0;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: var(--space-4);
-    font-family: var(--font-sans);
-    font-size: 14px;
-    font-weight: 600;
-    line-height: 20px;
-}
-
 .rl-marketing-main {
-    width: min(var(--measure), calc(100% - var(--space-12)));
+    width: min(var(--content-max), calc(100% - var(--space-12)));
     min-width: 0;
     flex: 1;
     margin-inline: auto;
     padding-block: var(--space-8) var(--space-12);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.65;
+    overflow-wrap: anywhere;
 }
 
 .rl-policy-document {
@@ -101,13 +93,6 @@
 .rl-marketing-access-note {
     max-width: var(--measure);
     color: var(--text-muted);
-}
-
-.rl-marketing-main {
-    width: min(var(--content-max), calc(100% - var(--space-12)));
-    font-family: var(--font-sans);
-    font-size: 1rem;
-    line-height: 1.65;
 }
 
 .rl-marketing-main h1 {

@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Relio.Data.DependencyInjection;
 
-namespace Relio.Web.E2ETests.Infrastructure;
+namespace Relio.Web.Tests.Infrastructure;
 
 /// <summary>
 /// Hosts the real Relio.Web app (<c>Program</c>, see its trailing <c>public partial class
@@ -30,10 +30,18 @@ namespace Relio.Web.E2ETests.Infrastructure;
 /// <see cref="ServerAddress"/>/real host - exactly the shared fixture other tests depend on. A
 /// fresh instance has its own independent real host, with no such risk.
 /// </remarks>
-public sealed class RelioWebAppFactory(Action<IServiceCollection>? configureTestServices = null)
+public sealed class RelioWebAppFactory(
+    Action<IServiceCollection>? configureTestServices = null,
+    string environmentName = "Development")
     : WebApplicationFactory<Program>
 {
     private IHost? _realHost;
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        // Test hosts run from build output, not a published wwwroot.
+        builder.UseEnvironment(environmentName).UseStaticWebAssets();
+    }
 
     /// <summary>
     /// The base address (e.g. <c>http://127.0.0.1:53412</c>) the app is actually listening on.

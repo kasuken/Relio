@@ -28,6 +28,27 @@ after your relationships, available as a hosted service or self-hosted.
 - Entity Framework Core and SQL Server
 - ASP.NET Core Identity
 
+## Public site
+
+`/`, `/features`, `/pricing` and `/changelog` are anonymous, statically rendered pages in the same
+web app. The relationship workspace is protected at `/dashboard`. Marketing entry points follow
+the instance's registration rules; account forms still perform full posts and registration
+captures the browser time zone. `/pricing` is hosting information, not a payment integration:
+billing remains unimplemented and off by default.
+
+Set `Seo:PublicOrigin` (or `Seo__PublicOrigin`) to your deployment's HTTPS origin for canonical
+and social URLs. Without it, metadata uses `https://localhost`; request Host headers are never
+trusted. Indexing is off by default. `Seo:IndexingEnabled=true` only allows crawling in Production,
+where the sitemap contains fixed public routes and enabled reviewed policy pages, never user data.
+Non-production and indexing-disabled deployments block crawlers and return no sitemap.
+Policy publication still needs operator-supplied reviewed text; see
+[policy hosting](docs/security/policy-hosting.md).
+
+Release notes come from the root `CHANGELOG.md`, embedded at build/publish time. Rebuild and
+redeploy after changing it. Assets, fonts and fictional examples are local; there are no marketing
+trackers or runtime changelog fetches. See [marketing content](docs/marketing/README.md) for verified
+feature claims, visual sources and safe Markdown rules.
+
 ## Getting started
 
 Prerequisites: the .NET 10 SDK (see `global.json`) and a SQL Server instance (local, Docker or

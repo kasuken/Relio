@@ -1265,6 +1265,17 @@ Established by epic #46 (issues #47, #48 and #49).
   selects `marketing.css` in `App.razor` by endpoint metadata. `MarketingStartLink` uses the
   existing registration eligibility service, including the first-account rule; links into
   registration always disable enhanced navigation so the browser time zone script executes.
+- Public `/features`, `/pricing` and `/changelog` share that static boundary. Never query owned
+  relationship services from marketing. Claims distinguish shipped behavior from planned work;
+  `docs/marketing/README.md` maps them to implementation evidence. Keep billing information-only
+  until an actual approved-offer service contract exists. Changelog Markdown is build-embedded
+  and rendered only through `Relio.Web.Marketing.ReleaseNotes`, not raw `MarkupString`.
+- Canonical/social URLs use `Seo:PublicOrigin`, with `https://localhost` as the nonindexing
+  fallback. Production indexing requires an explicit configured origin and opt-in. Public
+  sitemap routes are fixed, plus enabled reviewed policies; never enumerate user data.
+  Account/private/error pages remain nonindexable and authenticated responses remain no-store.
+  The real Kestrel factory is shared from `Relio.Web.Tests/Infrastructure/RelioWebAppFactory.cs`;
+  Web HTTP tests serialize environment changes, and E2E keeps its existing browser fixture.
 
 - **Dashboard reads** go through `IDashboardService` / `Relio.Data.Dashboard.DashboardService`,
   registered with `AddDataService`. A snapshot supplies the user's calendar day and bounded

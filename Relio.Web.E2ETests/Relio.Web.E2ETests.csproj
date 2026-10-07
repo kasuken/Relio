@@ -20,6 +20,7 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="AwesomeAssertions" />
+    <Using Include="Relio.Web.Tests.Infrastructure" />
   </ItemGroup>
 
   <ItemGroup>
@@ -36,6 +37,7 @@
     <Compile Include="..\Relio.Data.IntegrationTests\Infrastructure\SqlServerFactAttribute.cs" Link="Infrastructure\SqlServerFactAttribute.cs" />
     <Compile Include="..\Relio.Data.IntegrationTests\Infrastructure\SqlServerTestEnvironment.cs" Link="Infrastructure\SqlServerTestEnvironment.cs" />
     <Compile Include="..\Relio.Web.Tests\Infrastructure\DataProtectionTestHarness.cs" Link="Infrastructure\DataProtectionTestHarness.cs" />
+    <Compile Include="..\Relio.Web.Tests\Infrastructure\RelioWebAppFactory.cs" Link="Infrastructure\RelioWebAppFactory.cs" />
   </ItemGroup>
 
 </Project>
