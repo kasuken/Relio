@@ -85,11 +85,57 @@ internal sealed class FakePeopleService : IPeopleService
         return Task.FromResult(UpdateResult);
     }
 
-    public Task<bool> ArchiveAsync(Guid personId, CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException();
+    /// <summary>The ids <see cref="ArchiveAsync"/>, <see cref="RestoreAsync"/> and <see cref="DeleteAsync"/> were called with, in order.</summary>
+    public List<Guid> Archived { get; } = [];
 
-    public Task<bool> RestoreAsync(Guid personId, CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException();
+    public List<Guid> Restored { get; } = [];
+
+    public List<Guid> Deleted { get; } = [];
+
+    /// <summary>What each of them returns; <see langword="false"/> means the person is gone. On success they change <see cref="Known"/> like the real service.</summary>
+    public bool ArchiveResult { get; set; } = true;
+
+    public bool RestoreResult { get; set; } = true;
+
+    public bool DeleteResult { get; set; } = true;
+
+    /// <summary>The time an archive stamps on the person.</summary>
+    public DateTime ArchiveTimeUtc { get; set; } = new(2026, 10, 6, 11, 30, 0, DateTimeKind.Utc);
+
+    public Task<bool> ArchiveAsync(Guid personId, CancellationToken cancellationToken = default)
+    {
+        Archived.Add(personId);
+        if (ArchiveResult && Known.FirstOrDefault(p => p.Id == personId) is { } person && !person.IsArchived)
+        {
+            person.IsArchived = true;
+            person.ArchivedAtUtc = ArchiveTimeUtc;
+        }
+
+        return Task.FromResult(ArchiveResult);
+    }
+
+    public Task<bool> RestoreAsync(Guid personId, CancellationToken cancellationToken = default)
+    {
+        Restored.Add(personId);
+        if (RestoreResult && Known.FirstOrDefault(p => p.Id == personId) is { } person)
+        {
+            person.IsArchived = false;
+            person.ArchivedAtUtc = null;
+        }
+
+        return Task.FromResult(RestoreResult);
+    }
+
+    public Task<bool> DeleteAsync(Guid personId, CancellationToken cancellationToken = default)
+    {
+        Deleted.Add(personId);
+        if (DeleteResult)
+        {
+            Known.RemoveAll(p => p.Id == personId);
+        }
+
+        return Task.FromResult(DeleteResult);
+    }
 }
 
 /// <summary>An <see cref="IRelationshipTypeService"/> that lists whatever a test sets, and counts the calls.</summary>

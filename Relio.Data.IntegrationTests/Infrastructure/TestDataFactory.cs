@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Relio.Application.Security;
 using Relio.Data.People;
 using Relio.Domain;
@@ -64,6 +65,15 @@ internal static class TestDataFactory
         dbContext.Tags.Add(tag);
         await dbContext.SaveChangesAsync();
         return tag.Id;
+    }
+
+    /// <summary>Links an existing tag to an existing person (one row in the <c>PersonTags</c> join).</summary>
+    public static async Task TagPersonAsync(RelioDbContext dbContext, Guid personId, Guid tagId)
+    {
+        var person = await dbContext.People.Include(p => p.Tags).SingleAsync(p => p.Id == personId);
+        person.Tags.Add(await dbContext.Tags.SingleAsync(t => t.Id == tagId));
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
     }
 
     /// <summary>Creates a contact method for <paramref name="personId"/>, with the comparison key the rules compute.</summary>

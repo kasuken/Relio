@@ -74,6 +74,15 @@ public class CrossUserIsolationTests(RelioAppFixture fixture)
         var demoReadingNewUsersPerson = await demoPeopleService.GetAsync(newUsersPerson.Id);
         demoReadingNewUsersPerson.Should().BeNull("GetAsync must not resolve another user's person");
 
+        // Issue #26: the new user cannot archive, restore or delete one of the demo account's people
+        // (and the demo account's list is exactly as it was).
+        var demoPersonId = demoPeopleBefore[0].Id;
+        (await newUserPeopleService.ArchiveAsync(demoPersonId)).Should().BeFalse();
+        (await newUserPeopleService.RestoreAsync(demoPersonId)).Should().BeFalse();
+        (await newUserPeopleService.DeleteAsync(demoPersonId)).Should().BeFalse();
+        (await demoPeopleService.ListAsync()).Select(p => p.Id).Should().BeEquivalentTo(demoPeopleBefore.Select(p => p.Id));
+        (await demoPeopleService.GetAsync(demoPersonId))!.IsArchived.Should().BeFalse();
+
         // Relationship types are per user too: registering seeded the new account its own six,
         // and they are not the demo account's rows.
         var demoTypes = await new RelationshipTypeService(dbContext, new FixedCurrentUser(demoUser.Id)).ListAsync();

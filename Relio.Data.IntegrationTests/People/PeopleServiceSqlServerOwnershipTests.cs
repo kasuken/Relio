@@ -110,6 +110,20 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     }
 
     [SqlServerFact]
+    public async Task DeleteAsync_for_another_users_person_returns_false()
+    {
+        await using var dbContext = fixture.CreateDbContext();
+        var ownerA = TestDataFactory.NewOwnerId();
+        var ownerB = TestDataFactory.NewOwnerId();
+        var personId = await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
+
+        var deleted = await TestDataFactory.CreateService(dbContext, ownerB).DeleteAsync(personId);
+
+        deleted.Should().BeFalse();
+        (await dbContext.People.AsNoTracking().AnyAsync(p => p.Id == personId)).Should().BeTrue();
+    }
+
+    [SqlServerFact]
     public async Task ArchiveAsync_for_another_users_person_returns_false_and_does_not_archive_it()
     {
         await using var dbContext = fixture.CreateDbContext();

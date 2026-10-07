@@ -6,6 +6,20 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Archive, restore and delete people (issue #26), epic #21. Each profile has a **More** menu next to
+  Edit with **Archive** (**Restore** for an archived person) and **Delete**. Archiving and restoring are
+  reversible, so they happen at once and say "Person archived" / "Person restored"; an archived person
+  shows a quiet note under their name ("Archived on 3 March", in your time zone, "Hidden from your lists
+  and reminders. Everything you recorded is kept.") with a **Restore** button, and archiving never touches
+  anything recorded about them. **Delete** asks first ("Delete Ada Lovelace? ... It can't be undone.",
+  button "Delete permanently") and is permanent: `IPeopleService.DeleteAsync` removes the person, their
+  contact methods and their tag links in one save, keeps your tags (and other people's links to them) and
+  relationship types, and works on archived people too. Afterwards you land on the people list and Back
+  does not return to the deleted profile. No migration: the foreign keys already cascade, and the service
+  also removes the dependents explicitly because the InMemory provider (unit tests) would otherwise leave
+  orphans. `PersonDeleteChecklistTests` fails when a new entity references a person without being added to
+  `PeopleService.RemoveDependentsAsync`; a SQL Server test proves every foreign key to `People` cascades.
+  AGENTS.md now spells out which features exclude archived people and which include them.
 - Edit person details: contact methods, tags and relationship type (issue #24), epic #21. Each
   profile has an **Edit** button opening `/people/{id}/edit`, the same form as "Add a person" started
   from what is saved. It now carries **contact methods** (email, phone, address, social, other, each

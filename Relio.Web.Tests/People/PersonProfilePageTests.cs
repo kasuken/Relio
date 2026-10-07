@@ -1,21 +1,59 @@
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
+using MudBlazor;
 using Relio.Application.People;
+using Relio.Application.Time;
 using Relio.Domain;
 using Relio.Web.Components.Pages;
+using Relio.Web.Components.People;
+using Relio.Web.Tests.Settings;
 using Relio.Web.Tests.Shared;
 
 namespace Relio.Web.Tests.People;
 
 public class PersonProfilePageTests
 {
-    private static BunitContext CreateContext(FakePeopleService people)
+    private static readonly DateOnly Today = new(2026, 10, 6);
+
+    // The profile reads the user's time zone (for the archive date) and hosts a menu, a dialog and
+    // snackbars, so every context carries the providers that render them.
+    private static BunitContext CreateContext(FakePeopleService people, string timeZoneId = "Europe/Rome") =>
+        CreateContext(people, out _, timeZoneId);
+
+    private static BunitContext CreateContext(
+        FakePeopleService people, out ProfileProviders providers, string timeZoneId = "Europe/Rome")
     {
         var context = new BunitContext();
         context.UseMudBlazor();
         context.Services.AddSingleton<IPeopleService>(people);
+        context.Services.AddSingleton<IUserTimeZoneService>(new FakeUserTimeZoneService(timeZoneId, Today));
+        providers = new ProfileProviders(
+            context.Render<MudPopoverProvider>(),
+            context.Render<MudDialogProvider>(),
+            context.Render<MudSnackbarProvider>());
         return context;
+    }
+
+    private sealed record ProfileProviders(
+        IRenderedComponent<MudPopoverProvider> Popovers,
+        IRenderedComponent<MudDialogProvider> Dialogs,
+        IRenderedComponent<MudSnackbarProvider> Snackbars);
+
+    /// <summary>Opens the "More" menu and returns the item with <paramref name="testId"/> from the popover.</summary>
+    private static AngleSharp.Dom.IElement MenuItem(
+        IRenderedComponent<PersonProfile> cut, ProfileProviders providers, string testId)
+    {
+        OpenMenu(cut, providers);
+        return providers.Popovers.Find($"[data-testid='{testId}']");
+    }
+
+    private static void OpenMenu(IRenderedComponent<PersonProfile> cut, ProfileProviders providers)
+    {
+        if (providers.Popovers.FindAll(".mud-menu-item").Count == 0)
+        {
+            cut.Find("[data-testid='person-actions'] button").Click();
+        }
     }
 
     [Fact]
@@ -261,5 +299,244 @@ public class PersonProfilePageTests
         cut.Render(parameters => parameters.Add(p => p.PersonId, second.Id));
 
         cut.Find("[data-testid='person-name']").TextContent.Should().Be("Grace");
+    }
+
+    private static Person ActivePerson() => new() { FirstName = "Ada", LastName = "Lovelace" };
+
+    private static Person ArchivedPerson(DateTime? archivedAtUtc = null) =>
+        new()
+        {
+            FirstName = "Ada",
+            LastName = "Lovelace",
+            IsArchived = true,
+            ArchivedAtUtc = archivedAtUtc ?? new DateTime(2026, 3, 2, 23, 30, 0, DateTimeKind.Utc),
+        };
+
+    private static string[] MenuLabels(ProfileProviders providers) =>
+        providers.Popovers.FindAll(".mud-menu-item").Select(item => item.TextContent.Trim()).ToArray();
+
+    [Fact]
+    public async Task The_actions_menu_offers_archive_and_delete_for_an_active_person()
+    {
+        var person = ActivePerson();
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people, out var providers);
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        cut.Find("[data-testid='person-actions']").TextContent.Should().Contain("Edit").And.Contain("More");
+        OpenMenu(cut, providers);
+
+        MenuLabels(providers).Should().Equal("Archive", "Delete");
+        providers.Popovers.FindAll("[data-testid='person-restore-menu']").Should().BeEmpty();
+        cut.FindAll("[data-testid='person-archived']").Should().BeEmpty("an active person has no archived note");
+        cut.Find(".rl-avatar").ClassList.Should().NotContain("rl-avatar-archived");
+    }
+
+    [Fact]
+    public async Task The_actions_menu_offers_restore_and_delete_for_an_archived_person()
+    {
+        var person = ArchivedPerson();
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people, out var providers);
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        OpenMenu(cut, providers);
+
+        MenuLabels(providers).Should().Equal("Restore", "Delete");
+        providers.Popovers.FindAll("[data-testid='person-archive']").Should().BeEmpty();
+        cut.Find(".rl-avatar").ClassList.Should().Contain("rl-avatar-archived");
+    }
+
+    [Fact]
+    public async Task Archiving_shows_the_archived_note_and_says_Person_archived()
+    {
+        var person = ActivePerson();
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people, out var providers);
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        MenuItem(cut, providers, "person-archive").Click();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='person-archived']").TextContent.Should().Contain(PersonArchiveText.ArchivedNoteDetail));
+        people.Archived.Should().Equal(person.Id);
+        providers.Snackbars.WaitForAssertion(() => providers.Snackbars.Markup.Should().Contain("Person archived"));
+        providers.Snackbars.Markup.Should().NotContain("Ada", "a snackbar never carries the person's name");
+        cut.Find("[data-testid='person-name']").TextContent.Should().Be("Ada Lovelace", "the profile stays on screen");
+        cut.Find("[data-testid='person-restore']").TextContent.Trim().Should().Be("Restore");
+        cut.FindAll("h1").Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task An_archived_person_shows_the_archive_date_in_the_users_time_zone()
+    {
+        // 23:30 UTC on 2 March is already 3 March in Rome.
+        var person = ArchivedPerson(new DateTime(2026, 3, 2, 23, 30, 0, DateTimeKind.Unspecified));
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people);
+
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        cut.Find("[data-testid='person-archived-date']").TextContent.Should().Be("Archived on 3 March");
+    }
+
+    [Fact]
+    public async Task An_archived_person_without_an_archive_time_just_says_Archived()
+    {
+        var person = ArchivedPerson();
+        person.ArchivedAtUtc = null;
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people);
+
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        cut.Find("[data-testid='person-archived-date']").TextContent.Should().Be("Archived");
+    }
+
+    [Fact]
+    public async Task Restoring_from_the_note_hides_it_and_says_Person_restored()
+    {
+        var person = ArchivedPerson();
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people, out var providers);
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        cut.Find("[data-testid='person-restore']").Click();
+
+        cut.WaitForAssertion(() => cut.FindAll("[data-testid='person-archived']").Should().BeEmpty());
+        people.Restored.Should().Equal(person.Id);
+        providers.Snackbars.WaitForAssertion(() => providers.Snackbars.Markup.Should().Contain("Person restored"));
+        providers.Snackbars.Markup.Should().NotContain("Ada");
+        cut.Find(".rl-avatar").ClassList.Should().NotContain("rl-avatar-archived");
+    }
+
+    [Fact]
+    public async Task Restoring_from_the_menu_works_too()
+    {
+        var person = ArchivedPerson();
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people, out var providers);
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        MenuItem(cut, providers, "person-restore-menu").Click();
+
+        cut.WaitForAssertion(() => cut.FindAll("[data-testid='person-archived']").Should().BeEmpty());
+        people.Restored.Should().Equal(person.Id);
+    }
+
+    [Fact]
+    public async Task Delete_asks_for_confirmation_naming_the_person_with_a_destructive_button()
+    {
+        var person = ActivePerson();
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people, out var providers);
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        MenuItem(cut, providers, "person-delete").Click();
+
+        providers.Dialogs.WaitForAssertion(() => providers.Dialogs.Markup.Should().Contain("Delete Ada Lovelace?"));
+        providers.Dialogs.Markup.Should().Contain("It can't be undone.");
+        var confirm = providers.Dialogs.Find("[data-testid='confirm-dialog-confirm']");
+        confirm.TextContent.Trim().Should().Be("Delete permanently");
+        confirm.ClassList.Should().Contain("mud-button-filled-error");
+        people.Deleted.Should().BeEmpty("nothing is deleted before the confirmation");
+    }
+
+    [Fact]
+    public async Task Cancelling_the_delete_calls_nothing_and_keeps_the_profile()
+    {
+        var person = ActivePerson();
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people, out var providers);
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+        var navigation = context.Services.GetRequiredService<NavigationManager>();
+        var uriBefore = navigation.Uri;
+        MenuItem(cut, providers, "person-delete").Click();
+        providers.Dialogs.WaitForAssertion(() => providers.Dialogs.FindAll("[data-testid='confirm-dialog-cancel']").Should().ContainSingle());
+
+        providers.Dialogs.Find("[data-testid='confirm-dialog-cancel']").Click();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='person-actions-menu']").HasAttribute("disabled").Should().BeFalse());
+        people.Deleted.Should().BeEmpty();
+        navigation.Uri.Should().Be(uriBefore);
+        cut.Find("[data-testid='person-name']").TextContent.Should().Be("Ada Lovelace");
+        providers.Snackbars.Markup.Should().NotContain("Person deleted");
+    }
+
+    [Fact]
+    public async Task Confirming_the_delete_navigates_to_people_replacing_the_history_entry_and_says_Person_deleted()
+    {
+        var person = ActivePerson();
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people, out var providers);
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+        MenuItem(cut, providers, "person-delete").Click();
+        providers.Dialogs.WaitForAssertion(() => providers.Dialogs.FindAll("[data-testid='confirm-dialog-confirm']").Should().ContainSingle());
+
+        providers.Dialogs.Find("[data-testid='confirm-dialog-confirm']").Click();
+
+        var navigation = context.Services.GetRequiredService<NavigationManager>();
+        cut.WaitForAssertion(() => people.Deleted.Should().Equal(person.Id));
+        cut.WaitForAssertion(() => navigation.Uri.Should().EndWith("/people"));
+        var entry = ((Bunit.TestDoubles.BunitNavigationManager)navigation).History.First();
+        entry.Uri.Should().EndWith("/people");
+        entry.Options.ReplaceHistoryEntry.Should().BeTrue("Back from the list must not land on a profile that is gone");
+        providers.Snackbars.WaitForAssertion(() => providers.Snackbars.Markup.Should().Contain("Person deleted"));
+        providers.Snackbars.Markup.Should().NotContain("Ada");
+    }
+
+    [Theory]
+    [InlineData("archive")]
+    [InlineData("restore")]
+    [InlineData("delete")]
+    public async Task An_action_on_a_person_removed_elsewhere_shows_not_found(string action)
+    {
+        var person = action == "restore" ? ArchivedPerson() : ActivePerson();
+        var people = new FakePeopleService { ArchiveResult = false, RestoreResult = false, DeleteResult = false };
+        people.Known.Add(person);
+        await using var context = CreateContext(people, out var providers);
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        switch (action)
+        {
+            case "archive":
+                MenuItem(cut, providers, "person-archive").Click();
+                break;
+            case "restore":
+                cut.Find("[data-testid='person-restore']").Click();
+                break;
+            default:
+                MenuItem(cut, providers, "person-delete").Click();
+                providers.Dialogs.WaitForAssertion(() => providers.Dialogs.FindAll("[data-testid='confirm-dialog-confirm']").Should().ContainSingle());
+                providers.Dialogs.Find("[data-testid='confirm-dialog-confirm']").Click();
+                break;
+        }
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='person-not-found']").TextContent.Should().Contain("This person isn't in your list"));
+        cut.FindAll("[data-testid='person-actions']").Should().BeEmpty();
+        providers.Snackbars.Markup.Should().NotContain("Person archived").And.NotContain("Person restored").And.NotContain("Person deleted");
+    }
+
+    [Fact]
+    public async Task The_archived_state_has_exactly_one_h1()
+    {
+        var person = ArchivedPerson();
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people);
+
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        cut.FindAll("h1").Should().ContainSingle();
+        cut.Find("[data-testid='person-archived']").QuerySelector("h1, h2, h3").Should().BeNull("the note is not a heading");
     }
 }

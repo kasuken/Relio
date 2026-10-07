@@ -54,11 +54,12 @@ for every new owned entity and service; do not invent new plumbing per feature.
   copy of the names on purpose.
 - Every child of a person (contact methods, interactions, notes, reminders, difficult moments, ...)
   has a `PersonId` foreign key to `People` with `OnDelete(Cascade)` **and** its own `OwnerId`,
-  filtered explicitly like everything else, with an index on `(OwnerId, PersonId)`. When delete
-  arrives (#26), `PeopleService` gets one private `RemoveDependentsAsync(ownerId, personId)` and every
-  new child adds one `RemoveRange(...)` line to it: the InMemory provider only cascades *tracked*
-  dependents, and the database cascade is the SQL Server backstop. `ContactMethod` (#24) is the first
-  child; **#26's `RemoveDependentsAsync` and #59's account deletion must include `ContactMethods`**.
+  filtered explicitly like everything else, with an index on `(OwnerId, PersonId)`. Deleting a person
+  (#26) goes through one private `PeopleService.RemoveDependentsAsync(ownerId, person)` and every new
+  child adds its line to it **and** to `PersonDeleteChecklistTests`: the InMemory provider only cascades
+  *tracked* dependents, and the database cascade is the SQL Server backstop (see "Archive, restore and
+  delete" under People). `ContactMethod` (#24) is the first child, handled there; **#59's account deletion
+  must include `ContactMethods` too**.
 - **New children are added with `DbSet.Add` explicitly.** `OwnedEntity` gives every instance a non-empty
   `Guid` up front, so an entity that is merely *reachable* from a tracked parent (added to its collection)
   is discovered by EF Core as an existing row, tracked `Modified`, and the save fails with a
@@ -76,7 +77,7 @@ for every new owned entity and service; do not invent new plumbing per feature.
   does not resolve. Not-found and not-owned use the exact same message - never let a request
   distinguish "doesn't exist" from "belongs to someone else".
 - For the primary entity, not-found and not-owned are both reported as "no result": `GetAsync`
-  returns `null`, `UpdateAsync`/`ArchiveAsync`/`RestoreAsync` return `false`. Never throw a
+  returns `null`, `UpdateAsync`/`ArchiveAsync`/`RestoreAsync`/`DeleteAsync` return `false`. Never throw a
   not-found exception for the primary entity - it would leak existence through a different code
   path than the foreign-id case.
 - **Validation errors are codes in Application and messages in Web.** Rules that depend only on the
@@ -165,7 +166,7 @@ for every new owned entity and service; do not invent new plumbing per feature.
 
 **Tests.**
 - Prove cross-user isolation for every new service: create data as user A, then assert user B's
-  service instance cannot read, list, update, archive, restore it, or attach user B's own
+  service instance cannot read, list, update, archive, restore or delete it, or attach user B's own
   foreign-id rows (tags, etc.) to user A's entity. See
   `Relio.Data.Tests/People/PeopleServiceOwnershipTests.cs` for the shape these tests should take.
 - These tests use the EF Core InMemory provider with a fake `ICurrentUser` and `TimeProvider` for
@@ -860,6 +861,57 @@ Established by issue #22 under epic #21. The routes are pages, not dialogs: `/pe
   an autocomplete option use `WaitForAssertion` (the choice is handled asynchronously). `PeopleTestHelpers.CreatePersonAsync`
   seeds a person with contact methods through the real service. Demo data now has contact methods (reserved
   example domains and fictional numbers only); a demo database seeded earlier is not backfilled.
+
+### Archive, restore and delete (issue #26)
+
+- **The profile's actions.** A labelled `MudMenu` "More" sits next to Edit (`person-actions`): **Archive**
+  (or **Restore** for an archived person) and **Delete**. It uses MudMenu's own `Label`/`EndIcon`, never
+  `ActivatorContent` (see the note in `ThemeModeMenu.razor`: the two-element activator does not open in a
+  real browser). **No confirmation for archive or restore**: both are reversible, so they act at once, say
+  "Person archived" / "Person restored" in a snackbar and stay on the profile, which reloads through
+  `GetAsync` (never edits its local copy). An archived person shows a quiet **archived note** under the
+  header (`Inventory2` icon, "Archived on 3 March", "Hidden from your lists and reminders. Everything you
+  recorded is kept.", an outlined Restore button): no warning colour, no live region, no heading. The date
+  is `ArchivedAtUtc` as a calendar day **in the user's time zone** (`PersonArchiveText.ArchivedOn`; SQL
+  Server returns the instant with kind `Unspecified`, so it is treated as UTC); "Archived" alone when there
+  is no time. Wording lives in `PersonArchiveText`. A person who disappears under an action (another tab)
+  shows the usual not-found panel. `_busy` stops a second click starting a second action.
+- **Delete is permanent and asks.** `IPeopleService.DeleteAsync(id)` hard-deletes: no soft delete, no undo
+  (archive is the reversible one), and it works on active and archived people. The destructive
+  `ConfirmDialog` is titled `Delete {name}?` (the one place a name appears outside the profile), says what
+  goes and "It can't be undone.", and its red button is "Delete permanently"; the menu item itself is plain.
+  The dialog does not focus the destructive button (MudBlazor 9's default focus is the dialog itself, so
+  Enter does not delete): do not set `DefaultFocus`. After a delete the snackbar says "Person deleted" (no
+  name) and the page goes to `/people` with `replace: true`, taking the profile out of the history so Back
+  never lands on a "not in your list" panel - the one deliberate exception to the list's "navigation pushes"
+  rule. Snackbars, the page title, logs and exception messages never carry a name.
+- **The delete checklist.** `PeopleService.DeleteAsync` loads the person (owner in the query) with its tags
+  tracked, calls the one private `RemoveDependentsAsync`, removes the person and saves **once** (a
+  transaction on SQL Server; no `ExecuteDelete`, no `BeginTransaction`). The tags are *links*: only the
+  `PersonTags` rows go (`person.Tags.Clear()`), never the `Tag` rows or other people's links to them, and the
+  relationship type stays. **Every new entity with a `PersonId` must, in the same pull request: (1) have an
+  `OnDelete(Cascade)` foreign key, (2) add one line to `RemoveDependentsAsync` (always filtered by `OwnerId`
+  and `PersonId`; #35's participants remove this person's participant row and delete the interaction only
+  when it was the last participant), and (3) be added to `PersonDeleteChecklistTests`.** That test reads the
+  model and fails when an entity references `Person` that the list does not name, so a forgotten child cannot
+  pass quietly (the InMemory provider cascades only tracked dependents and enforces no foreign keys, so a
+  missing line would otherwise leave orphans that look fine). `PersonDeleteSqlServerTests` proves every
+  foreign key to `People` is `ON DELETE CASCADE` on a real database. A table with two foreign keys to `People`
+  cannot cascade both (SQL Server's multiple cascade paths): make one `NoAction` and delete those rows in
+  `RemoveDependentsAsync`. Account deletion (#59) deletes every owned table itself. Backups sit outside the
+  app (#65). Two deletes racing from two tabs: the second normally reads `false`; in the tiny window between
+  both loads and the first save it throws `DbUpdateConcurrencyException` (nothing half-deleted).
+- **Archived people.** The rule is "exclude by default, include where the user is working with the person",
+  enforced by explicit predicates (`!p.IsArchived`, or `!r.Person.IsArchived` on a child table) and a test per
+  feature, not by a global filter or a shared `ActivePeople()` extension - the same reasoning as ownership
+  (an extension is easy to forget and hides the filter at the call site). **Exclude**: the people list default
+  (#23), the dashboard (#47), the creation of reminders (#37, #38, #41) and the scheduler that sends them at
+  send time (#39), search by default with an opt-in (#52), filters (#53), person pickers (#35, #49).
+  **Include**: the profile and its timeline (#33), edit (#24), delete (#26), duplicate detection (#27), merge
+  (#28), import matching (#29), last-contacted maintenance (#34), export (#58), account deletion (#59) and the
+  relationship type and tag counts (#25). Archiving never deletes or changes anything about the person's
+  children, and restoring brings everything back. **Every feature that excludes archived people adds a
+  `..._excludes_archived_people` test.**
 
 ## End-to-end tests
 

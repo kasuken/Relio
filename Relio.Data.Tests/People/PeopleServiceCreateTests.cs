@@ -265,6 +265,9 @@ public class PeopleServiceCreateTests
         await service.RestoreAsync(created.Id);
         dbContext.ChangeTracker.Entries().Should().BeEmpty("restore clears the tracker");
 
+        await service.DeleteAsync(created.Id);
+        dbContext.ChangeTracker.Entries().Should().BeEmpty("delete clears the tracker");
+
         await service.GetAsync(created.Id);
         await service.ListAsync();
         dbContext.ChangeTracker.Entries().Should().BeEmpty("reads are untracked");

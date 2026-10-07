@@ -49,4 +49,40 @@ public class ConfirmDialogTests
 
         result.Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData(true, "mud-button-filled-error")]
+    [InlineData(false, "mud-button-filled-primary")]
+    public async Task A_destructive_confirmation_uses_the_error_colour_and_a_plain_one_uses_primary(bool destructive, string expectedClass)
+    {
+        await using var context = new BunitContext();
+        context.UseMudBlazor();
+        context.Render<MudPopoverProvider>();
+        var dialogHost = context.Render<MudDialogProvider>();
+        var dialogService = context.Services.GetRequiredService<IDialogService>();
+
+        var resultTask = dialogService.ShowConfirmAsync("Delete Marta?", "It can't be undone.", "Delete permanently", destructive: destructive);
+
+        var confirm = dialogHost.Find("[data-testid='confirm-dialog-confirm']");
+        confirm.ClassList.Should().Contain(expectedClass);
+        confirm.Click();
+        (await resultTask).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task The_buttons_carry_stable_test_ids()
+    {
+        await using var context = new BunitContext();
+        context.UseMudBlazor();
+        context.Render<MudPopoverProvider>();
+        var dialogHost = context.Render<MudDialogProvider>();
+        var dialogService = context.Services.GetRequiredService<IDialogService>();
+
+        var resultTask = dialogService.ShowConfirmAsync("Archive Marta?", "You can restore her later.", confirmLabel: "Archive", cancelLabel: "Not now");
+
+        dialogHost.Find("[data-testid='confirm-dialog-confirm']").TextContent.Trim().Should().Be("Archive");
+        dialogHost.Find("[data-testid='confirm-dialog-cancel']").TextContent.Trim().Should().Be("Not now");
+        dialogHost.Find("[data-testid='confirm-dialog-cancel']").Click();
+        (await resultTask).Should().BeFalse();
+    }
 }

@@ -356,6 +356,83 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
         }
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Loads the person (with the owner in the query, so another user's person is "not found" before
+    /// anything else is touched), removes everything that belongs to them in
+    /// <see cref="RemoveDependentsAsync"/>, removes the person, and saves <b>once</b> - a single
+    /// transaction on SQL Server. No <c>ExecuteDelete</c> and no explicit transaction: the InMemory
+    /// provider used by the unit tests supports neither. Nothing is logged, not even the id.
+    /// </remarks>
+    public async Task<bool> DeleteAsync(Guid personId, CancellationToken cancellationToken = default)
+    {
+        var ownerId = currentUser.RequireUserId();
+
+        try
+        {
+            // Tags are included so the join rows are tracked: clearing the collection deletes the
+            // links (and only the links) when the person goes.
+            var person = await dbContext.People
+                .Include(p => p.Tags)
+                .FirstOrDefaultAsync(p => p.Id == personId && p.OwnerId == ownerId, cancellationToken);
+            if (person is null)
+            {
+                return false;
+            }
+
+            await RemoveDependentsAsync(ownerId, person, cancellationToken);
+            dbContext.People.Remove(person);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        finally
+        {
+            dbContext.ChangeTracker.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Removes everything that belongs to <paramref name="person"/>, so deleting the person leaves
+    /// nothing behind. Called only by <see cref="DeleteAsync"/>, before the person itself is removed
+    /// and in the same save.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why explicit.</b> EF Core only cascades to dependents it is <i>tracking</i>, and the InMemory
+    /// provider used by the unit tests enforces no foreign keys at all, so a child that is not removed
+    /// here would be orphaned there and look fine. On SQL Server the <c>ON DELETE CASCADE</c> every
+    /// child's foreign key carries is the backstop; <c>PersonDeleteSqlServerTests</c> proves every
+    /// foreign key that references <c>People</c> cascades.
+    /// </para>
+    /// <para>
+    /// <b>CHECKLIST - every new entity with a <c>PersonId</c> adds one line here, in the same pull
+    /// request, and to <c>PersonDeleteChecklistTests</c>.</b> Always filter by <c>OwnerId</c> AND
+    /// <c>PersonId</c>.
+    /// <list type="bullet">
+    /// <item><description>[x] <c>ContactMethods</c> (#24): removed below.</description></item>
+    /// <item><description>[x] Tag links (the <c>PersonTags</c> join): <c>person.Tags.Clear()</c> deletes the join rows only. The <c>Tag</c> rows stay, and so do other people's links to them.</description></item>
+    /// <item><description>[ ] Interactions (#31) and their participants (#35): remove this person's participant rows; delete an interaction only when this person is its last participant.</description></item>
+    /// <item><description>[ ] Notes (#32).</description></item>
+    /// <item><description>[ ] Reminders (#37, #38), if they are stored as rows. The cadence (#41) is a column on <c>Person</c>.</description></item>
+    /// <item><description>[ ] Difficult moments (#43). Their status (#44) is a column.</description></item>
+    /// </list>
+    /// A table with two foreign keys to <c>People</c> cannot cascade both on SQL Server (multiple cascade
+    /// paths): make one <c>NoAction</c> and delete those rows here. Account deletion (#59) deletes every
+    /// owned table itself and does not go through this method.
+    /// </para>
+    /// </remarks>
+    private async Task RemoveDependentsAsync(string ownerId, Person person, CancellationToken cancellationToken)
+    {
+        // The join rows only (the person's tags were loaded tracked): the Tag rows are the user's
+        // and stay, as do other people's links to them.
+        person.Tags.Clear();
+
+        var contactMethods = await dbContext.ContactMethods
+            .Where(c => c.OwnerId == ownerId && c.PersonId == person.Id)
+            .ToListAsync(cancellationToken);
+        dbContext.ContactMethods.RemoveRange(contactMethods);
+    }
+
     /// <summary>
     /// Throws <see cref="PersonValidationException"/> when <paramref name="input"/> breaks a rule
     /// in <see cref="PersonProfileRules"/>. "Today" for the future-birthday rule is today in the
