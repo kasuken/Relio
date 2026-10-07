@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Relio.Application.Reminders;
 using Relio.Application.Security;
 using Relio.Data.Administration;
 using Relio.Data.Concurrency;
@@ -66,6 +67,7 @@ public class DataServiceRegistrationTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<ICurrentUser>(new FakeCurrentUser("user"));
+        services.AddSingleton<IReminderEmailSender>(new Reminders.FakeReminderEmailSender());
         services.AddIdentityCore<RelioUser>().AddRoles<IdentityRole>().AddEntityFrameworkStores<RelioDbContext>();
         var before = services.ToList();
 

@@ -10,6 +10,7 @@ using Relio.Data;
 using Relio.Data.Administration;
 using Relio.Data.DependencyInjection;
 using Relio.Data.Seeding;
+using Relio.Web.Background;
 using Relio.Web.Components;
 using Relio.Web.Components.Account;
 using Relio.Web.Identity;
@@ -70,6 +71,10 @@ builder.Services.AddScoped<ICurrentUser, AuthenticationStateCurrentUser>();
 // (never silently saving it) in the interactive TimeZoneSettings component. Sign-up (#15) itself
 // cannot use JS interop - see Components/Account/Pages/Register.razor.
 builder.Services.AddScoped<IBrowserTimeZoneReader, BrowserTimeZoneReader>();
+
+// Background reminder scheduler (epic #36, issue #39): finds and delivers due reminders per user time zone.
+builder.Services.Configure<ReminderSchedulerOptions>(builder.Configuration.GetSection(ReminderSchedulerOptions.SectionName));
+builder.Services.AddHostedService<ReminderSchedulerBackgroundService>();
 
 // "live" answers whether the process is up; "ready" also covers the database so load
 // balancers and the shared release workflow (which smoke-tests /health/ready) know when

@@ -100,6 +100,7 @@ public static class ServiceCollectionExtensions
         AddDataService<IReminderService, ReminderService>(services);
         AddDataService<INotificationPreferencesService, NotificationPreferencesService>(services);
         AddDataService<IUnsubscribeService, UnsubscribeService>(services);
+        AddDataService<IReminderSchedulerRunner, ReminderSchedulerRunner>(services);
         AddDataService<IUserTimeZoneService, UserTimeZoneService>(services);
         AddDataService<IUserProfileService, UserProfileService>(services);
         AddDataService<ITwoFactorStatusService, TwoFactorStatusService>(services);
