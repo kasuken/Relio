@@ -1,3 +1,4 @@
+using System.Globalization;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
@@ -117,6 +118,54 @@ public sealed class InteractionEditorTests
         update.Request.Description.Should().Be("A private conversation.");
         update.Request.ParticipantIds.Should().BeEquivalentTo(new[] { profilePersonId, archivedPersonId });
         update.Request.OccurredOn.Should().Be(Today.AddDays(-1));
+    }
+
+    [Fact]
+    public async Task Editing_uses_a_stable_date_format_when_host_culture_differs()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+
+            var personId = Guid.NewGuid();
+            var interactionId = Guid.NewGuid();
+            var interactions = new FakeInteractionService
+            {
+                Known =
+                {
+                    new InteractionDetails(
+                        interactionId,
+                        Today.AddDays(-1),
+                        InteractionKind.Call,
+                        "A private conversation.",
+                        DateTime.SpecifyKind(new DateTime(2026, 10, 5, 9, 0, 0), DateTimeKind.Utc),
+                        [new InteractionParticipantDetails(personId, "Ada Lovelace", false)]),
+                },
+                CandidateOptions = [Option(personId, "Ada Lovelace")],
+            };
+            await using var context = CreateContext(interactions, out _);
+            var cut = context.Render<InteractionEditor>(parameters => parameters
+                .Add(component => component.PersonId, personId)
+                .Add(component => component.InteractionId, interactionId));
+
+            cut.WaitForAssertion(() =>
+            {
+                cut.Find("[data-testid='interaction-date-field'] input")
+                    .GetAttribute("value")
+                    .Should()
+                    .Be("5 Oct 2026");
+            });
+            cut.Find("[data-testid='interaction-date-field'] input").Blur();
+            cut.Find("[data-testid='interaction-save']").Click();
+
+            cut.WaitForAssertion(() => interactions.Updated.Should().ContainSingle());
+            interactions.Updated.Single().Request.OccurredOn.Should().Be(Today.AddDays(-1));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
     }
 
     [Fact]

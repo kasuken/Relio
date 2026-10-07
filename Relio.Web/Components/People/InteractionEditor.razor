@@ -1,3 +1,4 @@
+@using System.Globalization
 @using Relio.Application.Interactions
 @using Relio.Application.Ownership
 @using Relio.Application.Time
@@ -46,6 +47,7 @@
 
         <div class="rl-form-field" data-testid="interaction-date-field">
             <MudDatePicker @bind-Date="_occurredOn"
+                           Culture="@CultureInfo.InvariantCulture"
                            Label="Date"
                            Variant="Variant.Outlined"
                            PickerVariant="PickerVariant.Dialog"
