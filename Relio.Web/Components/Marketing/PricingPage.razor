@@ -1,0 +1,57 @@
+@page "/pricing"
+@attribute [MarketingPage]
+@layout MarketingLayout
+
+<SeoHeadContent Title="Hosting and pricing"
+                Description="Choose this Relio instance or run your own. Learn about self-hosting requirements, optional mail delivery and the current availability of hosted billing."
+                CanonicalPath="/pricing" />
+
+<header>
+    <p class="rl-marketing-eyebrow">Choose where Relio runs</p>
+    <h1>Hosting choices</h1>
+    <p class="rl-marketing-lead">Use an existing instance, or take responsibility for your own notebook's home.</p>
+</header>
+
+<section class="rl-marketing-section" aria-labelledby="instance-heading">
+    <h2 id="instance-heading">Use this instance</h2>
+    <p>You are viewing an instance of Relio. Its operator decides who can register and is responsible
+        for hosting, mail delivery, backups and any published policies. Sign in if you already have an
+        account, or create one when registration is available.</p>
+    <MarketingStartLink ShowSignIn="true" />
+    <p>No commercial offers are published here. Hosted billing and approved plan information are
+        not implemented yet; enabling a provider setting alone does not make a paid service available.</p>
+    <RelioPolicyLinks AriaLabel="Available policies for this instance" />
+</section>
+
+<section id="self-hosting" class="rl-marketing-section" aria-labelledby="self-hosting-heading">
+    <h2 id="self-hosting-heading">Run your own instance</h2>
+    <p>Relio's source is available under the AGPL. The same relationship features run without a
+        billing provider or hosted product metrics. No paid entitlement is required by the current app.</p>
+    <p>You will need .NET 10, SQL Server, HTTPS, and durable externally stored Data Protection keys
+        protected by a certificate or the supported Windows protection mode.
+        Keep the database, keys and required decryption material backed up together.</p>
+    <p>Apply migrations before a production upgrade. Configure SMTP only if you want confirmation,
+        password-reset and reminder emails. Without it, the dashboard still works, but
+        email-based password recovery is unavailable.</p>
+    <p>The dedicated self-hosting deployment guide is planned. Use the existing
+        <a href="https://github.com/kasuken/Relio/blob/main/README.md#getting-started">setup instructions</a>
+        and <a href="https://github.com/kasuken/Relio/blob/main/docs/security/data-protection.md">protected-key guidance</a>
+        before running an instance. <a href="https://github.com/kasuken/Relio/blob/main/LICENSE">Read the AGPL license</a>
+        for your source-availability obligations.</p>
+</section>
+
+<section class="rl-marketing-section rl-marketing-faq" aria-labelledby="hosting-faq-heading">
+    <h2 id="hosting-faq-heading">Hosting questions</h2>
+    <details><summary>Can I use Relio without hosted services?</summary><p>Yes. The relationship workspace
+        does not need billing or analytics. Optional hosted product metrics are off by default,
+        and there are no browser tracking scripts.</p></details>
+    <details><summary>Who can create an account?</summary><p>The operator chooses Open, InviteOnly or Closed
+        registration. A fresh instance always allows its first account so it can get an administrator.
+        Invitation-only instances need an invitation link after that first account.</p></details>
+    <details><summary>Is mail delivery required?</summary><p>No. With Email:Provider=None, the app sends no
+        email. Configure SMTP to enable account confirmation, password-reset links and optional reminder
+        emails, then review the instance's delivery and privacy responsibilities.</p></details>
+    <details><summary>Can I move my notebook later?</summary><p>Export full JSON from Settings and restore it
+        into a fresh account. Contact-only vCard export is also available. Neither export contains your
+        password or authentication secrets. Backups and their retention remain the operator's responsibility.</p></details>
+</section>

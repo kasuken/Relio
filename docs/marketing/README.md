@@ -31,3 +31,13 @@ To regenerate the social preview and thread image, install Pillow, fonttools and
 development-only Python environment and run `python docs/marketing/generate-preview.py`.
 The generator reads the design tokens and the app's self-hosted font files; nothing is downloaded
 by the published site. The social preview is 1200 × 630; the thread illustration is 960 × 680.
+
+## Hosting and pricing
+
+`/pricing` is information-only until #67 delivers a shared billing/approved-offer contract.
+`Billing:Provider=None` is the documented default. No provider setting, plan name, price or limit
+is interpreted by the current page, even if an operator supplies prospective billing settings.
+There is no payment integration, commercial offer schema or second entitlement model. Adding
+paid offers requires #67's actual service contract and approved commercial values, not a marketing
+configuration override. Self-hosting links point to the existing setup and protected-key
+documentation; the dedicated deployment guide remains #65's planned work.
