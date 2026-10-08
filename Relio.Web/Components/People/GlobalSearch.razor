@@ -1,0 +1,58 @@
+@using Relio.Application.People
+@inject IPeopleService PeopleService
+@inject NavigationManager Navigation
+
+<div class="rl-global-search d-none d-sm-flex" data-testid="global-search">
+    <MudAutocomplete T="PersonSearchResult"
+                     Placeholder="Search people..."
+                     SearchFunc="SearchPeopleAsync"
+                     ToStringFunc="@(p => p?.DisplayName ?? string.Empty)"
+                     ValueChanged="OnPersonSelected"
+                     Clearable="true"
+                     Dense="true"
+                     Margin="Margin.Dense"
+                     Variant="Variant.Outlined"
+                     Adornment="Adornment.Start"
+                     AdornmentIcon="@Icons.Material.Outlined.Search"
+                     DebounceInterval="250"
+                     MaxItems="10"
+                     data-testid="global-search-autocomplete">
+        <ItemTemplate>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudAvatar Size="Size.Small" Class="@(context.IsArchived ? "rl-avatar rl-avatar-archived" : "rl-avatar")">
+                    @PersonInitials.For(context.FirstName, context.LastName)
+                </MudAvatar>
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.body2">@context.DisplayName</MudText>
+                    @if (context.RelationshipTypeName is not null)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.RelationshipTypeName</MudText>
+                    }
+                </MudStack>
+            </MudStack>
+        </ItemTemplate>
+        <NoItemsTemplate>
+            <MudText Typo="Typo.body2" Class="pa-2 rl-meta">No people found</MudText>
+        </NoItemsTemplate>
+    </MudAutocomplete>
+</div>
+
+@code {
+    private async Task<IEnumerable<PersonSearchResult>> SearchPeopleAsync(string value, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        return await PeopleService.SearchAsync(value, limit: 10, includeArchived: false, cancellationToken: cancellationToken);
+    }
+
+    private void OnPersonSelected(PersonSearchResult? person)
+    {
+        if (person is not null)
+        {
+            Navigation.NavigateTo($"/people/{person.Id}");
+        }
+    }
+}

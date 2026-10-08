@@ -271,6 +271,13 @@ internal static class ServiceCoverageCatalog
                 Scenario<PeopleListSqlServerTests>(
                     nameof(PeopleListSqlServerTests.ListPageAsync_translates_every_sort),
                     SqlIsolationEvidence.OwnerOperation)),
+            Method(nameof(IPeopleService.SearchAsync),
+                Scenario<PeopleServiceSqlServerOwnershipTests>(
+                    nameof(PeopleServiceSqlServerOwnershipTests.SearchAsync_only_returns_the_current_users_people),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.OwnerOperation),
+                Scenario<PeopleServiceSqlServerOwnershipTests>(
+                    nameof(PeopleServiceSqlServerOwnershipTests.SearchAsync_excludes_archived_people_by_default),
+                    SqlIsolationEvidence.ArchiveRule)),
             Method(nameof(IPeopleService.FindPossibleDuplicatesAsync),
                 Scenario<PossibleDuplicateSqlServerTests>(
                     nameof(PossibleDuplicateSqlServerTests.FindPossibleDuplicatesAsync_never_matches_another_owners_people),

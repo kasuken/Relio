@@ -98,6 +98,33 @@ public class PeopleServiceOwnershipTests
     }
 
     [Fact]
+    public async Task SearchAsync_only_returns_the_current_users_people()
+    {
+        await using var dbContext = CreateDbContext();
+        await CreatePersonAsync(dbContext, UserA, "Alice");
+        await CreatePersonAsync(dbContext, UserB, "Alice");
+
+        var resultsForUserA = await CreateService(dbContext, UserA).SearchAsync("Alice");
+        resultsForUserA.Should().ContainSingle();
+
+        var resultsForUserB = await CreateService(dbContext, UserB).SearchAsync("Alice");
+        resultsForUserB.Should().ContainSingle();
+
+        resultsForUserA[0].Id.Should().NotBe(resultsForUserB[0].Id);
+    }
+
+    [Fact]
+    public async Task SearchAsync_without_an_authenticated_user_throws()
+    {
+        await using var dbContext = CreateDbContext();
+        var service = CreateService(dbContext, userId: null);
+
+        var act = () => service.SearchAsync("Alice");
+
+        await act.Should().ThrowAsync<UnauthenticatedUserException>();
+    }
+
+    [Fact]
     public async Task ListAsync_excludes_archived_people_by_default()
     {
         await using var dbContext = CreateDbContext();

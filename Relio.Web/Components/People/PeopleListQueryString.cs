@@ -33,6 +33,15 @@ public static class PeopleListQueryString
     /// <summary>The query parameter that holds the 1-based page number.</summary>
     public const string PageParameter = "page";
 
+    /// <summary>The query parameter that holds the search query.</summary>
+    public const string SearchParameter = "q";
+
+    /// <summary>The query parameter that holds tag filter values.</summary>
+    public const string TagParameter = "tag";
+
+    /// <summary>The query parameter that holds relationship type filter values.</summary>
+    public const string TypeParameter = "type";
+
     private const string PeopleRoute = "/people";
     private const string NameToken = "name";
     private const string RecentlyAddedToken = "added";
@@ -40,25 +49,51 @@ public static class PeopleListQueryString
     private const string TrueToken = "true";
 
     /// <summary>
-    /// Reads the three raw query values - each may be missing or garbage - into a query. The page
-    /// size is not part of the address: it is always <see cref="PeopleListQuery.DefaultPageSize"/>.
+    /// Reads the raw query values into a query.
     /// </summary>
-    public static PeopleListQuery Parse(string? sort, string? archived, string? page) => new()
+    public static PeopleListQuery Parse(
+        string? sort,
+        string? archived,
+        string? page,
+        string? q = null,
+        IEnumerable<string>? tags = null,
+        IEnumerable<string>? types = null) => new()
     {
         Sort = ParseSort(sort),
         IncludeArchived = string.Equals(archived, TrueToken, StringComparison.OrdinalIgnoreCase),
         Page = ParsePage(page),
+        SearchTerm = string.IsNullOrWhiteSpace(q) ? null : q.Trim(),
+        Tags = ParseFilterValues(tags),
+        RelationshipTypes = ParseFilterValues(types),
     };
 
     /// <summary>
+    /// Overload taking single string filter values (comma-separated or single value).
+    /// </summary>
+    public static PeopleListQuery Parse(
+        string? sort,
+        string? archived,
+        string? page,
+        string? q,
+        string? tag,
+        string? type) =>
+        Parse(
+            sort,
+            archived,
+            page,
+            q,
+            tag is null ? null : [tag],
+            type is null ? null : [type]);
+
+    /// <summary>
     /// The address of <paramref name="query"/>: <c>/people</c> for the defaults, otherwise only the
-    /// parameters that differ from them, in the fixed order sort, archived, page.
+    /// parameters that differ from them, in the fixed order sort, archived, page, search, tags, types.
     /// </summary>
     public static string ToRelativeUri(PeopleListQuery query)
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        var parameters = new List<string>(3);
+        var parameters = new List<string>(6);
         if (query.Sort != PeopleSort.Name)
         {
             parameters.Add($"{SortParameter}={ToToken(query.Sort)}");
@@ -72,6 +107,27 @@ public static class PeopleListQueryString
         if (query.Page > 1)
         {
             parameters.Add($"{PageParameter}={query.Page.ToString(CultureInfo.InvariantCulture)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.SearchTerm))
+        {
+            parameters.Add($"{SearchParameter}={Uri.EscapeDataString(query.SearchTerm.Trim())}");
+        }
+
+        foreach (var tag in query.Tags)
+        {
+            if (!string.IsNullOrWhiteSpace(tag))
+            {
+                parameters.Add($"{TagParameter}={Uri.EscapeDataString(tag.Trim())}");
+            }
+        }
+
+        foreach (var type in query.RelationshipTypes)
+        {
+            if (!string.IsNullOrWhiteSpace(type))
+            {
+                parameters.Add($"{TypeParameter}={Uri.EscapeDataString(type.Trim())}");
+            }
         }
 
         return parameters.Count == 0 ? PeopleRoute : $"{PeopleRoute}?{string.Join('&', parameters)}";
@@ -95,4 +151,31 @@ public static class PeopleListQueryString
     // fails the parse too, which falls back to page 1 like any other garbage.
     private static int ParsePage(string? page) =>
         int.TryParse(page, NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number >= 1 ? number : 1;
+
+    private static IReadOnlyList<string> ParseFilterValues(IEnumerable<string>? values)
+    {
+        if (values is null)
+        {
+            return [];
+        }
+
+        var result = new List<string>();
+        foreach (var v in values)
+        {
+            if (string.IsNullOrWhiteSpace(v))
+            {
+                continue;
+            }
+
+            foreach (var part in v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (!string.IsNullOrWhiteSpace(part) && !result.Contains(part, StringComparer.OrdinalIgnoreCase))
+                {
+                    result.Add(part);
+                }
+            }
+        }
+
+        return result;
+    }
 }

@@ -73,6 +73,7 @@ public sealed class PersonConfiguration : IEntityTypeConfiguration<Person>
         builder.HasIndex(p => new { p.OwnerId, p.IsArchived, p.FirstName, p.LastName });
         builder.HasIndex(p => new { p.OwnerId, p.IsArchived, p.CreatedAtUtc });
         builder.HasIndex(p => new { p.OwnerId, p.IsArchived, p.LastContactedOn });
+        builder.HasIndex(p => new { p.OwnerId, p.IsArchived, p.Nickname });
 
         builder.HasMany(p => p.Tags)
             .WithMany(t => t.People)

@@ -16,17 +16,27 @@ public class PeoplePageTests
     private static readonly DateOnly Today = new(2026, 10, 6);
 
     // See ConfirmDialogTests for why the context is created per test with "await using".
-    private static BunitContext CreateContext(FakePeopleService people, out IRenderedComponent<MudPopoverProvider> popovers)
+    private static BunitContext CreateContext(
+        FakePeopleService people,
+        FakeRelationshipTypeService? types,
+        FakeTagService? tags,
+        out IRenderedComponent<MudPopoverProvider> popovers)
     {
         var context = new BunitContext();
         context.UseMudBlazor();
         context.Services.AddSingleton<IPeopleService>(people);
+        context.Services.AddSingleton<ITagService>(tags ?? new FakeTagService());
+        context.Services.AddSingleton<IRelationshipTypeService>(types ?? new FakeRelationshipTypeService());
         context.Services.AddSingleton<IUserTimeZoneService>(new FakeUserTimeZoneService("UTC", Today));
         popovers = context.Render<MudPopoverProvider>();
         return context;
     }
 
-    private static BunitContext CreateContext(FakePeopleService people) => CreateContext(people, out _);
+    private static BunitContext CreateContext(FakePeopleService people, out IRenderedComponent<MudPopoverProvider> popovers) =>
+        CreateContext(people, null, null, out popovers);
+
+    private static BunitContext CreateContext(FakePeopleService people) =>
+        CreateContext(people, null, null, out _);
 
     /// <summary>Renders the page at <c>/people</c> plus <paramref name="queryString"/>, as the router would.</summary>
     private static IRenderedComponent<PeoplePage> RenderAt(BunitContext context, string queryString = "")
@@ -354,5 +364,79 @@ public class PeoplePageTests
         var count = cut.Find("[data-testid='people-count']");
         count.GetAttribute("role").Should().Be("status");
         count.TextContent.Should().Be("1 person");
+    }
+
+    [Fact]
+    public async Task Searching_by_name_navigates_with_search_term_and_resets_page()
+    {
+        var people = new FakePeopleService { ListPageResult = Result([Item("Ada")], 1, 0) };
+        await using var context = CreateContext(people);
+        var cut = RenderAt(context, "?page=2");
+
+        var searchField = cut.FindComponent<MudTextField<string>>();
+        await cut.InvokeAsync(() => searchField.Instance.ValueChanged.InvokeAsync("Ada"));
+
+        CurrentPath(context).Should().Be("/people?q=Ada");
+    }
+
+    [Fact]
+    public async Task Reads_search_and_filter_parameters_from_query_string()
+    {
+        var people = new FakePeopleService { ListPageResult = Result([Item("Ada")], 1, 0) };
+        await using var context = CreateContext(people);
+
+        RenderAt(context, "?q=Ada&tag=Colleague&type=Friend");
+
+        people.ListPageQueries.Should().ContainSingle().Which.Should().Be(new PeopleListQuery
+        {
+            SearchTerm = "Ada",
+            Tags = ["Colleague"],
+            RelationshipTypes = ["Friend"],
+            Page = 1,
+        });
+    }
+
+    [Fact]
+    public async Task When_filters_match_no_one_shows_no_matches_empty_state_and_offers_clear_filters()
+    {
+        var people = new FakePeopleService
+        {
+            ListPageResult = query => query.HasFilters
+                ? new PeopleListResult(new PagedResult<PersonListItem>([], 1, 50, 0), 2, 0)
+                : new PeopleListResult(new PagedResult<PersonListItem>([Item("Ada"), Item("Sam")], 1, 50, 2), 2, 0),
+        };
+        await using var context = CreateContext(people);
+        var cut = RenderAt(context, "?q=Nonexistent");
+
+        cut.Find("[data-testid='people-no-matches'] h2").TextContent.Should().Be("No people found");
+        cut.Find("[data-testid='people-no-matches'] p").TextContent.Should().Contain("Try clearing your search or filters");
+        cut.FindAll("[data-testid='people-list']").Should().BeEmpty();
+
+        cut.Find("[data-testid='people-no-matches'] button").Click();
+        CurrentPath(context).Should().Be("/people");
+    }
+
+    [Fact]
+    public async Task Clear_filters_button_in_toolbar_resets_filters()
+    {
+        var people = new FakePeopleService { ListPageResult = Result([Item("Ada")], 2, 0, total: 1) };
+        await using var context = CreateContext(people);
+        var cut = RenderAt(context, "?q=Ada&tag=Work");
+
+        var clearBtn = cut.Find("[data-testid='people-clear-filters']");
+        clearBtn.TextContent.Should().Contain("Clear filters");
+
+        clearBtn.Click();
+        CurrentPath(context).Should().Be("/people");
+    }
+
+    [Fact]
+    public async Task Count_displays_matching_people_when_filters_are_active()
+    {
+        var people = new FakePeopleService { ListPageResult = Result([Item("Ada")], 5, 0, total: 1) };
+        await using var context = CreateContext(people);
+        var cut = RenderAt(context, "?q=Ada");
+
+        cut.Find("[data-testid='people-count']").TextContent.Should().Be("1 person found");
     }
 }

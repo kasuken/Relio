@@ -80,6 +80,40 @@ public sealed class PeopleServiceSqlServerOwnershipTests(SqlServerDatabaseFixtur
     }
 
     [SqlServerFact]
+    public async Task SearchAsync_only_returns_the_current_users_people()
+    {
+        await using var dbContext = fixture.CreateDbContext();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        var ownerB = await TestDataFactory.CreateOwnerAsync(fixture);
+        await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
+        await TestDataFactory.CreatePersonAsync(dbContext, ownerB, "Alice");
+
+        var resultsA = await TestDataFactory.CreateService(dbContext, ownerA).SearchAsync("Alice");
+        resultsA.Should().ContainSingle();
+
+        var resultsB = await TestDataFactory.CreateService(dbContext, ownerB).SearchAsync("Alice");
+        resultsB.Should().ContainSingle();
+
+        resultsA[0].Id.Should().NotBe(resultsB[0].Id);
+    }
+
+    [SqlServerFact]
+    public async Task SearchAsync_excludes_archived_people_by_default()
+    {
+        await using var dbContext = fixture.CreateDbContext();
+        var ownerA = await TestDataFactory.CreateOwnerAsync(fixture);
+        await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Alice");
+        await TestDataFactory.CreatePersonAsync(dbContext, ownerA, "Ann", isArchived: true);
+
+        var service = TestDataFactory.CreateService(dbContext, ownerA);
+        var results = await service.SearchAsync("A");
+        results.Select(p => p.FirstName).Should().Equal("Alice");
+
+        var resultsWithArchived = await service.SearchAsync("A", includeArchived: true);
+        resultsWithArchived.Select(p => p.FirstName).Should().Equal("Alice", "Ann");
+    }
+
+    [SqlServerFact]
     public async Task ListAsync_excludes_archived_people_by_default()
     {
         await using var dbContext = fixture.CreateDbContext();

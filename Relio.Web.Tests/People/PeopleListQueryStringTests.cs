@@ -110,4 +110,78 @@ public class PeopleListQueryStringTests
             values[PeopleListQueryString.ArchivedParameter],
             values[PeopleListQueryString.PageParameter]).Should().Be(query);
     }
+
+    [Fact]
+    public void Parse_reads_search_tags_and_relationship_types()
+    {
+        var query = PeopleListQueryString.Parse(
+            "added",
+            "true",
+            "2",
+            "Ada",
+            ["Family", "Friends"],
+            ["Colleague"]);
+
+        query.Sort.Should().Be(PeopleSort.RecentlyAdded);
+        query.IncludeArchived.Should().BeTrue();
+        query.Page.Should().Be(2);
+        query.SearchTerm.Should().Be("Ada");
+        query.Tags.Should().Equal("Family", "Friends");
+        query.RelationshipTypes.Should().Equal("Colleague");
+    }
+
+    [Fact]
+    public void Parse_handles_comma_separated_tags_and_types()
+    {
+        var query = PeopleListQueryString.Parse(
+            null,
+            null,
+            null,
+            "  Lovelace  ",
+            tag: "Family, Friends, Family",
+            type: "Colleague, Mentor");
+
+        query.SearchTerm.Should().Be("Lovelace");
+        query.Tags.Should().Equal("Family", "Friends");
+        query.RelationshipTypes.Should().Equal("Colleague", "Mentor");
+    }
+
+    [Fact]
+    public void ToRelativeUri_includes_search_tags_and_relationship_types()
+    {
+        var query = new PeopleListQuery
+        {
+            SearchTerm = "Ada",
+            Tags = ["Family", "Close Friends"],
+            RelationshipTypes = ["Colleague"],
+        };
+
+        var uri = PeopleListQueryString.ToRelativeUri(query);
+        uri.Should().Be("/people?q=Ada&tag=Family&tag=Close%20Friends&type=Colleague");
+    }
+
+    [Fact]
+    public void Parse_and_ToRelativeUri_round_trip_with_filters()
+    {
+        var query = new PeopleListQuery
+        {
+            Sort = PeopleSort.LastContacted,
+            IncludeArchived = true,
+            Page = 2,
+            SearchTerm = "Grace",
+            Tags = ["Tech", "History"],
+            RelationshipTypes = ["Friend"],
+        };
+
+        var uri = new Uri("http://localhost" + PeopleListQueryString.ToRelativeUri(query));
+        var values = System.Web.HttpUtility.ParseQueryString(uri.Query);
+
+        PeopleListQueryString.Parse(
+            values[PeopleListQueryString.SortParameter],
+            values[PeopleListQueryString.ArchivedParameter],
+            values[PeopleListQueryString.PageParameter],
+            values[PeopleListQueryString.SearchParameter],
+            values.GetValues(PeopleListQueryString.TagParameter),
+            values.GetValues(PeopleListQueryString.TypeParameter)).Should().Be(query);
+    }
 }

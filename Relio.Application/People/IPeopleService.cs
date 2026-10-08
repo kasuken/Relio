@@ -45,8 +45,15 @@ public interface IPeopleService
     /// <see cref="PeopleListQuery.Sort"/> is not a defined <see cref="PeopleSort"/>. Thrown before
     /// anything is read.
     /// </exception>
-    /// <exception cref="Relio.Application.Security.UnauthenticatedUserException">Nobody is signed in.</exception>
     Task<PeopleListResult> ListPageAsync(PeopleListQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Searches the current user's people by first name, last name or nickname.
+    /// Excludes archived people by default unless <paramref name="includeArchived"/> is <see langword="true"/>.
+    /// Returns matching results ordered by name, up to <paramref name="limit"/> entries.
+    /// </summary>
+    /// <exception cref="Relio.Application.Security.UnauthenticatedUserException">Nobody is signed in.</exception>
+    Task<IReadOnlyList<PersonSearchResult>> SearchAsync(string query, int limit = 10, bool includeArchived = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Finds up to <see cref="PossibleDuplicateMatcher.MaxResults"/> of the current user's people who

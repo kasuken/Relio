@@ -121,9 +121,6 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
             return new PeopleListResult(new PagedResult<PersonListItem>([], 1, pageSize, 0), activeCount, archivedCount);
         }
 
-        var pageCount = (total + pageSize - 1) / pageSize;
-        var page = Math.Clamp(query.Page, 1, pageCount);
-
         var people = dbContext.People
             .AsNoTracking()
             .Where(p => p.OwnerId == ownerId);
@@ -131,6 +128,59 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
         {
             people = people.Where(p => !p.IsArchived);
         }
+
+        if (!string.IsNullOrWhiteSpace(query.SearchTerm))
+        {
+            var searchTokens = query.SearchTerm.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var token in searchTokens)
+            {
+                var pattern = $"%{token}%";
+                people = people.Where(p =>
+                    EF.Functions.Like(p.FirstName, pattern) ||
+                    (p.LastName != null && EF.Functions.Like(p.LastName, pattern)) ||
+                    (p.Nickname != null && EF.Functions.Like(p.Nickname, pattern)));
+            }
+        }
+
+        if (query.RelationshipTypes.Count > 0)
+        {
+            var relTypeGuids = query.RelationshipTypes
+                .Where(t => Guid.TryParse(t, out _))
+                .Select(Guid.Parse)
+                .ToList();
+            var relTypeNames = query.RelationshipTypes
+                .Where(t => !Guid.TryParse(t, out _))
+                .ToList();
+
+            people = people.Where(p => p.RelationshipType != null &&
+                (relTypeGuids.Contains(p.RelationshipType.Id) || relTypeNames.Contains(p.RelationshipType.Name)));
+        }
+
+        if (query.Tags.Count > 0)
+        {
+            var tagGuids = query.Tags
+                .Where(t => Guid.TryParse(t, out _))
+                .Select(Guid.Parse)
+                .ToList();
+            var tagNames = query.Tags
+                .Where(t => !Guid.TryParse(t, out _))
+                .ToList();
+
+            people = people.Where(p => p.Tags.Any(t =>
+                tagGuids.Contains(t.Id) || tagNames.Contains(t.Name)));
+        }
+
+        if (query.HasFilters)
+        {
+            total = await people.CountAsync(cancellationToken);
+            if (total == 0)
+            {
+                return new PeopleListResult(new PagedResult<PersonListItem>([], 1, pageSize, 0), activeCount, archivedCount);
+            }
+        }
+
+        var pageCount = (total + pageSize - 1) / pageSize;
+        var page = Math.Clamp(query.Page, 1, pageCount);
 
         var ordered = query.Sort switch
         {
@@ -164,6 +214,55 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
             .ToListAsync(cancellationToken);
 
         return new PeopleListResult(new PagedResult<PersonListItem>(items, page, pageSize, total), activeCount, archivedCount);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PersonSearchResult>> SearchAsync(
+        string query,
+        int limit = 10,
+        bool includeArchived = false,
+        CancellationToken cancellationToken = default)
+    {
+        var ownerId = currentUser.RequireUserId();
+        var trimmed = query?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return [];
+        }
+
+        var maxLimit = Math.Clamp(limit, 1, 50);
+
+        var people = dbContext.People
+            .AsNoTracking()
+            .Where(p => p.OwnerId == ownerId);
+
+        if (!includeArchived)
+        {
+            people = people.Where(p => !p.IsArchived);
+        }
+
+        var searchTokens = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var token in searchTokens)
+        {
+            var pattern = $"%{token}%";
+            people = people.Where(p =>
+                EF.Functions.Like(p.FirstName, pattern) ||
+                (p.LastName != null && EF.Functions.Like(p.LastName, pattern)) ||
+                (p.Nickname != null && EF.Functions.Like(p.Nickname, pattern)));
+        }
+
+        return await people
+            .OrderBy(p => p.FirstName)
+            .ThenBy(p => p.LastName)
+            .ThenBy(p => p.Id)
+            .Take(maxLimit)
+            .Select(p => new PersonSearchResult(
+                p.Id,
+                p.FirstName,
+                p.LastName,
+                p.RelationshipType != null ? p.RelationshipType.Name : null,
+                p.IsArchived))
+            .ToListAsync(cancellationToken);
     }
 
     /// <inheritdoc />
