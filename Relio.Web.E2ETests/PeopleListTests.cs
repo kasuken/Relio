@@ -207,6 +207,96 @@ public class PeopleListTests(RelioAppFixture fixture)
         await RelioAppFixture.ClosePageAsync(pageB);
     }
 
+    [Fact]
+    public async Task Searching_by_name_updates_results_in_real_time()
+    {
+        var page = await fixture.NewPageAsync();
+        var ownerId = await RegisterFreshUserAsync(page, "search-e2e");
+        await PeopleTestHelpers.SeedPeopleAsync(
+            fixture.App,
+            ownerId,
+            new SeedPerson("Ada", "Lovelace"),
+            new SeedPerson("Grace", "Hopper"),
+            new SeedPerson("Katherine", "Johnson"));
+
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/people");
+        await Expect(Count(page)).ToHaveTextAsync("3 people");
+        await Expect(Names(page)).ToHaveCountAsync(3);
+
+        var searchInput = page.Locator("[data-testid='people-search-input']");
+        await searchInput.FillAsync("Ada");
+
+        await Expect(page).ToHaveURLAsync(new Regex(@"/people\?q=Ada$"));
+        await Expect(Names(page)).ToHaveCountAsync(1);
+        await Expect(Names(page)).ToHaveTextAsync(["Ada Lovelace"]);
+        await Expect(Count(page)).ToHaveTextAsync("1 person found");
+
+        await searchInput.FillAsync("Grace");
+        await Expect(page).ToHaveURLAsync(new Regex(@"/people\?q=Grace$"));
+        await Expect(Names(page)).ToHaveCountAsync(1);
+        await Expect(Names(page)).ToHaveTextAsync(["Grace Hopper"]);
+
+        await page.Locator("[data-testid='people-clear-filters']").ClickAsync();
+        await Expect(page).ToHaveURLAsync(new Regex(@"/people$"));
+        await Expect(Names(page)).ToHaveCountAsync(3);
+
+        await RelioAppFixture.ClosePageAsync(page);
+    }
+
+    [Fact]
+    public async Task Filtering_by_tag_shows_only_matching_people_and_survives_reload()
+    {
+        var page = await fixture.NewPageAsync();
+        var ownerId = await RegisterFreshUserAsync(page, "filter-e2e");
+        await PeopleTestHelpers.CreatePersonAsync(
+            fixture.App,
+            ownerId,
+            new CreatePersonRequest { FirstName = "Ada", NewTagNames = ["Tech", "Math"] });
+        await PeopleTestHelpers.CreatePersonAsync(
+            fixture.App,
+            ownerId,
+            new CreatePersonRequest { FirstName = "Sam", NewTagNames = ["Math"] });
+        await PeopleTestHelpers.CreatePersonAsync(
+            fixture.App,
+            ownerId,
+            new CreatePersonRequest { FirstName = "Charlie" });
+
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/people?tag=Tech");
+        await Expect(Names(page)).ToHaveCountAsync(1);
+        await Expect(Names(page)).ToHaveTextAsync(["Ada"]);
+
+        await page.ReloadAsync();
+        await page.Locator("html[data-app-ready='true']").WaitForAsync();
+        await Expect(Names(page)).ToHaveCountAsync(1);
+        await Expect(Names(page)).ToHaveTextAsync(["Ada"]);
+
+        await RelioAppFixture.ClosePageAsync(page);
+    }
+
+    [Fact]
+    public async Task Global_search_in_appbar_finds_person_and_navigates_to_profile()
+    {
+        var page = await fixture.NewPageAsync();
+        var ownerId = await RegisterFreshUserAsync(page, "globalsearch-e2e");
+        var personId = await PeopleTestHelpers.CreatePersonAsync(
+            fixture.App,
+            ownerId,
+            new CreatePersonRequest { FirstName = "Margaret", LastName = "Hamilton" });
+
+        await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/people");
+
+        var globalInput = page.Locator("[data-testid='global-search'] input");
+        await globalInput.FillAsync("Margaret");
+
+        var item = page.Locator(".mud-popover-open .mud-list-item", new() { HasText = "Margaret Hamilton" });
+        await item.WaitForAsync();
+        await item.ClickAsync();
+
+        await Expect(page).ToHaveURLAsync(new Regex($@"/people/{personId}$"));
+
+        await RelioAppFixture.ClosePageAsync(page);
+    }
+
     private static async Task AssertNoHorizontalScrollAsync(IPage page)
     {
         var overflows = await page.EvaluateAsync<bool>(

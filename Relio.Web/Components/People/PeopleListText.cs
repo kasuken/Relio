@@ -62,6 +62,12 @@ public static class PeopleListText
         return $"{People(total)}, {archived} archived";
     }
 
+    /// <summary>
+    /// The count line above the list when search or filters are active ("1 person found", "5 people found").
+    /// </summary>
+    public static string MatchingCount(int total) =>
+        total == 1 ? "1 person found" : $"{total.ToString("N0", CultureInfo.InvariantCulture)} people found";
+
     private static string People(int count) =>
         count == 1 ? "1 person" : $"{count.ToString("N0", CultureInfo.InvariantCulture)} people";
 }

@@ -1,14 +1,17 @@
 @page "/people"
 @using Relio.Application.People
 @using Relio.Application.Time
+@using Relio.Domain
 @inject IPeopleService PeopleService
+@inject ITagService TagService
+@inject IRelationshipTypeService RelationshipTypeService
 @inject IUserTimeZoneService TimeZoneService
 @inject NavigationManager Navigation
 
 <PageTitle>People - Relio</PageTitle>
 
 @* Nothing is rendered until the first load has finished: a flash of "No one here yet" for someone
-   who has people would be wrong, and the load is quick. The view (sort, archived, page) lives in the
+   who has people would be wrong, and the load is quick. The view (sort, archived, page, filters) lives in the
    address - see PeopleListQueryString - so every control below only navigates, and the list reloads
    because the address changed. *@
 @if (_result is not null)
@@ -57,6 +60,53 @@
         </div>
 
         <div class="rl-people-toolbar" data-testid="people-toolbar">
+            <div class="rl-people-search" data-testid="people-search">
+                <MudTextField T="string"
+                              Value="_searchTerm"
+                              ValueChanged="OnSearchChanged"
+                              Placeholder="Search by name or nickname..."
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Clearable="true"
+                              Immediate="true"
+                              DebounceInterval="300"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Outlined.Search"
+                              aria-label="Search people"
+                              data-testid="people-search-input" />
+            </div>
+            <div class="rl-people-filter" data-testid="people-filter-tags">
+                <MudSelect T="string"
+                           MultiSelection="true"
+                           SelectedValues="_selectedTags"
+                           SelectedValuesChanged="OnTagsChanged"
+                           Label="Filter by tag"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Clearable="true"
+                           data-testid="people-filter-tags-select">
+                    @foreach (var tag in _availableTags)
+                    {
+                        <MudSelectItem T="string" Value="@tag.Name">@tag.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+            <div class="rl-people-filter" data-testid="people-filter-types">
+                <MudSelect T="string"
+                           MultiSelection="true"
+                           SelectedValues="_selectedTypes"
+                           SelectedValuesChanged="OnTypesChanged"
+                           Label="Filter by relationship"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Clearable="true"
+                           data-testid="people-filter-types-select">
+                    @foreach (var type in _availableRelationshipTypes)
+                    {
+                        <MudSelectItem T="string" Value="@type.Name">@type.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
             <div class="rl-people-sort" data-testid="people-sort">
                 <MudSelect T="PeopleSort"
                            Value="_shown.Sort"
@@ -78,9 +128,29 @@
                            Label="Show archived"
                            Color="Color.Primary" />
             </div>
+            @if (_shown.HasFilters)
+            {
+                <MudButton Variant="Variant.Text"
+                           Color="Color.Default"
+                           StartIcon="@Icons.Material.Outlined.Clear"
+                           OnClick="ClearFilters"
+                           data-testid="people-clear-filters">
+                    Clear filters
+                </MudButton>
+            }
         </div>
 
-        @if (_result.People.Items.Count == 0 && !_shown.IncludeArchived)
+        @if (_result.People.Items.Count == 0 && _shown.HasFilters)
+        {
+            <div data-testid="people-no-matches">
+                <EmptyState HeadingTag="h2"
+                            Title="No people found"
+                            Message="Try clearing your search or filters to see more people."
+                            ActionLabel="Clear filters"
+                            OnAction="ClearFilters" />
+            </div>
+        }
+        else if (_result.People.Items.Count == 0 && !_shown.IncludeArchived)
         {
             @* Everyone is archived: the default view has no one in it, and the way out is the switch. *@
             <div data-testid="people-all-archived">
@@ -93,7 +163,7 @@
         }
         else
         {
-            <p class="rl-meta" role="status" data-testid="people-count">@PeopleListText.Count(_result, _shown.IncludeArchived)</p>
+            <p class="rl-meta" role="status" data-testid="people-count">@(_shown.HasFilters ? PeopleListText.MatchingCount(_result.People.TotalCount) : PeopleListText.Count(_result, _shown.IncludeArchived))</p>
 
             <ul class="rl-person-list" data-testid="people-list">
                 @foreach (var person in _result.People.Items)
@@ -147,8 +217,6 @@
 @code {
     private static readonly PeopleSort[] SortOptions = [PeopleSort.Name, PeopleSort.RecentlyAdded, PeopleSort.LastContacted];
 
-    // The raw query string, as strings on purpose: a bool? or int? parameter throws on a value it
-    // cannot read, and an address is editable by anyone. PeopleListQueryString makes sense of them.
     [SupplyParameterFromQuery(Name = PeopleListQueryString.SortParameter)]
     private string? SortValue { get; set; }
 
@@ -158,30 +226,44 @@
     [SupplyParameterFromQuery(Name = PeopleListQueryString.PageParameter)]
     private string? PageValue { get; set; }
 
+    [SupplyParameterFromQuery(Name = PeopleListQueryString.SearchParameter)]
+    private string? SearchValue { get; set; }
+
+    [SupplyParameterFromQuery(Name = PeopleListQueryString.TagParameter)]
+    private string[]? TagValues { get; set; }
+
+    [SupplyParameterFromQuery(Name = PeopleListQueryString.TypeParameter)]
+    private string[]? TypeValues { get; set; }
+
     private PeopleListResult? _result;
     private DateOnly _today;
 
-    // The query the list on screen was loaded for; the controls show it too, so they never run
-    // ahead of the list. _requestedQuery is the latest one the address asked for (loaded or still
-    // loading): a parameter change that asks for the same thing again - a re-render - is ignored,
-    // while going Q1 -> Q2 -> Q1 quickly asks again and overtakes the Q2 load.
+    private IReadOnlyList<Tag> _availableTags = [];
+    private IReadOnlyList<RelationshipType> _availableRelationshipTypes = [];
+
+    private string? _searchTerm;
+    private IReadOnlyCollection<string> _selectedTags = [];
+    private IReadOnlyCollection<string> _selectedTypes = [];
+
     private PeopleListQuery _shown = new();
     private PeopleListQuery? _requestedQuery;
 
-    // The scoped DbContext lives as long as the circuit and refuses two queries at once, and a
-    // query-only navigation can arrive while the previous load is still running. The gate makes
-    // loads take turns; the version lets a load that has been overtaken throw its result away.
-    // Not disposed on purpose: it never exposes a wait handle, so there is nothing to release,
-    // and disposing it under a load that is still waiting would only make that load throw.
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private int _loadVersion;
 
-    // OnParametersSetAsync, not OnInitializedAsync: a change of the query string alone re-uses
-    // this component instance, so OnInitializedAsync would not run again. It also runs twice
-    // when prerendering, which is fine for a read-only load.
+    protected override async Task OnInitializedAsync()
+    {
+        _availableRelationshipTypes = await RelationshipTypeService.ListAsync();
+        _availableTags = await TagService.ListAsync();
+    }
+
     protected override async Task OnParametersSetAsync()
     {
-        var query = PeopleListQueryString.Parse(SortValue, ArchivedValue, PageValue);
+        var query = PeopleListQueryString.Parse(SortValue, ArchivedValue, PageValue, SearchValue, TagValues, TypeValues);
+        _searchTerm = query.SearchTerm;
+        _selectedTags = query.Tags;
+        _selectedTypes = query.RelationshipTypes;
+
         if (query == _requestedQuery)
         {
             return;
@@ -212,9 +294,18 @@
         }
     }
 
-    // Handlers only navigate. The list reloads because the address changed, never from here, and
-    // every change is a new history entry so Back restores the previous view. A new sort or filter
-    // starts again at the first page.
+    private void OnSearchChanged(string? term) =>
+        GoTo(CurrentQuery with { SearchTerm = string.IsNullOrWhiteSpace(term) ? null : term, Page = 1 });
+
+    private void OnTagsChanged(IReadOnlyCollection<string> tags) =>
+        GoTo(CurrentQuery with { Tags = tags.ToList(), Page = 1 });
+
+    private void OnTypesChanged(IReadOnlyCollection<string> types) =>
+        GoTo(CurrentQuery with { RelationshipTypes = types.ToList(), Page = 1 });
+
+    private void ClearFilters() =>
+        GoTo(CurrentQuery with { SearchTerm = null, Tags = [], RelationshipTypes = [], Page = 1 });
+
     private void OnSortChanged(PeopleSort sort) =>
         GoTo(CurrentQuery with { Sort = sort, Page = 1 });
 
@@ -226,7 +317,7 @@
 
     private void ShowArchived() => OnArchivedChanged(true);
 
-    private PeopleListQuery CurrentQuery => PeopleListQueryString.Parse(SortValue, ArchivedValue, PageValue);
+    private PeopleListQuery CurrentQuery => PeopleListQueryString.Parse(SortValue, ArchivedValue, PageValue, SearchValue, TagValues, TypeValues);
 
     private void GoTo(PeopleListQuery query) =>
         Navigation.NavigateTo(PeopleListQueryString.ToRelativeUri(query));

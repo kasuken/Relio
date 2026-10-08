@@ -289,6 +289,130 @@ public class PeopleServiceListPageTests
         result.People.Items.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task ListPageAsync_filters_by_search_term_across_first_last_and_nickname()
+    {
+        var (dbContext, service, _) = Create();
+        await using var disposeContext = dbContext;
+        await AddAsync(dbContext, "Ada", "Lovelace", nickname: "Enchantress");
+        await AddAsync(dbContext, "Grace", "Hopper", nickname: "Amazing");
+        await AddAsync(dbContext, "Katherine", "Johnson");
+
+        var byFirst = await service.ListPageAsync(new PeopleListQuery { SearchTerm = "Ada" });
+        byFirst.People.Items.Select(p => p.FirstName).Should().Equal("Ada");
+        byFirst.People.TotalCount.Should().Be(1);
+        byFirst.ActiveCount.Should().Be(3);
+
+        var byLast = await service.ListPageAsync(new PeopleListQuery { SearchTerm = "Hopp" });
+        byLast.People.Items.Select(p => p.FirstName).Should().Equal("Grace");
+
+        var byNick = await service.ListPageAsync(new PeopleListQuery { SearchTerm = "Enchant" });
+        byNick.People.Items.Select(p => p.FirstName).Should().Equal("Ada");
+
+        var multiWord = await service.ListPageAsync(new PeopleListQuery { SearchTerm = "Katherine Johnson" });
+        multiWord.People.Items.Select(p => p.FirstName).Should().Equal("Katherine");
+    }
+
+    [Fact]
+    public async Task ListPageAsync_filters_by_tags()
+    {
+        var (dbContext, service, _) = Create();
+        await using var disposeContext = dbContext;
+        var tag1 = new Tag { OwnerId = Owner, Name = "Colleague" };
+        var tag2 = new Tag { OwnerId = Owner, Name = "Mentor" };
+        dbContext.Tags.AddRange(tag1, tag2);
+        await dbContext.SaveChangesAsync();
+
+        await AddAsync(dbContext, "Ada", tags: [tag1]);
+        await AddAsync(dbContext, "Grace", tags: [tag2]);
+        await AddAsync(dbContext, "Katherine", tags: [tag1, tag2]);
+
+        var colleagueResult = await service.ListPageAsync(new PeopleListQuery { Tags = ["Colleague"] });
+        colleagueResult.People.Items.Select(p => p.FirstName).Should().BeEquivalentTo(["Ada", "Katherine"]);
+        colleagueResult.People.TotalCount.Should().Be(2);
+
+        var mentorResult = await service.ListPageAsync(new PeopleListQuery { Tags = ["Mentor"] });
+        mentorResult.People.Items.Select(p => p.FirstName).Should().BeEquivalentTo(["Grace", "Katherine"]);
+    }
+
+    [Fact]
+    public async Task ListPageAsync_filters_by_relationship_types()
+    {
+        var (dbContext, service, _) = Create();
+        await using var disposeContext = dbContext;
+        var relFriend = new RelationshipType { OwnerId = Owner, Name = "Friend" };
+        var relFamily = new RelationshipType { OwnerId = Owner, Name = "Family" };
+        dbContext.RelationshipTypes.AddRange(relFriend, relFamily);
+        await dbContext.SaveChangesAsync();
+
+        await AddAsync(dbContext, "Ada", relationshipTypeId: relFriend.Id);
+        await AddAsync(dbContext, "Sam", relationshipTypeId: relFamily.Id);
+        await AddAsync(dbContext, "Grace");
+
+        var friendResult = await service.ListPageAsync(new PeopleListQuery { RelationshipTypes = ["Friend"] });
+        friendResult.People.Items.Select(p => p.FirstName).Should().Equal("Ada");
+        friendResult.People.TotalCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ListPageAsync_combines_search_term_and_filters()
+    {
+        var (dbContext, service, _) = Create();
+        await using var disposeContext = dbContext;
+        var tag1 = new Tag { OwnerId = Owner, Name = "Tech" };
+        dbContext.Tags.Add(tag1);
+        await dbContext.SaveChangesAsync();
+
+        await AddAsync(dbContext, "Ada", "Lovelace", tags: [tag1]);
+        await AddAsync(dbContext, "Alan", "Turing", tags: [tag1]);
+        await AddAsync(dbContext, "Adam", "Smith");
+
+        var result = await service.ListPageAsync(new PeopleListQuery
+        {
+            SearchTerm = "Ad",
+            Tags = ["Tech"]
+        });
+
+        result.People.Items.Select(p => p.FirstName).Should().Equal("Ada");
+        result.People.TotalCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task SearchAsync_finds_people_matching_name_and_excludes_archived_by_default()
+    {
+        var (dbContext, service, _) = Create();
+        await using var disposeContext = dbContext;
+        await AddAsync(dbContext, "Ada", "Lovelace", nickname: "Enchantress");
+        await AddAsync(dbContext, "Sam", "Smith", isArchived: true);
+
+        var activeSearch = await service.SearchAsync("Ada");
+        activeSearch.Should().ContainSingle();
+        activeSearch[0].DisplayName.Should().Be("Ada Lovelace");
+        activeSearch[0].IsArchived.Should().BeFalse();
+
+        var archivedSearch = await service.SearchAsync("Sam");
+        archivedSearch.Should().BeEmpty();
+
+        var withArchived = await service.SearchAsync("Sam", includeArchived: true);
+        withArchived.Should().ContainSingle();
+        withArchived[0].DisplayName.Should().Be("Sam Smith");
+        withArchived[0].IsArchived.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SearchAsync_respects_limit()
+    {
+        var (dbContext, service, _) = Create();
+        await using var disposeContext = dbContext;
+        for (var i = 1; i <= 15; i++)
+        {
+            await AddAsync(dbContext, $"Person {i:00}");
+        }
+
+        var results = await service.SearchAsync("Person", limit: 5);
+        results.Should().HaveCount(5);
+    }
+
     private static (RelioDbContext DbContext, PeopleService Service, FakeTimeProvider Time) Create()
     {
         var time = new FakeTimeProvider(Start);
@@ -305,7 +429,9 @@ public class PeopleServiceListPageTests
         string? lastName = null,
         bool isArchived = false,
         DateOnly? lastContactedOn = null,
-        Guid? relationshipTypeId = null)
+        Guid? relationshipTypeId = null,
+        string? nickname = null,
+        IEnumerable<Tag>? tags = null)
     {
         var person = new Person
         {
@@ -315,7 +441,16 @@ public class PeopleServiceListPageTests
             IsArchived = isArchived,
             LastContactedOn = lastContactedOn,
             RelationshipTypeId = relationshipTypeId,
+            Nickname = nickname,
         };
+        if (tags != null)
+        {
+            foreach (var t in tags)
+            {
+                var trackedTag = dbContext.Tags.Local.FindEntry(t.Id)?.Entity ?? dbContext.Tags.Attach(t).Entity;
+                person.Tags.Add(trackedTag);
+            }
+        }
         dbContext.People.Add(person);
         await dbContext.SaveChangesAsync();
         dbContext.ChangeTracker.Clear();

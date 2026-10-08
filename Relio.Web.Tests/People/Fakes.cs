@@ -40,14 +40,65 @@ internal sealed class FakePeopleService : IPeopleService
             return Task.FromResult(result(query));
         }
 
-        var items = Known
-            .Where(p => query.IncludeArchived || !p.IsArchived)
+        var queryable = Known.Where(p => query.IncludeArchived || !p.IsArchived);
+        if (!string.IsNullOrWhiteSpace(query.SearchTerm))
+        {
+            queryable = queryable.Where(p =>
+                p.FirstName.Contains(query.SearchTerm, StringComparison.OrdinalIgnoreCase) ||
+                (p.LastName != null && p.LastName.Contains(query.SearchTerm, StringComparison.OrdinalIgnoreCase)) ||
+                (p.Nickname != null && p.Nickname.Contains(query.SearchTerm, StringComparison.OrdinalIgnoreCase)));
+        }
+        if (query.RelationshipTypes.Count > 0)
+        {
+            queryable = queryable.Where(p => p.RelationshipType != null &&
+                (query.RelationshipTypes.Contains(p.RelationshipType.Name, StringComparer.OrdinalIgnoreCase) ||
+                 query.RelationshipTypes.Contains(p.RelationshipType.Id.ToString())));
+        }
+        if (query.Tags.Count > 0)
+        {
+            queryable = queryable.Where(p => p.Tags.Any(t =>
+                query.Tags.Contains(t.Name, StringComparer.OrdinalIgnoreCase) ||
+                query.Tags.Contains(t.Id.ToString())));
+        }
+
+        var filteredList = queryable.ToList();
+        var items = filteredList
             .Select(p => new PersonListItem(
                 p.Id, p.FirstName, p.LastName, p.RelationshipType?.Name, p.LastContactedOn, p.IsArchived, p.CreatedAtUtc))
             .ToList();
-        var page = new PagedResult<PersonListItem>(items, 1, query.PageSize, items.Count);
+        var total = query.HasFilters ? items.Count : (query.IncludeArchived ? Known.Count : Known.Count(p => !p.IsArchived));
+        var page = new PagedResult<PersonListItem>(items, 1, query.PageSize, total);
         return Task.FromResult(new PeopleListResult(
             page, Known.Count(p => !p.IsArchived), Known.Count(p => p.IsArchived)));
+    }
+
+    public List<(string Query, int Limit, bool IncludeArchived)> SearchQueries { get; } = [];
+    public Func<string, int, bool, IReadOnlyList<PersonSearchResult>>? SearchResult { get; set; }
+
+    public Task<IReadOnlyList<PersonSearchResult>> SearchAsync(string query, int limit = 10, bool includeArchived = false, CancellationToken cancellationToken = default)
+    {
+        SearchQueries.Add((query, limit, includeArchived));
+        if (SearchResult is { } result)
+        {
+            return Task.FromResult(result(query, limit, includeArchived));
+        }
+
+        var trimmed = query?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return Task.FromResult<IReadOnlyList<PersonSearchResult>>([]);
+        }
+
+        var items = Known
+            .Where(p => includeArchived || !p.IsArchived)
+            .Where(p => p.FirstName.Contains(trimmed, StringComparison.OrdinalIgnoreCase)
+                     || (p.LastName != null && p.LastName.Contains(trimmed, StringComparison.OrdinalIgnoreCase))
+                     || (p.Nickname != null && p.Nickname.Contains(trimmed, StringComparison.OrdinalIgnoreCase)))
+            .Take(limit)
+            .Select(p => new PersonSearchResult(p.Id, p.FirstName, p.LastName, p.RelationshipType?.Name, p.IsArchived))
+            .ToList();
+
+        return Task.FromResult<IReadOnlyList<PersonSearchResult>>(items);
     }
 
     /// <summary>Every query <see cref="FindPossibleDuplicatesAsync"/> was called with, in order.</summary>
