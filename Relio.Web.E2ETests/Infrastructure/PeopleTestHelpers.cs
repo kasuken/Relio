@@ -1,10 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Relio.Application.DifficultMoments;
 using Relio.Application.Interactions;
 using Relio.Application.Notes;
 using Relio.Application.People;
 using Relio.Application.Security;
 using Relio.Data;
+using Relio.Data.DifficultMoments;
 using Relio.Data.Interactions;
 using Relio.Data.Notes;
 using Relio.Data.People;
@@ -162,6 +164,28 @@ public static class PeopleTestHelpers
             new OwnerCurrentUser(ownerId));
         var note = await notes.CreateAsync(new CreateNoteRequest(personId, text, isPinned));
         return note.Id;
+    }
+
+    /// <summary>Creates a difficult moment through the real <c>DifficultMomentService</c> acting as <paramref name="ownerId"/>.</summary>
+    public static async Task<Guid> CreateDifficultMomentAsync(
+        RelioWebAppFactory app,
+        string ownerId,
+        Guid personId,
+        string description,
+        DateOnly occurredOn)
+    {
+        using var scope = app.CreateRealScope();
+        var service = new DifficultMomentService(
+            scope.ServiceProvider.GetRequiredService<RelioDbContext>(),
+            new OwnerCurrentUser(ownerId),
+            scope.ServiceProvider.GetRequiredService<TimeProvider>());
+        var moment = await service.CreateAsync(new CreateDifficultMomentRequest
+        {
+            PersonId = personId,
+            OccurredOn = occurredOn,
+            Description = description,
+        });
+        return moment.Id;
     }
 
     /// <summary>Seeds a reminder for <paramref name="personId"/> owned by <paramref name="ownerId"/>.</summary>

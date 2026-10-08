@@ -88,6 +88,9 @@ internal static class TestDataFactory
     public static TagService CreateTagService(RelioDbContext dbContext, string? ownerId) =>
         new(dbContext, new FakeCurrentUser(ownerId));
 
+    public static Relio.Data.DifficultMoments.DifficultMomentService CreateDifficultMomentService(RelioDbContext dbContext, string? ownerId, TimeProvider? timeProvider = null) =>
+        new(dbContext, new FakeCurrentUser(ownerId), timeProvider ?? TimeProvider.System);
+
     /// <summary>
     /// Creates a person. <paramref name="createdAtUtc"/> backdates the profile: the context stamps
     /// <c>CreatedAtUtc</c> on insert and ignores a value set before it, so the date is assigned

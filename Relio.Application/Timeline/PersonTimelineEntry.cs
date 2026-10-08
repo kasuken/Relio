@@ -20,4 +20,10 @@ public sealed record PersonTimelineEntry(
     string Text,
     InteractionKind? InteractionKind,
     bool IsPinned,
-    IReadOnlyList<InteractionParticipantDetails> Participants);
+    IReadOnlyList<InteractionParticipantDetails> Participants,
+    DifficultMomentStatus? DifficultMomentStatus = null,
+    string? Trigger = null,
+    string? Resolution = null,
+    string? LessonsLearned = null,
+    Guid? RecurrenceOfId = null,
+    int RecurrencesCount = 0);

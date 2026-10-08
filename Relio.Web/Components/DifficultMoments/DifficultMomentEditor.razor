@@ -1,0 +1,462 @@
+@using System.Globalization
+@using Relio.Application.DifficultMoments
+@using Relio.Application.Ownership
+@using Relio.Application.Time
+@using Relio.Domain
+@using Microsoft.Extensions.Logging
+@inject IDifficultMomentService DifficultMomentService
+@inject IUserTimeZoneService UserTimeZone
+@inject ISnackbar Snackbar
+@inject ILogger<DifficultMomentEditor> Logger
+
+@if (_loading)
+{
+    <div role="status" data-testid="moment-editor-loading">
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    </div>
+}
+else if (_unavailableMessage is not null)
+{
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" data-testid="moment-editor-unavailable">
+        @_unavailableMessage
+    </MudAlert>
+    <MudButton Variant="Variant.Text"
+               Disabled="@_busy"
+               OnClick="CancelAsync"
+               data-testid="moment-cancel">
+        Cancel
+    </MudButton>
+}
+else
+{
+    <div class="rl-moment-editor" aria-busy="@_busy" data-testid="difficult-moment-editor">
+        <div class="mb-4">
+            <MudText Typo="Typo.h6" HtmlTag="h3">
+                @(MomentId is null ? "Record a difficult moment" : "Edit difficult moment")
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                A private space to reflect on what happened, what set it off, and what you learned.
+            </MudText>
+        </div>
+
+        @if (_saveErrorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error"
+                      Variant="Variant.Text"
+                      Elevation="0"
+                      Class="mb-3"
+                      data-testid="moment-editor-save-error">
+                @_saveErrorMessage
+            </MudAlert>
+        }
+
+        <div class="rl-form-field mb-3" data-testid="moment-date-field">
+            <MudDatePicker @bind-Date="_occurredOn"
+                           Culture="@CultureInfo.InvariantCulture"
+                           Label="When did this happen?"
+                           Variant="Variant.Outlined"
+                           PickerVariant="PickerVariant.Dialog"
+                           DateFormat="d MMM yyyy"
+                           Editable="true"
+                           Disabled="_busy"
+                           data-testid="moment-date" />
+            @foreach (var message in MessagesFor(DifficultMomentValidationError.DateRequired, DifficultMomentValidationError.DateInFuture))
+            {
+                <MudText Color="Color.Error" Typo="Typo.caption" data-testid="moment-date-error">@message</MudText>
+            }
+        </div>
+
+        <div class="rl-form-field mb-3" data-testid="moment-description-field">
+            <MudTextField T="string"
+                          Value="_description"
+                          ValueChanged="DescriptionChanged"
+                          Label="What happened?"
+                          Lines="4"
+                          MaxLength="@DifficultMoment.DescriptionMaxLength"
+                          Immediate="true"
+                          Variant="Variant.Outlined"
+                          Class="rl-serif"
+                          Disabled="@_busy"
+                          Error="@HasError(DifficultMomentValidationError.DescriptionRequired, DifficultMomentValidationError.DescriptionTooLong)"
+                          data-testid="moment-description"
+                          autocomplete="off" />
+            @foreach (var message in MessagesFor(DifficultMomentValidationError.DescriptionRequired, DifficultMomentValidationError.DescriptionTooLong))
+            {
+                <MudText Color="Color.Error" Typo="Typo.caption" data-testid="moment-description-error">@message</MudText>
+            }
+        </div>
+
+        <div class="rl-form-field mb-3" data-testid="moment-trigger-field">
+            <MudTextField T="string"
+                          Value="_trigger"
+                          ValueChanged="TriggerChanged"
+                          Label="What set this off? (optional)"
+                          Lines="2"
+                          MaxLength="@DifficultMoment.TriggerMaxLength"
+                          Immediate="true"
+                          Variant="Variant.Outlined"
+                          Class="rl-serif"
+                          Disabled="@_busy"
+                          Error="@HasError(DifficultMomentValidationError.TriggerTooLong)"
+                          data-testid="moment-trigger"
+                          autocomplete="off" />
+            @foreach (var message in MessagesFor(DifficultMomentValidationError.TriggerTooLong))
+            {
+                <MudText Color="Color.Error" Typo="Typo.caption" data-testid="moment-trigger-error">@message</MudText>
+            }
+        </div>
+
+        <div class="rl-form-field mb-3" data-testid="moment-resolution-field">
+            <MudTextField T="string"
+                          Value="_resolution"
+                          ValueChanged="ResolutionChanged"
+                          Label="How was this resolved? (optional)"
+                          Lines="2"
+                          MaxLength="@DifficultMoment.ResolutionMaxLength"
+                          Immediate="true"
+                          Variant="Variant.Outlined"
+                          Class="rl-serif"
+                          Disabled="@_busy"
+                          Error="@HasError(DifficultMomentValidationError.ResolutionTooLong)"
+                          data-testid="moment-resolution"
+                          autocomplete="off" />
+            @foreach (var message in MessagesFor(DifficultMomentValidationError.ResolutionTooLong))
+            {
+                <MudText Color="Color.Error" Typo="Typo.caption" data-testid="moment-resolution-error">@message</MudText>
+            }
+        </div>
+
+        <div class="rl-form-field mb-3" data-testid="moment-lessons-field">
+            <MudTextField T="string"
+                          Value="_lessonsLearned"
+                          ValueChanged="LessonsLearnedChanged"
+                          Label="Lessons learned (optional)"
+                          Lines="2"
+                          MaxLength="@DifficultMoment.LessonsLearnedMaxLength"
+                          Immediate="true"
+                          Variant="Variant.Outlined"
+                          Class="rl-serif"
+                          Disabled="@_busy"
+                          Error="@HasError(DifficultMomentValidationError.LessonsLearnedTooLong)"
+                          data-testid="moment-lessons"
+                          autocomplete="off" />
+            @foreach (var message in MessagesFor(DifficultMomentValidationError.LessonsLearnedTooLong))
+            {
+                <MudText Color="Color.Error" Typo="Typo.caption" data-testid="moment-lessons-error">@message</MudText>
+            }
+        </div>
+
+        <div class="rl-form-field mb-3" data-testid="moment-status-field">
+            <MudSelect T="DifficultMomentStatus"
+                       Value="_status"
+                       ValueChanged="StatusChanged"
+                       Label="Status"
+                       Variant="Variant.Outlined"
+                       Disabled="@_busy"
+                       data-testid="moment-status">
+                <MudSelectItem T="DifficultMomentStatus" Value="DifficultMomentStatus.Open">Open</MudSelectItem>
+                <MudSelectItem T="DifficultMomentStatus" Value="DifficultMomentStatus.Resolved">Resolved</MudSelectItem>
+                <MudSelectItem T="DifficultMomentStatus" Value="DifficultMomentStatus.Recurring">Recurring</MudSelectItem>
+            </MudSelect>
+            @foreach (var message in MessagesFor(DifficultMomentValidationError.StatusInvalid))
+            {
+                <MudText Color="Color.Error" Typo="Typo.caption" data-testid="moment-status-error">@message</MudText>
+            }
+        </div>
+
+        @if (_status == DifficultMomentStatus.Resolved)
+        {
+            <div class="rl-form-field mb-3" data-testid="moment-resolved-date-field">
+                <MudDatePicker @bind-Date="_resolvedOn"
+                               Culture="@CultureInfo.InvariantCulture"
+                               Label="Resolved on"
+                               Variant="Variant.Outlined"
+                               PickerVariant="PickerVariant.Dialog"
+                               DateFormat="d MMM yyyy"
+                               Editable="true"
+                               Disabled="_busy"
+                               data-testid="moment-resolved-date" />
+                @foreach (var message in MessagesFor(DifficultMomentValidationError.ResolvedDateInFuture, DifficultMomentValidationError.ResolvedDateBeforeOccurredOn))
+                {
+                    <MudText Color="Color.Error" Typo="Typo.caption" data-testid="moment-resolved-date-error">@message</MudText>
+                }
+            </div>
+        }
+
+        @if (_recurrenceCandidates.Count > 0)
+        {
+            <div class="rl-form-field mb-3" data-testid="moment-recurrence-field">
+                <MudSelect T="Guid?"
+                           @bind-Value="_recurrenceOfId"
+                           Label="Link as recurrence of earlier moment (optional)"
+                           Variant="Variant.Outlined"
+                           Clearable="true"
+                           Disabled="@_busy"
+                           data-testid="moment-recurrence">
+                    @foreach (var candidate in _recurrenceCandidates)
+                    {
+                        <MudSelectItem T="Guid?" Value="@candidate.Id">
+                            @($"{candidate.OccurredOn:d MMM yyyy}: {Excerpt(candidate.Description)}")
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+                @foreach (var message in MessagesFor(DifficultMomentValidationError.RecurrenceSelfReference))
+                {
+                    <MudText Color="Color.Error" Typo="Typo.caption" data-testid="moment-recurrence-error">@message</MudText>
+                }
+            </div>
+        }
+
+        <div class="d-flex flex-wrap align-center gap-2 mt-4">
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       ButtonType="ButtonType.Button"
+                       Disabled="@_busy"
+                       OnClick="SaveAsync"
+                       data-testid="moment-save">
+                Save difficult moment
+            </MudButton>
+            <MudButton Variant="Variant.Text"
+                       ButtonType="ButtonType.Button"
+                       Disabled="@_busy"
+                       OnClick="CancelAsync"
+                       data-testid="moment-cancel">
+                Cancel
+            </MudButton>
+        </div>
+    </div>
+}
+
+@code {
+    private long _loadVersion;
+    private bool _loading = true;
+    private bool _busy;
+    private DateTime? _occurredOn;
+    private string _description = string.Empty;
+    private string? _trigger;
+    private string? _resolution;
+    private string? _lessonsLearned;
+    private DifficultMomentStatus _status = DifficultMomentStatus.Open;
+    private DateTime? _resolvedOn;
+    private Guid? _recurrenceOfId;
+    private IReadOnlyList<DifficultMomentLookupItem> _recurrenceCandidates = [];
+    private HashSet<DifficultMomentValidationError> _errors = [];
+    private string? _saveErrorMessage;
+    private string? _unavailableMessage;
+
+    /// <summary>The person this difficult moment is associated with.</summary>
+    [Parameter, EditorRequired]
+    public Guid PersonId { get; set; }
+
+    /// <summary>The difficult moment being edited, or null when recording a new moment.</summary>
+    [Parameter]
+    public Guid? MomentId { get; set; }
+
+    /// <summary>Raised after the moment is saved successfully.</summary>
+    [Parameter]
+    public EventCallback Saved { get; set; }
+
+    /// <summary>Raised when the user cancels.</summary>
+    [Parameter]
+    public EventCallback Cancelled { get; set; }
+
+    /// <inheritdoc />
+    protected override async Task OnParametersSetAsync()
+    {
+        var version = ++_loadVersion;
+        _errors.Clear();
+        _saveErrorMessage = null;
+        _unavailableMessage = null;
+        _loading = true;
+
+        try
+        {
+            var today = await UserTimeZone.GetTodayAsync();
+            var candidates = await DifficultMomentService.ListCandidatesForRecurrenceAsync(PersonId, MomentId);
+
+            if (version != _loadVersion) return;
+
+            _recurrenceCandidates = candidates;
+
+            if (MomentId is Guid momentId)
+            {
+                var moment = await DifficultMomentService.GetAsync(momentId);
+                if (version != _loadVersion) return;
+
+                if (moment is null || moment.PersonId != PersonId)
+                {
+                    _unavailableMessage = "This difficult moment is no longer available.";
+                    return;
+                }
+
+                _occurredOn = moment.OccurredOn.ToDateTime(TimeOnly.MinValue);
+                _description = moment.Description;
+                _trigger = moment.Trigger;
+                _resolution = moment.Resolution;
+                _lessonsLearned = moment.LessonsLearned;
+                _status = moment.Status;
+                _resolvedOn = moment.ResolvedOn?.ToDateTime(TimeOnly.MinValue);
+                _recurrenceOfId = moment.RecurrenceOfId;
+            }
+            else
+            {
+                _occurredOn = today.ToDateTime(TimeOnly.MinValue);
+                _description = string.Empty;
+                _trigger = null;
+                _resolution = null;
+                _lessonsLearned = null;
+                _status = DifficultMomentStatus.Open;
+                _resolvedOn = null;
+                _recurrenceOfId = null;
+            }
+        }
+        catch (Exception)
+        {
+            if (version == _loadVersion)
+            {
+                _unavailableMessage = "This difficult moment couldn't be loaded. Try again.";
+            }
+        }
+        finally
+        {
+            if (version == _loadVersion)
+            {
+                _loading = false;
+            }
+        }
+    }
+
+    private void DescriptionChanged(string value)
+    {
+        _description = value;
+        _errors.Remove(DifficultMomentValidationError.DescriptionRequired);
+        _errors.Remove(DifficultMomentValidationError.DescriptionTooLong);
+        _saveErrorMessage = null;
+    }
+
+    private void TriggerChanged(string value)
+    {
+        _trigger = value;
+        _errors.Remove(DifficultMomentValidationError.TriggerTooLong);
+        _saveErrorMessage = null;
+    }
+
+    private void ResolutionChanged(string value)
+    {
+        _resolution = value;
+        _errors.Remove(DifficultMomentValidationError.ResolutionTooLong);
+        _saveErrorMessage = null;
+    }
+
+    private void LessonsLearnedChanged(string value)
+    {
+        _lessonsLearned = value;
+        _errors.Remove(DifficultMomentValidationError.LessonsLearnedTooLong);
+        _saveErrorMessage = null;
+    }
+
+    private void StatusChanged(DifficultMomentStatus status)
+    {
+        _status = status;
+        if (_status == DifficultMomentStatus.Resolved && !_resolvedOn.HasValue && _occurredOn.HasValue)
+        {
+            _resolvedOn = _occurredOn;
+        }
+        _errors.Remove(DifficultMomentValidationError.StatusInvalid);
+        _saveErrorMessage = null;
+    }
+
+    private bool HasError(params DifficultMomentValidationError[] codes) =>
+        codes.Any(code => _errors.Contains(code));
+
+    private IEnumerable<string> MessagesFor(params DifficultMomentValidationError[] codes) =>
+        codes.Where(code => _errors.Contains(code)).Select(DifficultMomentFormMessages.Message);
+
+    private async Task SaveAsync()
+    {
+        if (_busy || _loading || _unavailableMessage is not null)
+        {
+            return;
+        }
+
+        _busy = true;
+        _errors.Clear();
+        _saveErrorMessage = null;
+
+        var occurredDate = _occurredOn.HasValue ? DateOnly.FromDateTime(_occurredOn.Value) : default;
+        var resolvedDate = _status == DifficultMomentStatus.Resolved && _resolvedOn.HasValue
+            ? DateOnly.FromDateTime(_resolvedOn.Value)
+            : (DateOnly?)null;
+
+        try
+        {
+            if (MomentId is Guid momentId)
+            {
+                var request = new UpdateDifficultMomentRequest
+                {
+                    OccurredOn = occurredDate,
+                    Description = _description,
+                    Trigger = _trigger,
+                    Resolution = _resolution,
+                    LessonsLearned = _lessonsLearned,
+                    Status = _status,
+                    ResolvedOn = resolvedDate,
+                    RecurrenceOfId = _recurrenceOfId,
+                };
+
+                var updated = await DifficultMomentService.UpdateAsync(momentId, request);
+                if (!updated)
+                {
+                    _unavailableMessage = "This difficult moment is no longer available.";
+                    return;
+                }
+            }
+            else
+            {
+                var request = new CreateDifficultMomentRequest
+                {
+                    PersonId = PersonId,
+                    OccurredOn = occurredDate,
+                    Description = _description,
+                    Trigger = _trigger,
+                    Resolution = _resolution,
+                    LessonsLearned = _lessonsLearned,
+                    Status = _status,
+                    ResolvedOn = resolvedDate,
+                    RecurrenceOfId = _recurrenceOfId,
+                };
+
+                await DifficultMomentService.CreateAsync(request);
+            }
+
+            Snackbar.Add("Difficult moment saved", Severity.Success);
+            await Saved.InvokeAsync();
+        }
+        catch (DifficultMomentValidationException exception)
+        {
+            _errors = exception.Errors.ToHashSet();
+        }
+        catch (ForeignEntityNotOwnedException exception) when (exception.EntityName == ForeignEntityNames.People)
+        {
+            _unavailableMessage = "This person is no longer available.";
+        }
+        catch (ForeignEntityNotOwnedException exception) when (exception.EntityName == ForeignEntityNames.DifficultMoments)
+        {
+            _saveErrorMessage = "The earlier moment selected for recurrence is no longer available.";
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError("Difficult moment save failed with exception type {ExceptionType}", exception.GetType().Name);
+            _saveErrorMessage = "The difficult moment couldn't be saved. Try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task CancelAsync() => Cancelled.InvokeAsync();
+
+    private static string Excerpt(string text) =>
+        text.Length <= 40 ? text : text[..37] + "…";
+}

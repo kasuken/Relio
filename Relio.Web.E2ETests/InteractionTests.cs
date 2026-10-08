@@ -258,7 +258,7 @@ public sealed class InteractionTests(RelioAppFixture fixture)
 
             await ChooseAsync(page, "timeline-filter", "Difficult moments");
             await Expect(page.Locator("[data-testid='timeline-empty']"))
-                .ToContainTextAsync("Difficult moments will appear here when that feature is available.");
+                .ToContainTextAsync("No difficult moments have been recorded yet.");
 
             await ChooseAsync(page, "timeline-filter", "Interactions");
             await Expect(page.Locator("[data-testid='timeline-entry']")).ToHaveCountAsync(50);

@@ -1,6 +1,7 @@
 @using Relio.Application.Interactions
 @using Relio.Application.Time
 @using Relio.Application.Timeline
+@using Relio.Domain
 @using Relio.Web.Theme
 @using Relio.Web.Time
 @inject IPersonTimelineService TimelineService
@@ -78,6 +79,17 @@
                                 Pinned
                             </span>
                         }
+                        @if (entry.Kind == TimelineEntryKind.DifficultMoment && entry.DifficultMomentStatus is { } status)
+                        {
+                            <MudChip T="string"
+                                     Size="Size.Small"
+                                     Variant="Variant.Filled"
+                                     Color="@StatusColor(status)"
+                                     Class="ml-2"
+                                     data-testid="timeline-moment-status">
+                                @status.ToString()
+                            </MudChip>
+                        }
                     </div>
 
                     @if (entry.Kind == TimelineEntryKind.Interaction && entry.Participants.Count > 1)
@@ -91,7 +103,41 @@
 
                     <p class="rl-entry-text rl-multiline" data-testid="timeline-entry-text">@entry.Text</p>
 
-                    @if (entry.Kind is TimelineEntryKind.Interaction or TimelineEntryKind.Note)
+                    @if (entry.Kind == TimelineEntryKind.DifficultMoment)
+                    {
+                        @if (!string.IsNullOrWhiteSpace(entry.Trigger))
+                        {
+                            <p class="rl-meta mt-1" data-testid="timeline-moment-trigger">
+                                <strong>Trigger:</strong> @entry.Trigger
+                            </p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(entry.Resolution))
+                        {
+                            <p class="rl-meta mt-1" data-testid="timeline-moment-resolution">
+                                <strong>Resolution:</strong> @entry.Resolution
+                            </p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(entry.LessonsLearned))
+                        {
+                            <p class="rl-meta mt-1" data-testid="timeline-moment-lessons">
+                                <strong>Lessons learned:</strong> @entry.LessonsLearned
+                            </p>
+                        }
+                        @if (entry.RecurrencesCount > 0)
+                        {
+                            <p class="rl-meta mt-1" data-testid="timeline-moment-recurrences-count">
+                                <em>@entry.RecurrencesCount recurring moment@(entry.RecurrencesCount == 1 ? "" : "s") linked to this</em>
+                            </p>
+                        }
+                        @if (entry.RecurrenceOfId.HasValue)
+                        {
+                            <p class="rl-meta mt-1" data-testid="timeline-moment-recurrence-of">
+                                <em>Recurrence of an earlier moment</em>
+                            </p>
+                        }
+                    }
+
+                    @if (entry.Kind is TimelineEntryKind.Interaction or TimelineEntryKind.Note or TimelineEntryKind.DifficultMoment)
                     {
                         <div class="rl-timeline-entry-actions">
                             @if (entry.Kind == TimelineEntryKind.Interaction)
@@ -111,7 +157,7 @@
                                                Disabled="Busy"
                                                data-testid="timeline-delete-interaction" />
                             }
-                            else
+                            else if (entry.Kind == TimelineEntryKind.Note)
                             {
                                 <MudIconButton Icon="@Icons.Material.Outlined.Edit"
                                                aria-label="Edit note"
@@ -127,6 +173,23 @@
                                                OnClick="@(() => DeleteNoteAsync(entry.Id))"
                                                Disabled="Busy"
                                                data-testid="timeline-delete-note" />
+                            }
+                            else if (entry.Kind == TimelineEntryKind.DifficultMoment)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Outlined.Edit"
+                                               aria-label="Edit difficult moment"
+                                               Color="Color.Default"
+                                               Size="Size.Small"
+                                               OnClick="@(() => EditDifficultMomentAsync(entry.Id))"
+                                               Disabled="Busy"
+                                               data-testid="timeline-edit-moment" />
+                                <MudIconButton Icon="@Icons.Material.Outlined.DeleteOutline"
+                                               aria-label="Delete difficult moment"
+                                               Color="Color.Default"
+                                               Size="Size.Small"
+                                               OnClick="@(() => DeleteDifficultMomentAsync(entry.Id))"
+                                               Disabled="Busy"
+                                               data-testid="timeline-delete-moment" />
                             }
                         </div>
                     }
@@ -186,6 +249,14 @@
     /// <summary>Raised when the user asks to delete a note.</summary>
     [Parameter]
     public EventCallback<Guid> DeleteNoteRequested { get; set; }
+
+    /// <summary>Raised when the user asks to edit a difficult moment.</summary>
+    [Parameter]
+    public EventCallback<Guid> EditDifficultMomentRequested { get; set; }
+
+    /// <summary>Raised when the user asks to delete a difficult moment.</summary>
+    [Parameter]
+    public EventCallback<Guid> DeleteDifficultMomentRequested { get; set; }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -295,4 +366,13 @@
     private Task DeleteInteractionAsync(Guid id) => DeleteInteractionRequested.InvokeAsync(id);
     private Task EditNoteAsync(Guid id) => EditNoteRequested.InvokeAsync(id);
     private Task DeleteNoteAsync(Guid id) => DeleteNoteRequested.InvokeAsync(id);
+    private Task EditDifficultMomentAsync(Guid id) => EditDifficultMomentRequested.InvokeAsync(id);
+    private Task DeleteDifficultMomentAsync(Guid id) => DeleteDifficultMomentRequested.InvokeAsync(id);
+
+    private static Color StatusColor(DifficultMomentStatus status) => status switch
+    {
+        DifficultMomentStatus.Resolved => Color.Success,
+        DifficultMomentStatus.Recurring => Color.Info,
+        _ => Color.Warning,
+    };
 }

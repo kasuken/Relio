@@ -91,6 +91,8 @@ public class PersonMergeTests(RelioAppFixture fixture)
             fixture.App, ownerId, john, "Remember John's observatory story.", isPinned: true);
         await PeopleTestHelpers.CreateNoteAsync(
             fixture.App, ownerId, jon, "Remember Jon's gallery opening.");
+        await PeopleTestHelpers.CreateDifficultMomentAsync(
+            fixture.App, ownerId, jon, "A difficult moment during planning.", occurredOn);
         var reminderTitle = "Call Jon after the trip";
         var reminderId = await PeopleTestHelpers.CreateReminderAsync(
             fixture.App,
@@ -147,7 +149,7 @@ public class PersonMergeTests(RelioAppFixture fixture)
         await Expect(page.Locator("[data-testid='person-tag']")).ToHaveTextAsync(["Chess", "Climbing"]);
         await Expect(page.Locator("[data-testid='person-details']")).ToContainTextAsync("Met at the chess club.");
         await Expect(page.Locator("[data-testid='person-details']")).ToContainTextAsync("Climbs on Tuesdays.");
-        await Expect(page.Locator("[data-testid='timeline-entry-text']")).ToHaveCountAsync(4);
+        await Expect(page.Locator("[data-testid='timeline-entry-text']")).ToHaveCountAsync(5);
         (await page.Locator("[data-testid='timeline-entry-text']").AllTextContentsAsync())
             .Should().BeEquivalentTo(
             [
@@ -155,6 +157,7 @@ public class PersonMergeTests(RelioAppFixture fixture)
                 "Jon sent the gallery opening details.",
                 "Remember John's observatory story.",
                 "Remember Jon's gallery opening.",
+                "A difficult moment during planning.",
             ]);
         await Expect(page.GetByTestId("pinned-note-text")).ToHaveTextAsync("Remember John's observatory story.");
         await Expect(page.GetByTestId($"person-reminder-{reminderId}")).ToContainTextAsync(reminderTitle);

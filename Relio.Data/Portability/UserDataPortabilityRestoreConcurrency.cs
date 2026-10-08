@@ -86,6 +86,7 @@ public sealed class UserDataPortabilityRestoreConcurrencyInterceptor : DbCommand
             OR EXISTS (SELECT 1 FROM [InteractionParticipants] WHERE [OwnerId] = @ownerId)
             OR EXISTS (SELECT 1 FROM [Notes] WHERE [OwnerId] = @ownerId)
             OR EXISTS (SELECT 1 FROM [Reminders] WHERE [OwnerId] = @ownerId)
+            OR EXISTS (SELECT 1 FROM [DifficultMoments] WHERE [OwnerId] = @ownerId)
             THEN 1 ELSE 0 END;
         """;
 

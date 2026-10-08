@@ -104,6 +104,9 @@ public sealed partial class RelioDbContext : IdentityDbContext<RelioUser>
     /// <summary>The current user's reconnect reminders (epic #36).</summary>
     public DbSet<Reminder> Reminders => Set<Reminder>();
 
+    /// <summary>The current user's difficult moments in relationships (epic #42).</summary>
+    public DbSet<DifficultMoment> DifficultMoments => Set<DifficultMoment>();
+
     /// <summary>User profiles (currently just the user's time zone, see epic #12), one per user.</summary>
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
 
@@ -170,6 +173,18 @@ public sealed partial class RelioDbContext : IdentityDbContext<RelioUser>
         Configure(
             modelBuilder.Entity<UserProfile>().Property(profile => profile.UnsubscribeToken),
             ProtectedFieldPurposes.UnsubscribeToken);
+        Configure(
+            modelBuilder.Entity<DifficultMoment>().Property(m => m.Description),
+            ProtectedFieldPurposes.DifficultMomentDescription);
+        Configure(
+            modelBuilder.Entity<DifficultMoment>().Property(m => m.Trigger),
+            ProtectedFieldPurposes.DifficultMomentTrigger);
+        Configure(
+            modelBuilder.Entity<DifficultMoment>().Property(m => m.Resolution),
+            ProtectedFieldPurposes.DifficultMomentResolution);
+        Configure(
+            modelBuilder.Entity<DifficultMoment>().Property(m => m.LessonsLearned),
+            ProtectedFieldPurposes.DifficultMomentLessonsLearned);
     }
 
     private void ConfigureProtectionVersions(ModelBuilder modelBuilder)
@@ -178,6 +193,7 @@ public sealed partial class RelioDbContext : IdentityDbContext<RelioUser>
         ConfigureProtectionVersion(modelBuilder.Entity<Note>());
         ConfigureProtectionVersion(modelBuilder.Entity<Interaction>());
         ConfigureProtectionVersion(modelBuilder.Entity<Reminder>());
+        ConfigureProtectionVersion(modelBuilder.Entity<DifficultMoment>());
         ConfigureProtectionVersion(modelBuilder.Entity<UserProfile>());
         ConfigureProtectionVersion(modelBuilder.Entity<IdentityUserToken<string>>());
     }

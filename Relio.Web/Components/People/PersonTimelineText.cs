@@ -21,7 +21,7 @@ public static class PersonTimelineText
         TimelineFilter.All => "Nothing has been recorded yet. Add a note or log an interaction to begin.",
         TimelineFilter.Interaction => "No interactions have been recorded yet.",
         TimelineFilter.Note => "No notes have been recorded yet.",
-        TimelineFilter.DifficultMoment => "Difficult moments will appear here when that feature is available.",
+        TimelineFilter.DifficultMoment => "No difficult moments have been recorded yet.",
         _ => throw new ArgumentOutOfRangeException(nameof(filter), filter, "Unknown timeline filter."),
     };
 }

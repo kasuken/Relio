@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Relio.Application.Accounts;
 using Relio.Application.Administration;
 using Relio.Application.Dashboard;
+using Relio.Application.DifficultMoments;
 using Relio.Application.Interactions;
 using Relio.Application.Metrics;
 using Relio.Application.Notes;
@@ -18,6 +19,7 @@ using Relio.Application.Timeline;
 using Relio.Data.DependencyInjection;
 using Relio.Data.IntegrationTests.Administration;
 using Relio.Data.IntegrationTests.Dashboard;
+using Relio.Data.IntegrationTests.DifficultMoments;
 using Relio.Data.IntegrationTests.Encryption;
 using Relio.Data.IntegrationTests.Identity;
 using Relio.Data.IntegrationTests.Infrastructure;
@@ -558,6 +560,51 @@ internal static class ServiceCoverageCatalog
                     nameof(ReminderSqlIsolationTests.Foreign_and_missing_reminders_have_the_same_results_and_owner_B_can_use_their_own),
                     SqlIsolationEvidence.OwnerOperation))),
 
+        CurrentUserWithForeignIdsAndArchiveRules<IDifficultMomentService>(
+            Method(nameof(IDifficultMomentService.GetAsync),
+                Scenario<DifficultMomentSqlServerTests>(
+                    nameof(DifficultMomentSqlServerTests.Difficult_moments_are_isolated_by_owner_for_all_reads_and_mutations),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.MissingPrimary),
+                Scenario<DifficultMomentSqlServerTests>(
+                    nameof(DifficultMomentSqlServerTests.Difficult_moment_creation_and_reads_round_trip_with_sql_server),
+                    SqlIsolationEvidence.OwnerOperation)),
+            Method(nameof(IDifficultMomentService.ListForPersonAsync),
+                Scenario<DifficultMomentSqlServerTests>(
+                    nameof(DifficultMomentSqlServerTests.Difficult_moments_are_isolated_by_owner_for_all_reads_and_mutations),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.OwnerOperation)),
+            Method(nameof(IDifficultMomentService.ListOverviewAsync),
+                Scenario<DifficultMomentSqlServerTests>(
+                    nameof(DifficultMomentSqlServerTests.Difficult_moments_are_isolated_by_owner_for_all_reads_and_mutations),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.OwnerOperation),
+                Scenario<DifficultMomentSqlServerTests>(
+                    nameof(DifficultMomentSqlServerTests.Overview_list_excludes_archived_people_by_default),
+                    SqlIsolationEvidence.ArchiveRule)),
+            Method(nameof(IDifficultMomentService.ListCandidatesForRecurrenceAsync),
+                Scenario<DifficultMomentSqlServerTests>(
+                    nameof(DifficultMomentSqlServerTests.Difficult_moments_are_isolated_by_owner_for_all_reads_and_mutations),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.OwnerOperation)),
+            Method(nameof(IDifficultMomentService.CreateAsync),
+                Scenario<DifficultMomentSqlServerTests>(
+                    nameof(DifficultMomentSqlServerTests.Difficult_moment_creation_and_reads_round_trip_with_sql_server),
+                    SqlIsolationEvidence.OwnerOperation),
+                Scenario<DifficultMomentSqlServerTests>(
+                    nameof(DifficultMomentSqlServerTests.Difficult_moments_are_isolated_by_owner_for_all_reads_and_mutations),
+                    SqlIsolationEvidence.ForeignIdRejected)),
+            Method(nameof(IDifficultMomentService.UpdateAsync),
+                Scenario<DifficultMomentSqlServerTests>(
+                    nameof(DifficultMomentSqlServerTests.Difficult_moments_are_isolated_by_owner_for_all_reads_and_mutations),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.MissingPrimary | SqlIsolationEvidence.ForeignIdRejected),
+                Scenario<DifficultMomentSqlServerTests>(
+                    nameof(DifficultMomentSqlServerTests.Difficult_moment_creation_and_reads_round_trip_with_sql_server),
+                    SqlIsolationEvidence.OwnerOperation)),
+            Method(nameof(IDifficultMomentService.DeleteAsync),
+                Scenario<DifficultMomentSqlServerTests>(
+                    nameof(DifficultMomentSqlServerTests.Difficult_moments_are_isolated_by_owner_for_all_reads_and_mutations),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.MissingPrimary),
+                Scenario<DifficultMomentSqlServerTests>(
+                    nameof(DifficultMomentSqlServerTests.Difficult_moment_creation_and_reads_round_trip_with_sql_server),
+                    SqlIsolationEvidence.OwnerOperation))),
+
         CurrentUser<INotificationPreferencesService>(
             Method(nameof(INotificationPreferencesService.GetPreferencesAsync),
                 Scenario<CurrentUserSqlIsolationTests>(
@@ -838,6 +885,7 @@ internal static class ServiceCoverageCatalog
         new("Relio.Application.Reminders.BirthdayReminderCalculator", "Pure birthday-date calculation; user time-zone reads are proved by IReminderService and IUserTimeZoneService."),
         new("Relio.Application.Reminders.ReachOutCalculator", "Pure cadence-date calculation; owner scoping is proved by IReminderService."),
         new("Relio.Application.Reminders.ReminderRecurrence", "Pure recurrence-date calculation; persistence and owner scoping are proved by IReminderService."),
+        new("Relio.Application.DifficultMoments.DifficultMomentRules", "Pure difficult moment input validation; persistence and owner scoping are proved by IDifficultMomentService."),
         new("Relio.Application.Portability.UserDataPortabilityRules", "Pure portable-document validation; real restore ownership and fresh-destination behavior are proved by IUserDataPortabilityService."),
         new("Relio.Application.Metrics.ProductActivityCohortRules", "Pure cohort-date calculation; persisted owner attribution is proved by IProductActivityService."),
     ];

@@ -40,6 +40,7 @@ public class PersonProfilePageTests
         context.Services.AddSingleton<IPersonTimelineService>(timeline ?? new FakePersonTimelineService());
         context.Services.AddSingleton<IUserTimeZoneService>(new FakeUserTimeZoneService(timeZoneId, Today));
         context.Services.AddSingleton<Relio.Application.Reminders.IReminderService>(new FakeReminderService());
+        context.Services.AddSingleton<Relio.Application.DifficultMoments.IDifficultMomentService>(new FakeDifficultMomentService());
         providers = new ProfileProviders(
             context.Render<MudPopoverProvider>(),
             context.Render<MudDialogProvider>(),
@@ -217,6 +218,7 @@ public class PersonProfilePageTests
         context.Services.AddSingleton<IPersonTimelineService>(new FakePersonTimelineService());
         context.Services.AddSingleton<IUserTimeZoneService>(new FakeUserTimeZoneService("Europe/Rome", Today));
         context.Services.AddSingleton<Relio.Application.Reminders.IReminderService>(reminders);
+        context.Services.AddSingleton<Relio.Application.DifficultMoments.IDifficultMomentService>(new FakeDifficultMomentService());
         context.Render<MudPopoverProvider>();
         context.Render<MudDialogProvider>();
         context.Render<MudSnackbarProvider>();

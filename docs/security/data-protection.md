@@ -64,6 +64,48 @@ DataProtection__Certificate__Path=/run/secrets/relio-data-protection.pfx
 DataProtection__Certificate__Password=<injected-from-a-secret-store>
 ```
 
+### Linux local development
+
+For a **new development installation only**, install OpenSSL and `jq`, then run this once from the
+repository root. It creates a self-signed wrapping certificate and durable keys outside the checkout,
+restricts new files to your account, and passes a generated password to user secrets through standard
+input without displaying it. The web project's `UserSecretsId` enables automatic loading in Development.
+The directory creation deliberately fails if the development directory already exists: reuse existing
+configuration and keys instead of overwriting them, especially when a database already contains encrypted data.
+
+```bash
+umask 077
+export RELIO_DP_DIRECTORY="$HOME/.local/share/relio/development"
+mkdir -p "$HOME/.local/share/relio" &&
+mkdir "$RELIO_DP_DIRECTORY" &&
+mkdir "$RELIO_DP_DIRECTORY/keys" &&
+export RELIO_DP_PASSWORD="$(openssl rand -base64 48)" &&
+openssl req -x509 -newkey rsa:3072 -sha256 -days 3650 \
+	-subj '/CN=Relio development Data Protection' \
+	-keyout "$RELIO_DP_DIRECTORY/private-key.pem" \
+	-out "$RELIO_DP_DIRECTORY/certificate.pem" \
+	-passout env:RELIO_DP_PASSWORD &&
+openssl pkcs12 -export \
+	-inkey "$RELIO_DP_DIRECTORY/private-key.pem" \
+	-in "$RELIO_DP_DIRECTORY/certificate.pem" \
+	-out "$RELIO_DP_DIRECTORY/certificate.pfx" \
+	-passin env:RELIO_DP_PASSWORD -passout env:RELIO_DP_PASSWORD &&
+jq -n '{
+	"DataProtection:ApplicationName": "Relio.Development",
+	"DataProtection:KeyRingPath": (env.RELIO_DP_DIRECTORY + "/keys"),
+	"DataProtection:ProtectionMode": "Certificate",
+	"DataProtection:Certificate:Path": (env.RELIO_DP_DIRECTORY + "/certificate.pfx"),
+	"DataProtection:Certificate:Password": env.RELIO_DP_PASSWORD
+}' | dotnet user-secrets set --project Relio.Web
+unset RELIO_DP_PASSWORD RELIO_DP_DIRECTORY
+```
+
+User secrets are an unencrypted development store outside the repository, not a production secret
+manager. Keep its permissions restricted and back up the password separately from the certificate and
+key ring. Do not commit these files or use this development identity for a shared deployment. This
+setup leaves the database configuration unchanged; the README's InMemory command is available for a
+disposable demo without SQL Server.
+
 For a certificate-wrapping-key rotation, configure the new certificate as `Certificate` and retain
 the previous private certificate(s) until all key-ring entries wrapped by them have been securely
 retired. Each previous certificate has the same `Path` and `Password` shape:

@@ -95,7 +95,7 @@ public sealed class PersonTimelineTests
         {
             timeline.Queries.Last().Filter.Should().Be(TimelineFilter.DifficultMoment);
             cut.Find("[data-testid='timeline-empty']").TextContent
-                .Should().Contain("Difficult moments will appear here when that feature is available.");
+                .Should().Contain("No difficult moments have been recorded yet.");
         });
     }
 

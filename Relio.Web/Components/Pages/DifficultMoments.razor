@@ -1,6 +1,222 @@
 @page "/difficult-moments"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Relio.Application.DifficultMoments
+@using Relio.Application.People
+@using Relio.Application.Time
+@using Relio.Domain
+@using Relio.Web.Components.Shared
+@using Relio.Web.Time
+@inject IDifficultMomentService DifficultMomentService
+@inject IPeopleService PeopleService
+@inject IUserTimeZoneService UserTimeZone
 
 <PageTitle>Difficult moments - Relio</PageTitle>
 
-<EmptyState Title="No difficult moments recorded"
-            Message="When something hard happens, record what happened, what set it off and how it was resolved." />
+<div class="d-flex justify-space-between align-center mb-6">
+    <div>
+        <MudText Typo="Typo.h2" HtmlTag="h1">Difficult moments</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            A quiet overview for reflection across people.
+        </MudText>
+    </div>
+</div>
+
+<div class="d-flex flex-wrap gap-4 align-center mb-6" data-testid="difficult-moments-filters">
+    <div style="min-width: 180px;">
+        <MudSelect T="DifficultMomentStatus?"
+                   Value="_selectedStatus"
+                   ValueChanged="StatusFilterChangedAsync"
+                   Label="Status"
+                   Variant="Variant.Outlined"
+                   Dense="true"
+                   data-testid="filter-status">
+            <MudSelectItem T="DifficultMomentStatus?" Value="@((DifficultMomentStatus?)null)">All statuses</MudSelectItem>
+            <MudSelectItem T="DifficultMomentStatus?" Value="@((DifficultMomentStatus?)DifficultMomentStatus.Open)">Open</MudSelectItem>
+            <MudSelectItem T="DifficultMomentStatus?" Value="@((DifficultMomentStatus?)DifficultMomentStatus.Resolved)">Resolved</MudSelectItem>
+            <MudSelectItem T="DifficultMomentStatus?" Value="@((DifficultMomentStatus?)DifficultMomentStatus.Recurring)">Recurring</MudSelectItem>
+        </MudSelect>
+    </div>
+
+    <div style="min-width: 220px;">
+        <MudSelect T="Guid?"
+                   Value="_selectedPersonId"
+                   ValueChanged="PersonFilterChangedAsync"
+                   Label="Person"
+                   Variant="Variant.Outlined"
+                   Dense="true"
+                   data-testid="filter-person">
+            <MudSelectItem T="Guid?" Value="@((Guid?)null)">All people</MudSelectItem>
+            @foreach (var person in _people)
+            {
+                <MudSelectItem T="Guid?" Value="@((Guid?)person.Id)">@person.DisplayName</MudSelectItem>
+            }
+        </MudSelect>
+    </div>
+
+    <MudCheckBox T="bool"
+                 Value="_includeArchived"
+                 ValueChanged="IncludeArchivedChangedAsync"
+                 Label="Include archived"
+                 Dense="true"
+                 data-testid="filter-archived" />
+</div>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" data-testid="moments-loading" />
+}
+else if (_items.Count == 0)
+{
+    <div class="rl-empty" data-testid="moments-empty">
+        <div class="rl-empty-mark" aria-hidden="true">
+            <span class="rl-m1"></span><span class="rl-m2"></span><span class="rl-m3"></span>
+        </div>
+        <MudText Typo="Typo.h5" HtmlTag="h2">No difficult moments recorded</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            @(_hasActiveFilter ? "Try adjusting your filters to see other moments." : "When something hard happens, record it from a person's profile to reflect on later.")
+        </MudText>
+    </div>
+}
+else
+{
+    <div class="d-flex flex-column gap-4" data-testid="difficult-moments-list">
+        @foreach (var item in _items)
+        {
+            <MudCard Elevation="1" Class="pa-4 rl-moment-overview-card" data-testid="@($"moment-card-{item.Id}")">
+                <MudCardContent Class="pa-0">
+                    <div class="d-flex justify-space-between align-center mb-2 flex-wrap gap-2">
+                        <div class="d-flex align-center gap-2">
+                            <MudLink Href="@($"/people/{item.PersonId}")"
+                                     Typo="Typo.h6"
+                                     Color="Color.Primary"
+                                     Class="text-decoration-none"
+                                     data-testid="@($"moment-person-{item.Id}")">
+                                @item.PersonDisplayName
+                            </MudLink>
+                            @if (item.PersonIsArchived)
+                            {
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default">
+                                    Archived
+                                </MudChip>
+                            }
+                        </div>
+                        <div class="d-flex align-center gap-2">
+                            <MudChip T="string"
+                                     Size="Size.Small"
+                                     Variant="Variant.Filled"
+                                     Color="@StatusColor(item.Status)"
+                                     data-testid="@($"moment-status-{item.Id}")">
+                                @item.Status.ToString()
+                            </MudChip>
+                            <time class="mud-text-secondary" datetime="@item.OccurredOn.ToString("yyyy-MM-dd")" data-testid="@($"moment-date-{item.Id}")">
+                                @item.OccurredOn.ToString("d MMM yyyy")
+                            </time>
+                        </div>
+                    </div>
+
+                    <p class="rl-entry-text rl-multiline mb-2" data-testid="@($"moment-description-{item.Id}")">
+                        @item.Description
+                    </p>
+
+                    @if (!string.IsNullOrWhiteSpace(item.Trigger))
+                    {
+                        <p class="rl-meta mt-1" data-testid="@($"moment-trigger-{item.Id}")">
+                            <strong>Trigger:</strong> @item.Trigger
+                        </p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(item.Resolution))
+                    {
+                        <p class="rl-meta mt-1" data-testid="@($"moment-resolution-{item.Id}")">
+                            <strong>Resolution:</strong> @item.Resolution
+                        </p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(item.LessonsLearned))
+                    {
+                        <p class="rl-meta mt-1" data-testid="@($"moment-lessons-{item.Id}")">
+                            <strong>Lessons learned:</strong> @item.LessonsLearned
+                        </p>
+                    }
+                    @if (item.RecurrencesCount > 0)
+                    {
+                        <p class="rl-meta mt-1" data-testid="@($"moment-recurrences-{item.Id}")">
+                            <em>@item.RecurrencesCount recurring moment@(item.RecurrencesCount == 1 ? "" : "s") linked to this</em>
+                        </p>
+                    }
+                    @if (item.RecurrenceOfId.HasValue)
+                    {
+                        <p class="rl-meta mt-1" data-testid="@($"moment-recurrence-of-{item.Id}")">
+                            <em>Recurrence of an earlier moment</em>
+                        </p>
+                    }
+                </MudCardContent>
+            </MudCard>
+        }
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private DifficultMomentStatus? _selectedStatus;
+    private Guid? _selectedPersonId;
+    private bool _includeArchived;
+    private IReadOnlyList<Person> _people = [];
+    private IReadOnlyList<DifficultMomentOverviewItem> _items = [];
+
+    private bool _hasActiveFilter => _selectedStatus.HasValue || _selectedPersonId.HasValue || _includeArchived;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPeopleAsync();
+        await LoadMomentsAsync();
+    }
+
+    private async Task LoadPeopleAsync()
+    {
+        _people = await PeopleService.ListAsync(includeArchived: _includeArchived);
+    }
+
+    private async Task LoadMomentsAsync()
+    {
+        _loading = true;
+        try
+        {
+            _items = await DifficultMomentService.ListOverviewAsync(new DifficultMomentFilterRequest
+            {
+                Status = _selectedStatus,
+                PersonId = _selectedPersonId,
+                IncludeArchived = _includeArchived,
+            });
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task StatusFilterChangedAsync(DifficultMomentStatus? status)
+    {
+        _selectedStatus = status;
+        await LoadMomentsAsync();
+    }
+
+    private async Task PersonFilterChangedAsync(Guid? personId)
+    {
+        _selectedPersonId = personId;
+        await LoadMomentsAsync();
+    }
+
+    private async Task IncludeArchivedChangedAsync(bool includeArchived)
+    {
+        _includeArchived = includeArchived;
+        await LoadPeopleAsync();
+        await LoadMomentsAsync();
+    }
+
+    private static Color StatusColor(DifficultMomentStatus status) => status switch
+    {
+        DifficultMomentStatus.Resolved => Color.Success,
+        DifficultMomentStatus.Recurring => Color.Info,
+        _ => Color.Warning,
+    };
+}

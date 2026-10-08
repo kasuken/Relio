@@ -1,3 +1,4 @@
+using Relio.Application.DifficultMoments;
 using Relio.Application.Interactions;
 using Relio.Application.Metrics;
 using Relio.Application.Notes;
@@ -51,7 +52,8 @@ public static class UserDataPortabilityRules
             || document.People is null
             || document.Interactions is null
             || document.Notes is null
-            || document.Reminders is null)
+            || document.Reminders is null
+            || document.DifficultMoments is null)
         {
             errors.Add(UserDataPortabilityError.InvalidDocument);
             return errors.ToArray();
@@ -116,7 +118,8 @@ public static class UserDataPortabilityRules
             || interaction.Participants is null
             || interaction.Participants.Any(participant => participant is null))
         || document.Notes.Any(note => note is null)
-        || document.Reminders.Any(reminder => reminder is null);
+        || document.Reminders.Any(reminder => reminder is null)
+        || document.DifficultMoments.Any(moment => moment is null);
 
     private static void ValidateUniqueIds(
         UserDataExportDocument document,
@@ -131,6 +134,7 @@ public static class UserDataPortabilityRules
         AddIds("participants", document.Interactions.SelectMany(x => x.Participants ?? []).Select(x => x.Id));
         AddIds("notes", document.Notes.Select(x => x.Id));
         AddIds("reminders", document.Reminders.Select(x => x.Id));
+        AddIds("difficultMoments", document.DifficultMoments.Select(x => x.Id));
 
         void AddIds(string kind, IEnumerable<Guid> source)
         {
@@ -221,6 +225,11 @@ public static class UserDataPortabilityRules
                 errors.Add(UserDataPortabilityError.InvalidAuditDate);
             }
         }
+
+        foreach (var moment in document.DifficultMoments)
+        {
+            ValidateAudit(moment.CreatedAtUtc, moment.UpdatedAtUtc, document.ExportedAtUtc, errors);
+        }
     }
 
     private static void ValidateReferencesAndValues(
@@ -232,6 +241,7 @@ public static class UserDataPortabilityRules
         var today = timeZoneValid ? UserCalendar.ToUserDate(nowUtc, timeZone) : DateOnly.FromDateTime(nowUtc.UtcDateTime);
         var relationshipIds = document.RelationshipTypes.Select(x => x.Id).ToHashSet();
         var tagIds = document.Tags.Select(x => x.Id).ToHashSet();
+        var momentIds = document.DifficultMoments.Select(x => x.Id).ToHashSet();
         var people = document.People
             .GroupBy(x => x.Id)
             .Select(group => group.First())
@@ -341,6 +351,37 @@ public static class UserDataPortabilityRules
                 errors.Add(UserDataPortabilityError.InvalidValue);
             }
         }
+
+        foreach (var moment in document.DifficultMoments)
+        {
+            if (!people.ContainsKey(moment.PersonId))
+            {
+                errors.Add(UserDataPortabilityError.InvalidReference);
+            }
+
+            if (moment.RecurrenceOfId.HasValue
+                && (!momentIds.Contains(moment.RecurrenceOfId.Value) || moment.RecurrenceOfId.Value == moment.Id))
+            {
+                errors.Add(UserDataPortabilityError.InvalidReference);
+            }
+
+            var validation = DifficultMomentRules.Validate(
+                moment.OccurredOn,
+                moment.Description,
+                moment.Trigger,
+                moment.Resolution,
+                moment.LessonsLearned,
+                moment.Status,
+                moment.ResolvedOn,
+                moment.RecurrenceOfId,
+                moment.Id,
+                today);
+
+            if (validation.Count > 0)
+            {
+                errors.Add(UserDataPortabilityError.InvalidValue);
+            }
+        }
     }
 
     private static void ValidateProductActivity(
@@ -431,5 +472,6 @@ public static class UserDataPortabilityRules
         + document.Interactions.Sum(x => (long)(x?.Participants?.Count ?? 0))
         + document.Notes.Count
         + document.Reminders.Count
+        + document.DifficultMoments.Count
         + (document.ProductActivity is null ? 0 : 1);
 }

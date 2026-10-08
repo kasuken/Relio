@@ -1,4 +1,5 @@
 @page "/people/{PersonId:guid}"
+@using Relio.Application.DifficultMoments
 @using Relio.Application.Interactions
 @using Relio.Application.Notes
 @using Relio.Application.People
@@ -6,12 +7,14 @@
 @using Relio.Application.Time
 @using Relio.Application.Timeline
 @using Relio.Domain
+@using Relio.Web.Components.DifficultMoments
 @using Relio.Web.Components.Reminders
 @using Relio.Web.Time
 @using Relio.Web.Components.Notes
 @inject IPeopleService PeopleService
 @inject IInteractionService InteractionService
 @inject INoteService NoteService
+@inject IDifficultMomentService DifficultMomentService
 @inject IReminderService ReminderService
 @inject IUserTimeZoneService UserTimeZone
 @inject IDialogService DialogService
@@ -207,27 +210,36 @@
 
         <PersonTimeline @ref="_timeline"
                     PersonId="PersonId"
-                    Busy="@(_busy || _showInteractionEditor || _showNoteEditor)"
+                    Busy="@(_busy || _showInteractionEditor || _showNoteEditor || _showDifficultMomentEditor)"
                     EditInteractionRequested="EditInteractionAsync"
                     DeleteInteractionRequested="DeleteInteractionAsync"
                     EditNoteRequested="EditNoteAsync"
-                    DeleteNoteRequested="DeleteNoteAsync" />
+                    DeleteNoteRequested="DeleteNoteAsync"
+                    EditDifficultMomentRequested="EditDifficultMomentAsync"
+                    DeleteDifficultMomentRequested="DeleteDifficultMomentAsync" />
 
-        <section class="rl-profile-memories" aria-label="Notes and interactions">
+        <section class="rl-profile-memories" aria-label="Notes, interactions, and difficult moments">
             <div class="rl-profile-memory-actions">
                 <MudButton Variant="Variant.Outlined"
                            StartIcon="@Icons.Material.Outlined.NoteAdd"
                            OnClick="StartNote"
-                           Disabled="@(_busy || _showInteractionEditor || _showNoteEditor)"
+                           Disabled="@(_busy || _showInteractionEditor || _showNoteEditor || _showDifficultMomentEditor)"
                            data-testid="person-add-note">
                     Add a note
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Outlined.Thunderstorm"
+                           OnClick="StartDifficultMoment"
+                           Disabled="@(_busy || _showInteractionEditor || _showNoteEditor || _showDifficultMomentEditor)"
+                           data-testid="person-record-moment">
+                    Record a difficult moment
                 </MudButton>
                 <MudButton Variant="Variant.Filled"
                            Color="Color.Primary"
                            Class="rl-profile-primary-action"
                            StartIcon="@Icons.Material.Outlined.Add"
                            OnClick="StartInteraction"
-                           Disabled="@(_busy || _showInteractionEditor || _showNoteEditor)"
+                           Disabled="@(_busy || _showInteractionEditor || _showNoteEditor || _showDifficultMomentEditor)"
                            data-testid="person-log-interaction">
                     Log an interaction
                 </MudButton>
@@ -245,6 +257,13 @@
                             NoteId="_noteIdToEdit"
                             Saved="NoteSavedAsync"
                             Cancelled="NoteCancelledAsync" />
+            }
+            @if (_showDifficultMomentEditor)
+            {
+                <DifficultMomentEditor PersonId="PersonId"
+                                       MomentId="_momentIdToEdit"
+                                       Saved="DifficultMomentSavedAsync"
+                                       Cancelled="DifficultMomentCancelledAsync" />
             }
         </section>
 
@@ -324,6 +343,8 @@
     private Guid? _interactionIdToEdit;
     private bool _showNoteEditor;
     private Guid? _noteIdToEdit;
+    private bool _showDifficultMomentEditor;
+    private Guid? _momentIdToEdit;
     private int _loadVersion;
     private IReadOnlyList<ReminderDto> _reminders = [];
     private ReachOutDto? _reachOut;
@@ -530,7 +551,7 @@
 
     private void StartInteraction()
     {
-        if (_busy || _showInteractionEditor || _showNoteEditor)
+        if (_busy || _showInteractionEditor || _showNoteEditor || _showDifficultMomentEditor)
         {
             return;
         }
@@ -541,7 +562,7 @@
 
     private void StartNote()
     {
-        if (_busy || _showInteractionEditor || _showNoteEditor)
+        if (_busy || _showInteractionEditor || _showNoteEditor || _showDifficultMomentEditor)
         {
             return;
         }
@@ -550,9 +571,20 @@
         _showNoteEditor = true;
     }
 
+    private void StartDifficultMoment()
+    {
+        if (_busy || _showInteractionEditor || _showNoteEditor || _showDifficultMomentEditor)
+        {
+            return;
+        }
+
+        _momentIdToEdit = null;
+        _showDifficultMomentEditor = true;
+    }
+
     private Task EditInteractionAsync(Guid interactionId)
     {
-        if (!_busy && !_showNoteEditor)
+        if (!_busy && !_showNoteEditor && !_showDifficultMomentEditor)
         {
             _interactionIdToEdit = interactionId;
             _showInteractionEditor = true;
@@ -578,7 +610,7 @@
 
     private Task EditNoteAsync(Guid noteId)
     {
-        if (!_busy && !_showInteractionEditor)
+        if (!_busy && !_showInteractionEditor && !_showDifficultMomentEditor)
         {
             _noteIdToEdit = noteId;
             _showNoteEditor = true;
@@ -599,6 +631,80 @@
         _showNoteEditor = false;
         _noteIdToEdit = null;
         return Task.CompletedTask;
+    }
+
+    private Task EditDifficultMomentAsync(Guid momentId)
+    {
+        if (!_busy && !_showInteractionEditor && !_showNoteEditor)
+        {
+            _momentIdToEdit = momentId;
+            _showDifficultMomentEditor = true;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task DifficultMomentSavedAsync()
+    {
+        _showDifficultMomentEditor = false;
+        _momentIdToEdit = null;
+        await RefreshProfileAsync();
+    }
+
+    private Task DifficultMomentCancelledAsync()
+    {
+        _showDifficultMomentEditor = false;
+        _momentIdToEdit = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task DeleteDifficultMomentAsync(Guid momentId)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var confirmed = await DialogService.ShowConfirmAsync(
+                "Delete this difficult moment?",
+                "This moment will be permanently removed. It can't be undone.",
+                confirmLabel: "Delete permanently",
+                cancelLabel: "Cancel",
+                destructive: true);
+            if (!confirmed)
+            {
+                return;
+            }
+
+            bool deleted;
+            try
+            {
+                deleted = await DifficultMomentService.DeleteAsync(momentId);
+            }
+            catch (Exception)
+            {
+                Snackbar.Add("The difficult moment couldn't be deleted. Try again.", Severity.Error);
+                return;
+            }
+
+            if (deleted)
+            {
+                Snackbar.Info("Difficult moment deleted");
+                await RefreshProfileAsync();
+            }
+            else
+            {
+                Snackbar.Info("This difficult moment is no longer available.");
+                await RefreshProfileAsync();
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     private Task PinnedNotesChangedAsync() =>
