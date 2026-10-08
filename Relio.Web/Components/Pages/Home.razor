@@ -4,6 +4,7 @@
 @using Relio.Application.Dashboard
 @using Relio.Application.Reminders
 @using Relio.Domain
+@using Relio.Web.Components.People
 @using Relio.Web.Components.Reminders
 @using Relio.Web.Components.Shared
 @using Relio.Web.Time
@@ -86,241 +87,377 @@ else if (_snapshot is { } snapshot)
     }
 
     <main class="dashboard-overview" data-testid="dashboard-overview">
-        <section class="dashboard-section" aria-labelledby="dashboard-reminders-heading" data-testid="dashboard-reminders">
-            <div class="dashboard-section-heading">
-                <div>
-                    <MudText Typo="Typo.h3" HtmlTag="h2" id="dashboard-reminders-heading">Upcoming reminders</MudText>
-                    <MudText Typo="Typo.body2" Class="rl-meta">Reminders and birthdays for the next 30 days</MudText>
-                </div>
-                <MudLink Href="/reminders" Class="dashboard-view-all" data-testid="dashboard-view-reminders">
-                    View reminders
-                </MudLink>
-            </div>
+        @if (snapshot.ActivePeopleCount > 0)
+        {
+            var dueRemindersCount = snapshot.UpcomingReminders.Count(r => r.EffectiveDueDate <= snapshot.Today);
+            <div class="dashboard-metrics" data-testid="dashboard-metrics">
+                <a href="/people" class="dashboard-metric-card" data-testid="dashboard-stat-people">
+                    <div class="dashboard-metric-header">
+                        <span class="dashboard-metric-label">People</span>
+                        <MudIcon Icon="@Icons.Material.Outlined.Group" Size="Size.Small" Class="dashboard-metric-icon" />
+                    </div>
+                    <div class="dashboard-metric-value">@snapshot.ActivePeopleCount</div>
+                    <div class="dashboard-metric-subtext rl-meta">
+                        @(snapshot.ActivePeopleCount == 1 ? "1 active profile" : $"{snapshot.ActivePeopleCount} active profiles")
+                    </div>
+                </a>
 
-            @if (snapshot.UpcomingReminders.Count == 0)
-            {
-                <MudText Typo="Typo.body2" Class="dashboard-empty-line" data-testid="dashboard-reminders-empty">
-                    No reminders are due in the next 30 days.
-                </MudText>
-                @if (snapshot.UpcomingBirthdays.Count == 0)
-                {
-                    <MudText Typo="Typo.body2" Class="dashboard-empty-line" data-testid="dashboard-reminders-caught-up">
-                        You're all caught up. View upcoming reminders in the <MudLink Href="/reminders">reminders list</MudLink>.
-                    </MudText>
-                }
-            }
-            else
-            {
-                <ul class="dashboard-list" data-testid="dashboard-due-reminders-list">
-                    @foreach (var reminder in snapshot.UpcomingReminders)
-                    {
-                        var daysFromToday = reminder.EffectiveDueDate.DayNumber - snapshot.Today.DayNumber;
-                        <li class="dashboard-row" data-testid="@($"dashboard-reminder-{reminder.Id}")">
-                            <div class="dashboard-row-copy">
-                                <div class="dashboard-row-title">
-                                    <MudLink Href="@($"/people/{reminder.PersonId}")"
-                                             Class="dashboard-person-link rl-serif">
-                                        @reminder.PersonDisplayName
-                                    </MudLink>
-                                    @if (reminder.Frequency != ReminderFrequency.Once)
+                <a href="/reminders" class="dashboard-metric-card" data-testid="dashboard-stat-reminders">
+                    <div class="dashboard-metric-header">
+                        <span class="dashboard-metric-label">Reminders</span>
+                        <MudIcon Icon="@Icons.Material.Outlined.NotificationsNone" Size="Size.Small" Class="dashboard-metric-icon" />
+                    </div>
+                    <div class="dashboard-metric-value @(dueRemindersCount > 0 ? "dashboard-metric-warning" : null)">
+                        @dueRemindersCount
+                    </div>
+                    <div class="dashboard-metric-subtext rl-meta">
+                        @(dueRemindersCount == 0 ? "All caught up" : (dueRemindersCount == 1 ? "1 due today or overdue" : $"{dueRemindersCount} due or overdue"))
+                    </div>
+                </a>
+
+                <a href="/reminders" class="dashboard-metric-card" data-testid="dashboard-stat-reach-out">
+                    <div class="dashboard-metric-header">
+                        <span class="dashboard-metric-label">Reach out</span>
+                        <MudIcon Icon="@Icons.Material.Outlined.Schedule" Size="Size.Small" Class="dashboard-metric-icon" />
+                    </div>
+                    <div class="dashboard-metric-value @(snapshot.ReachOuts.Count > 0 ? "dashboard-metric-warning" : null)">
+                        @snapshot.ReachOuts.Count
+                    </div>
+                    <div class="dashboard-metric-subtext rl-meta">
+                        @(snapshot.ReachOuts.Count == 0 ? "Cadences up to date" : (snapshot.ReachOuts.Count == 1 ? "1 check-in overdue" : $"{snapshot.ReachOuts.Count} check-ins overdue"))
+                    </div>
+                </a>
+
+                <a href="/reminders" class="dashboard-metric-card" data-testid="dashboard-stat-birthdays">
+                    <div class="dashboard-metric-header">
+                        <span class="dashboard-metric-label">Birthdays</span>
+                        <MudIcon Icon="@Icons.Material.Outlined.Cake" Size="Size.Small" Class="dashboard-metric-icon" />
+                    </div>
+                    <div class="dashboard-metric-value">
+                        @snapshot.UpcomingBirthdays.Count
+                    </div>
+                    <div class="dashboard-metric-subtext rl-meta">
+                        @(snapshot.UpcomingBirthdays.Count == 0 ? "None in next 30 days" : (snapshot.UpcomingBirthdays.Count == 1 ? "1 in next 30 days" : $"{snapshot.UpcomingBirthdays.Count} in next 30 days"))
+                    </div>
+                </a>
+            </div>
+        }
+
+        <div class="dashboard-columns">
+            <div class="dashboard-column">
+                <section class="dashboard-section" aria-labelledby="dashboard-reminders-heading" data-testid="dashboard-reminders">
+                    <div class="dashboard-section-heading">
+                        <div class="dashboard-section-heading-main">
+                            <MudIcon Icon="@Icons.Material.Outlined.NotificationsNone" Size="Size.Small" Class="dashboard-heading-icon" />
+                            <div class="dashboard-section-heading-text">
+                                <div class="d-flex align-center gap-2">
+                                    <MudText Typo="Typo.h3" HtmlTag="h2" id="dashboard-reminders-heading">Upcoming reminders</MudText>
+                                    @if (snapshot.UpcomingReminders.Count > 0)
                                     {
-                                        <MudText Typo="Typo.body2" Class="rl-meta">@FormatFrequency(reminder)</MudText>
+                                        <span class="dashboard-count-pill">@snapshot.UpcomingReminders.Count</span>
                                     }
                                 </div>
-                                <MudText Typo="Typo.body1" Class="dashboard-user-text rl-serif rl-multiline">
-                                    @reminder.Title
-                                </MudText>
-                                @if (reminder.SnoozedUntilDate is { } snoozedUntil)
-                                {
-                                    <MudText Typo="Typo.body2" Class="rl-meta">
-                                        Snoozed until @DateDisplay.Format(snoozedUntil, snapshot.Today)
-                                    </MudText>
-                                }
-                                <MudText Typo="Typo.body2"
-                                         Class="@(daysFromToday < 0 ? "dashboard-warning" : "rl-meta")"
-                                         data-testid="@($"dashboard-reminder-due-{reminder.Id}")">
-                                    @FormatDueDate(reminder.EffectiveDueDate, snapshot.Today)
-                                </MudText>
+                                <MudText Typo="Typo.body2" Class="rl-meta">Reminders and birthdays for the next 30 days</MudText>
                             </div>
-                            <div class="dashboard-row-actions">
-                                <MudIconButton Icon="@Icons.Material.Outlined.CheckCircleOutline"
-                                               Color="Color.Primary"
-                                               Size="Size.Medium"
-                                               Disabled="@_busyReminderIds.Contains(reminder.Id)"
-                                               aria-label="Mark as completed"
-                                               OnClick="() => CompleteAsync(reminder)"
-                                               data-testid="@($"dashboard-complete-{reminder.Id}")" />
-                                <MudIconButton Icon="@Icons.Material.Outlined.Snooze"
-                                               Color="Color.Default"
-                                               Size="Size.Medium"
-                                               Disabled="@_busyReminderIds.Contains(reminder.Id)"
-                                               aria-label="Snooze"
-                                               OnClick="() => SnoozeAsync(reminder)"
-                                               data-testid="@($"dashboard-snooze-{reminder.Id}")" />
-                            </div>
-                        </li>
-                    }
-                </ul>
-            }
-        </section>
+                        </div>
+                        <MudLink Href="/reminders" Class="dashboard-view-all" data-testid="dashboard-view-reminders">
+                            View reminders
+                        </MudLink>
+                    </div>
 
-        <section class="dashboard-section" aria-labelledby="dashboard-birthdays-heading" data-testid="dashboard-birthdays">
-            <div class="dashboard-section-heading">
-                <div>
-                    <MudText Typo="Typo.h3" HtmlTag="h2" id="dashboard-birthdays-heading">Upcoming birthdays</MudText>
-                    <MudText Typo="Typo.body2" Class="rl-meta">A quiet reminder to remember their day</MudText>
-                </div>
-                <MudLink Href="/reminders" Class="dashboard-view-all">View reminders</MudLink>
-            </div>
-
-            @if (snapshot.UpcomingBirthdays.Count == 0)
-            {
-                <MudText Typo="Typo.body2" Class="dashboard-empty-line" data-testid="dashboard-birthdays-empty">
-                    No birthdays are coming up in the next 30 days.
-                </MudText>
-            }
-            else
-            {
-                <ul class="dashboard-list" data-testid="dashboard-birthdays-list">
-                    @foreach (var birthday in snapshot.UpcomingBirthdays)
+                    @if (snapshot.UpcomingReminders.Count == 0)
                     {
-                        <li class="dashboard-row" data-testid="@($"dashboard-birthday-{birthday.PersonId}")">
-                            <div class="dashboard-row-copy">
-                                <MudLink Href="@($"/people/{birthday.PersonId}")"
-                                         Class="dashboard-person-link rl-serif"
-                                         data-testid="@($"dashboard-birthday-person-{birthday.PersonId}")">
-                                    @birthday.PersonDisplayName
-                                </MudLink>
-                                <MudText Typo="Typo.body2" Class="rl-meta" data-testid="@($"dashboard-birthday-title-{birthday.PersonId}")">
-                                    @FormatBirthday(birthday, snapshot.Today)
-                                </MudText>
-                                @if (birthday.IsDue)
-                                {
-                                    <MudText Typo="Typo.body2" Class="dashboard-warning">Birthday reminder due</MudText>
-                                }
-                                @if (birthday.TurningAge.HasValue)
-                                {
-                                    <MudText Typo="Typo.body2" Class="rl-meta" data-testid="@($"dashboard-birthday-age-{birthday.PersonId}")">
-                                        Turning @birthday.TurningAge.Value
-                                    </MudText>
-                                }
-                            </div>
-                        </li>
+                        <MudText Typo="Typo.body2" Class="dashboard-empty-line" data-testid="dashboard-reminders-empty">
+                            No reminders are due in the next 30 days.
+                        </MudText>
+                        @if (snapshot.UpcomingBirthdays.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2" Class="dashboard-empty-line" data-testid="dashboard-reminders-caught-up">
+                                You're all caught up. View upcoming reminders in the <MudLink Href="/reminders">reminders list</MudLink>.
+                            </MudText>
+                        }
                     }
-                </ul>
-            }
-        </section>
-
-        <section class="dashboard-section" aria-labelledby="dashboard-reach-out-heading" data-testid="dashboard-reach-out">
-            <div class="dashboard-section-heading">
-                <div>
-                    <MudText Typo="Typo.h3" HtmlTag="h2" id="dashboard-reach-out-heading">People to reach out to</MudText>
-                    <MudText Typo="Typo.body2" Class="rl-meta">Based on the cadence you set for each person</MudText>
-                </div>
-                <MudLink Href="/people" Class="dashboard-view-all">View people</MudLink>
-            </div>
-
-            @if (snapshot.ReachOuts.Count == 0)
-            {
-                <MudText Typo="Typo.body2" Class="dashboard-empty-line" data-testid="dashboard-reach-out-empty">
-                    No one is overdue for a check-in.
-                </MudText>
-            }
-            else
-            {
-                <ul class="dashboard-list" data-testid="dashboard-reach-out-list">
-                    @foreach (var reachOut in snapshot.ReachOuts)
+                    else
                     {
-                        <li class="dashboard-row" data-testid="@($"dashboard-reach-out-{reachOut.PersonId}")">
-                            <div class="dashboard-row-copy">
-                                <div class="dashboard-row-title">
-                                    <MudLink Href="@($"/people/{reachOut.PersonId}")"
-                                             Class="dashboard-person-link rl-serif"
-                                             data-testid="@($"reach-out-person-{reachOut.PersonId}")">
-                                        @reachOut.PersonDisplayName
-                                    </MudLink>
-                                    <MudText Typo="Typo.body2" Class="rl-meta">
-                                        Every @(reachOut.CadenceDays == 1 ? "day" : $"{reachOut.CadenceDays} days")
-                                    </MudText>
-                                </div>
-                                <MudText Typo="Typo.body2" Class="dashboard-warning"
-                                         data-testid="@($"reach-out-overdue-{reachOut.PersonId}")">
-                                    @reachOut.DaysOverdue @(reachOut.DaysOverdue == 1 ? "day" : "days") overdue
-                                </MudText>
-                                <MudText Typo="Typo.body2" Class="rl-meta">
-                                    Last contacted @DateDisplay.FormatRelative(reachOut.ReferenceDate, snapshot.Today)
-                                </MudText>
-                            </div>
-                            <MudButton Variant="Variant.Outlined"
-                                       Color="Color.Primary"
-                                       Size="Size.Small"
-                                       Disabled="@_busyPersonIds.Contains(reachOut.PersonId)"
-                                       OnClick="() => MarkContactedAsync(reachOut.PersonId)"
-                                       data-testid="@($"reach-out-contacted-{reachOut.PersonId}")">
-                                Mark contacted
-                            </MudButton>
-                        </li>
+                        <ul class="dashboard-list" data-testid="dashboard-due-reminders-list">
+                            @foreach (var reminder in snapshot.UpcomingReminders)
+                            {
+                                var daysFromToday = reminder.EffectiveDueDate.DayNumber - snapshot.Today.DayNumber;
+                                <li class="dashboard-row" data-testid="@($"dashboard-reminder-{reminder.Id}")">
+                                    <div class="dashboard-row-leading">
+                                        <div class="rl-when @(daysFromToday < 0 ? "rl-when-overdue" : null)">
+                                            <span class="rl-when-day">@reminder.EffectiveDueDate.Day</span>
+                                            <span class="rl-when-month">@reminder.EffectiveDueDate.ToString("MMM")</span>
+                                        </div>
+                                    </div>
+                                    <div class="dashboard-row-copy">
+                                        <div class="dashboard-row-title">
+                                            <MudLink Href="@($"/people/{reminder.PersonId}")"
+                                                     Class="dashboard-person-link rl-serif">
+                                                @reminder.PersonDisplayName
+                                            </MudLink>
+                                            @if (reminder.Frequency != ReminderFrequency.Once)
+                                            {
+                                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="dashboard-chip">
+                                                    @FormatFrequency(reminder)
+                                                </MudChip>
+                                            }
+                                        </div>
+                                        <MudText Typo="Typo.body1" Class="dashboard-user-text rl-serif rl-multiline">
+                                            @reminder.Title
+                                        </MudText>
+                                        @if (reminder.SnoozedUntilDate is { } snoozedUntil)
+                                        {
+                                            <MudText Typo="Typo.body2" Class="rl-meta">
+                                                Snoozed until @DateDisplay.Format(snoozedUntil, snapshot.Today)
+                                            </MudText>
+                                        }
+                                        <MudText Typo="Typo.body2"
+                                                 Class="@(daysFromToday < 0 ? "dashboard-warning" : "rl-meta")"
+                                                 data-testid="@($"dashboard-reminder-due-{reminder.Id}")">
+                                            @FormatDueDate(reminder.EffectiveDueDate, snapshot.Today)
+                                        </MudText>
+                                    </div>
+                                    <div class="dashboard-row-actions">
+                                        <MudIconButton Icon="@Icons.Material.Outlined.CheckCircleOutline"
+                                                       Color="Color.Primary"
+                                                       Size="Size.Medium"
+                                                       Disabled="@_busyReminderIds.Contains(reminder.Id)"
+                                                       aria-label="Mark as completed"
+                                                       OnClick="() => CompleteAsync(reminder)"
+                                                       data-testid="@($"dashboard-complete-{reminder.Id}")" />
+                                        <MudIconButton Icon="@Icons.Material.Outlined.Snooze"
+                                                       Color="Color.Default"
+                                                       Size="Size.Medium"
+                                                       Disabled="@_busyReminderIds.Contains(reminder.Id)"
+                                                       aria-label="Snooze"
+                                                       OnClick="() => SnoozeAsync(reminder)"
+                                                       data-testid="@($"dashboard-snooze-{reminder.Id}")" />
+                                    </div>
+                                </li>
+                            }
+                        </ul>
                     }
-                </ul>
-            }
-        </section>
+                </section>
 
-        <section class="dashboard-section" aria-labelledby="dashboard-interactions-heading" data-testid="dashboard-interactions">
-            <div class="dashboard-section-heading">
-                <div>
-                    <MudText Typo="Typo.h3" HtmlTag="h2" id="dashboard-interactions-heading">Recent interactions</MudText>
-                    <MudText Typo="Typo.body2" Class="rl-meta">The latest moments you've recorded</MudText>
-                </div>
-                <MudButton Variant="Variant.Text"
-                           Color="Color.Primary"
-                           Href="/interactions/new"
-                           data-testid="dashboard-log-interaction-section">
-                    Log an interaction
-                </MudButton>
-            </div>
-
-            @if (snapshot.RecentInteractions.Count == 0)
-            {
-                <MudText Typo="Typo.body2" Class="dashboard-empty-line" data-testid="dashboard-interactions-empty">
-                    No interactions have been recorded yet.
-                </MudText>
-            }
-            else
-            {
-                <ul class="dashboard-list" data-testid="dashboard-interactions-list">
-                    @foreach (var interaction in snapshot.RecentInteractions)
-                    {
-                        <li class="dashboard-row dashboard-interaction" data-testid="@($"dashboard-interaction-{interaction.Id}")">
-                            <div class="dashboard-row-copy">
-                                <div class="dashboard-row-title">
-                                    <span class="rl-meta">@interaction.Kind</span>
-                                    <span class="rl-meta">@DateDisplay.FormatRelative(interaction.OccurredOn, snapshot.Today)</span>
-                                </div>
-                                <div class="dashboard-participants">
-                                    @foreach (var participant in interaction.Participants)
+                <section class="dashboard-section" aria-labelledby="dashboard-reach-out-heading" data-testid="dashboard-reach-out">
+                    <div class="dashboard-section-heading">
+                        <div class="dashboard-section-heading-main">
+                            <MudIcon Icon="@Icons.Material.Outlined.Schedule" Size="Size.Small" Class="dashboard-heading-icon" />
+                            <div class="dashboard-section-heading-text">
+                                <div class="d-flex align-center gap-2">
+                                    <MudText Typo="Typo.h3" HtmlTag="h2" id="dashboard-reach-out-heading">People to reach out to</MudText>
+                                    @if (snapshot.ReachOuts.Count > 0)
                                     {
-                                        <MudLink Href="@($"/people/{participant.PersonId}")"
-                                                 Class="dashboard-person-link rl-serif">
-                                            @participant.DisplayName
-                                        </MudLink>
+                                        <span class="dashboard-count-pill dashboard-count-pill-warning">@snapshot.ReachOuts.Count</span>
                                     }
                                 </div>
-                                @if (!string.IsNullOrWhiteSpace(interaction.Description))
-                                {
-                                    <p class="dashboard-interaction-text rl-entry-text rl-multiline">@interaction.Description</p>
-                                }
+                                <MudText Typo="Typo.body2" Class="rl-meta">Based on the cadence you set for each person</MudText>
                             </div>
-                        </li>
-                    }
-                </ul>
-            }
-        </section>
+                        </div>
+                        <MudLink Href="/people" Class="dashboard-view-all">View people</MudLink>
+                    </div>
 
-        <section class="dashboard-section" aria-labelledby="dashboard-recent-people-heading" data-testid="dashboard-recent-people">
+                    @if (snapshot.ReachOuts.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Class="dashboard-empty-line" data-testid="dashboard-reach-out-empty">
+                            No one is overdue for a check-in.
+                        </MudText>
+                    }
+                    else
+                    {
+                        <ul class="dashboard-list" data-testid="dashboard-reach-out-list">
+                            @foreach (var reachOut in snapshot.ReachOuts)
+                            {
+                                <li class="dashboard-row" data-testid="@($"dashboard-reach-out-{reachOut.PersonId}")">
+                                    <div class="dashboard-row-leading">
+                                        <MudAvatar Class="rl-avatar" Size="Size.Medium" aria-hidden="true">
+                                            @PersonInitials.ForDisplayName(reachOut.PersonDisplayName)
+                                        </MudAvatar>
+                                    </div>
+                                    <div class="dashboard-row-copy">
+                                        <div class="dashboard-row-title">
+                                            <MudLink Href="@($"/people/{reachOut.PersonId}")"
+                                                     Class="dashboard-person-link rl-serif"
+                                                     data-testid="@($"reach-out-person-{reachOut.PersonId}")">
+                                                @reachOut.PersonDisplayName
+                                            </MudLink>
+                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="dashboard-chip">
+                                                Every @(reachOut.CadenceDays == 1 ? "day" : $"{reachOut.CadenceDays} days")
+                                            </MudChip>
+                                        </div>
+                                        <MudText Typo="Typo.body2" Class="dashboard-warning"
+                                                 data-testid="@($"reach-out-overdue-{reachOut.PersonId}")">
+                                            @reachOut.DaysOverdue @(reachOut.DaysOverdue == 1 ? "day" : "days") overdue
+                                        </MudText>
+                                        <MudText Typo="Typo.body2" Class="rl-meta">
+                                            Last contacted @DateDisplay.FormatRelative(reachOut.ReferenceDate, snapshot.Today)
+                                        </MudText>
+                                    </div>
+                                    <div class="dashboard-row-actions">
+                                        <MudButton Variant="Variant.Outlined"
+                                                   Color="Color.Primary"
+                                                   Size="Size.Small"
+                                                   Disabled="@_busyPersonIds.Contains(reachOut.PersonId)"
+                                                   OnClick="() => MarkContactedAsync(reachOut.PersonId)"
+                                                   data-testid="@($"reach-out-contacted-{reachOut.PersonId}")">
+                                            Mark contacted
+                                        </MudButton>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+            </div>
+
+            <div class="dashboard-column">
+                <section class="dashboard-section" aria-labelledby="dashboard-birthdays-heading" data-testid="dashboard-birthdays">
+                    <div class="dashboard-section-heading">
+                        <div class="dashboard-section-heading-main">
+                            <MudIcon Icon="@Icons.Material.Outlined.Cake" Size="Size.Small" Class="dashboard-heading-icon" />
+                            <div class="dashboard-section-heading-text">
+                                <div class="d-flex align-center gap-2">
+                                    <MudText Typo="Typo.h3" HtmlTag="h2" id="dashboard-birthdays-heading">Upcoming birthdays</MudText>
+                                    @if (snapshot.UpcomingBirthdays.Count > 0)
+                                    {
+                                        <span class="dashboard-count-pill">@snapshot.UpcomingBirthdays.Count</span>
+                                    }
+                                </div>
+                                <MudText Typo="Typo.body2" Class="rl-meta">A quiet reminder to remember their day</MudText>
+                            </div>
+                        </div>
+                        <MudLink Href="/reminders" Class="dashboard-view-all">View reminders</MudLink>
+                    </div>
+
+                    @if (snapshot.UpcomingBirthdays.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Class="dashboard-empty-line" data-testid="dashboard-birthdays-empty">
+                            No birthdays are coming up in the next 30 days.
+                        </MudText>
+                    }
+                    else
+                    {
+                        <ul class="dashboard-list" data-testid="dashboard-birthdays-list">
+                            @foreach (var birthday in snapshot.UpcomingBirthdays)
+                            {
+                                <li class="dashboard-row" data-testid="@($"dashboard-birthday-{birthday.PersonId}")">
+                                    <div class="dashboard-row-leading">
+                                        <div class="rl-when @(birthday.IsDue ? "rl-when-overdue" : null)">
+                                            <span class="rl-when-day">@birthday.BirthdayDate.Day</span>
+                                            <span class="rl-when-month">@birthday.BirthdayDate.ToString("MMM")</span>
+                                        </div>
+                                    </div>
+                                    <div class="dashboard-row-copy">
+                                        <div class="dashboard-row-title">
+                                            <MudLink Href="@($"/people/{birthday.PersonId}")"
+                                                     Class="dashboard-person-link rl-serif"
+                                                     data-testid="@($"dashboard-birthday-person-{birthday.PersonId}")">
+                                                @birthday.PersonDisplayName
+                                            </MudLink>
+                                        </div>
+                                        <MudText Typo="Typo.body2" Class="rl-meta" data-testid="@($"dashboard-birthday-title-{birthday.PersonId}")">
+                                            @FormatBirthday(birthday, snapshot.Today)
+                                        </MudText>
+                                        @if (birthday.IsDue)
+                                        {
+                                            <MudText Typo="Typo.body2" Class="dashboard-warning">Birthday reminder due</MudText>
+                                        }
+                                    </div>
+                                    <div class="dashboard-row-actions">
+                                        <MudIconButton Icon="@Icons.Material.Outlined.Forum"
+                                                       Color="Color.Primary"
+                                                       Size="Size.Medium"
+                                                       Href="/interactions/new"
+                                                       aria-label="Log an interaction" />
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+
+                <section class="dashboard-section" aria-labelledby="dashboard-interactions-heading" data-testid="dashboard-interactions">
+                    <div class="dashboard-section-heading">
+                        <div class="dashboard-section-heading-main">
+                            <MudIcon Icon="@Icons.Material.Outlined.Forum" Size="Size.Small" Class="dashboard-heading-icon" />
+                            <div class="dashboard-section-heading-text">
+                                <div class="d-flex align-center gap-2">
+                                    <MudText Typo="Typo.h3" HtmlTag="h2" id="dashboard-interactions-heading">Recent interactions</MudText>
+                                    @if (snapshot.RecentInteractions.Count > 0)
+                                    {
+                                        <span class="dashboard-count-pill">@snapshot.RecentInteractions.Count</span>
+                                    }
+                                </div>
+                                <MudText Typo="Typo.body2" Class="rl-meta">The latest moments you've recorded</MudText>
+                            </div>
+                        </div>
+                        <MudButton Variant="Variant.Text"
+                                   Color="Color.Primary"
+                                   Href="/interactions/new"
+                                   data-testid="dashboard-log-interaction-section">
+                            Log an interaction
+                        </MudButton>
+                    </div>
+
+                    @if (snapshot.RecentInteractions.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Class="dashboard-empty-line" data-testid="dashboard-interactions-empty">
+                            No interactions have been recorded yet.
+                        </MudText>
+                    }
+                    else
+                    {
+                        <ul class="dashboard-list" data-testid="dashboard-interactions-list">
+                            @foreach (var interaction in snapshot.RecentInteractions)
+                            {
+                                <li class="dashboard-row dashboard-interaction" data-testid="@($"dashboard-interaction-{interaction.Id}")">
+                                    <div class="dashboard-row-leading">
+                                        <div class="dashboard-interaction-icon-badge" aria-hidden="true">
+                                            <MudIcon Icon="@InteractionIcon(interaction.Kind)" Size="Size.Small" />
+                                        </div>
+                                    </div>
+                                    <div class="dashboard-row-copy">
+                                        <div class="dashboard-row-title">
+                                            <span class="rl-meta">@interaction.Kind</span>
+                                            <span class="rl-meta">· @DateDisplay.FormatRelative(interaction.OccurredOn, snapshot.Today)</span>
+                                        </div>
+                                        <div class="dashboard-participants">
+                                            @foreach (var participant in interaction.Participants)
+                                            {
+                                                <MudLink Href="@($"/people/{participant.PersonId}")"
+                                                         Class="dashboard-person-link rl-serif">
+                                                    @participant.DisplayName
+                                                </MudLink>
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(interaction.Description))
+                                        {
+                                            <p class="dashboard-interaction-text rl-entry-text rl-multiline">@interaction.Description</p>
+                                        }
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+            </div>
+        </div>
+
+        <section class="dashboard-section dashboard-section-recent-people" aria-labelledby="dashboard-recent-people-heading" data-testid="dashboard-recent-people">
             <div class="dashboard-section-heading">
-                <div>
-                    <MudText Typo="Typo.h3" HtmlTag="h2" id="dashboard-recent-people-heading">Recently added people</MudText>
-                    <MudText Typo="Typo.body2" Class="rl-meta">Your newest active profiles</MudText>
+                <div class="dashboard-section-heading-main">
+                    <MudIcon Icon="@Icons.Material.Outlined.PersonAdd" Size="Size.Small" Class="dashboard-heading-icon" />
+                    <div class="dashboard-section-heading-text">
+                        <div class="d-flex align-center gap-2">
+                            <MudText Typo="Typo.h3" HtmlTag="h2" id="dashboard-recent-people-heading">Recently added people</MudText>
+                            @if (snapshot.RecentlyAddedPeople.Count > 0)
+                            {
+                                <span class="dashboard-count-pill">@snapshot.RecentlyAddedPeople.Count</span>
+                            }
+                        </div>
+                        <MudText Typo="Typo.body2" Class="rl-meta">Your newest active profiles</MudText>
+                    </div>
                 </div>
                 <MudLink Href="/people?sort=added" Class="dashboard-view-all">View all people</MudLink>
             </div>
@@ -333,17 +470,24 @@ else if (_snapshot is { } snapshot)
             }
             else
             {
-                <ul class="dashboard-list" data-testid="dashboard-recent-people-list">
+                <ul class="dashboard-list dashboard-people-grid" data-testid="dashboard-recent-people-list">
                     @foreach (var person in snapshot.RecentlyAddedPeople)
                     {
-                        <li class="dashboard-row" data-testid="@($"dashboard-recent-person-{person.PersonId}")">
-                            <MudLink Href="@($"/people/{person.PersonId}")"
-                                     Class="dashboard-person-link rl-serif">
-                                @person.DisplayName
-                            </MudLink>
-                            <MudText Typo="Typo.body2" Class="rl-meta">
-                                Added @DateDisplay.FormatRelative(person.AddedOn, snapshot.Today)
-                            </MudText>
+                        <li class="dashboard-row dashboard-person-card" data-testid="@($"dashboard-recent-person-{person.PersonId}")">
+                            <div class="dashboard-row-leading">
+                                <MudAvatar Class="rl-avatar" Size="Size.Medium" aria-hidden="true">
+                                    @PersonInitials.ForDisplayName(person.DisplayName)
+                                </MudAvatar>
+                            </div>
+                            <div class="dashboard-row-copy">
+                                <MudLink Href="@($"/people/{person.PersonId}")"
+                                         Class="dashboard-person-link rl-serif">
+                                    @person.DisplayName
+                                </MudLink>
+                                <MudText Typo="Typo.body2" Class="rl-meta">
+                                    Added @DateDisplay.FormatRelative(person.AddedOn, snapshot.Today)
+                                </MudText>
+                            </div>
                         </li>
                     }
                 </ul>
@@ -529,4 +673,13 @@ else if (_snapshot is { } snapshot)
                 ReminderFrequency.Yearly => "Every year",
                 _ => string.Empty,
             };
+
+    private static string InteractionIcon(InteractionKind kind) => kind switch
+    {
+        InteractionKind.Call => Icons.Material.Outlined.Phone,
+        InteractionKind.Meeting => Icons.Material.Outlined.Groups,
+        InteractionKind.Message => Icons.Material.Outlined.ChatBubbleOutline,
+        InteractionKind.Event => Icons.Material.Outlined.Event,
+        _ => Icons.Material.Outlined.Forum,
+    };
 }

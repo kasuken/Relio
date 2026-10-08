@@ -1,0 +1,200 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.40.2.10011",
+      "templateHash": "4137276724298488507"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "object"
+    },
+    "appServicePlanId": {
+      "type": "string"
+    },
+    "appServiceName": {
+      "type": "string"
+    },
+    "keyVaultName": {
+      "type": "string"
+    },
+    "logAnalyticsWorkspaceId": {
+      "type": "string"
+    }
+  },
+  "variables": {
+    "sqlConnectionStringReference": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=sql-connection-string)', parameters('keyVaultName'))]",
+    "dataProtectionCertificatePasswordReference": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=dp-cert-password)', parameters('keyVaultName'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2026-08-01",
+      "name": "[parameters('appServiceName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "kind": "app,linux",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "serverFarmId": "[parameters('appServicePlanId')]",
+        "httpsOnly": true,
+        "clientAffinityEnabled": true,
+        "siteConfig": {
+          "linuxFxVersion": "DOTNETCORE|10.0",
+          "alwaysOn": true,
+          "webSocketsEnabled": true,
+          "healthCheckPath": "/health/live",
+          "minTlsVersion": "1.2",
+          "ftpsState": "Disabled",
+          "http20Enabled": true,
+          "appSettings": [
+            {
+              "name": "ConnectionStrings__Relio",
+              "value": "[variables('sqlConnectionStringReference')]"
+            },
+            {
+              "name": "Database__ApplyMigrationsOnStartup",
+              "value": "true"
+            },
+            {
+              "name": "DataProtection__ApplicationName",
+              "value": "Relio"
+            },
+            {
+              "name": "DataProtection__KeyRingPath",
+              "value": "/home/relio/keys"
+            },
+            {
+              "name": "DataProtection__ProtectionMode",
+              "value": "Certificate"
+            },
+            {
+              "name": "DataProtection__Certificate__Path",
+              "value": "/home/relio/certificate.pfx"
+            },
+            {
+              "name": "DataProtection__Certificate__Password",
+              "value": "[variables('dataProtectionCertificatePasswordReference')]"
+            },
+            {
+              "name": "DataProtection__AutoGenerateIfMissing",
+              "value": "true"
+            },
+            {
+              "name": "Registration__Mode",
+              "value": "Open"
+            },
+            {
+              "name": "Email__Provider",
+              "value": "None"
+            },
+            {
+              "name": "Billing__Provider",
+              "value": "None"
+            },
+            {
+              "name": "DemoData__Enabled",
+              "value": "false"
+            },
+            {
+              "name": "ASPNETCORE_ENVIRONMENT",
+              "value": "Production"
+            },
+            {
+              "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
+              "value": "true"
+            },
+            {
+              "name": "ENABLE_ORYX_BUILD",
+              "value": "true"
+            },
+            {
+              "name": "ORYX_DISABLE_COMPRESSION",
+              "value": "true"
+            },
+            {
+              "name": "PROJECT",
+              "value": "Relio.Web/Relio.Web.csproj"
+            },
+            {
+              "name": "WEBSITES_CONTAINER_START_TIME_LIMIT",
+              "value": "1800"
+            },
+            {
+              "name": "Seo__PublicOrigin",
+              "value": "https://www.relio.club"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+      "apiVersion": "2023-12-01",
+      "name": "[format('{0}/{1}', parameters('appServiceName'), 'scm')]",
+      "properties": {
+        "allow": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('appServiceName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+      "apiVersion": "2023-12-01",
+      "name": "[format('{0}/{1}', parameters('appServiceName'), 'ftp')]",
+      "properties": {
+        "allow": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('appServiceName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[resourceId('Microsoft.Web/sites', parameters('appServiceName'))]",
+      "name": "app-service-diagnostics",
+      "properties": {
+        "workspaceId": "[parameters('logAnalyticsWorkspaceId')]",
+        "logs": [
+          {
+            "category": "AppServiceConsoleLogs",
+            "enabled": true
+          },
+          {
+            "category": "AppServiceHTTPLogs",
+            "enabled": true
+          }
+        ],
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": true
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('appServiceName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "appServiceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Web/sites', parameters('appServiceName'))]"
+    },
+    "principalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Web/sites', parameters('appServiceName')), '2026-08-01', 'full').identity.principalId]"
+    }
+  }
+}

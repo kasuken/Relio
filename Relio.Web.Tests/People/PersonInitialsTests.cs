@@ -34,4 +34,16 @@ public class PersonInitialsTests
 
         initials.Should().Be("É");
     }
+
+    [Theory]
+    [InlineData("Ada Lovelace", "AL")]
+    [InlineData("ada lovelace", "AL")]
+    [InlineData("Grace", "G")]
+    [InlineData("  Grace   Hopper  ", "GH")]
+    [InlineData("Élodie Öztürk", "ÉÖ")]
+    [InlineData("Mary Jane Watson", "MW")]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void Builds_the_monogram_from_display_name(string? displayName, string expected) =>
+        PersonInitials.ForDisplayName(displayName).Should().Be(expected);
 }

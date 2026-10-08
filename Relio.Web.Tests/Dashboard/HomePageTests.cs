@@ -231,6 +231,58 @@ public class HomePageTests
             snackbars.Markup.Should().Contain("This reminder is no longer in your list."));
     }
 
+    [Fact]
+    public async Task Dashboard_renders_glanceable_summary_metrics_when_user_has_active_people()
+    {
+        var personId = Guid.NewGuid();
+        var snapshot = Snapshot(
+            activePeople: 4,
+            archivedPeople: 1,
+            reminders:
+            [
+                new DashboardReminderItem(
+                    Guid.NewGuid(),
+                    personId,
+                    "Ada Lovelace",
+                    "Send letter",
+                    Today,
+                    ReminderFrequency.Once,
+                    null,
+                    null,
+                    Today),
+            ],
+            birthdays:
+            [
+                new BirthdayReminderDto(personId, "Ada Lovelace", Today.AddDays(5), 36, Today.AddDays(5), 5, false, 5),
+            ],
+            reachOuts:
+            [
+                new ReachOutDto(personId, "Ada Lovelace", 14, Today.AddDays(-20), 20, 6),
+            ]);
+        var dashboard = new FakeDashboardService(snapshot);
+        await using var context = CreateContext(dashboard, new FakeReminderService(), out _);
+
+        var cut = context.Render<Home>();
+
+        cut.Find("[data-testid='dashboard-metrics']").Should().NotBeNull();
+        cut.Find("[data-testid='dashboard-stat-people']").TextContent.Should().Contain("4");
+        cut.Find("[data-testid='dashboard-stat-people']").TextContent.Should().Contain("active profiles");
+        cut.Find("[data-testid='dashboard-stat-reminders']").TextContent.Should().Contain("1");
+        cut.Find("[data-testid='dashboard-stat-reach-out']").TextContent.Should().Contain("1");
+        cut.Find("[data-testid='dashboard-stat-birthdays']").TextContent.Should().Contain("1");
+    }
+
+    [Fact]
+    public async Task Dashboard_hides_glanceable_metrics_when_user_has_no_active_people()
+    {
+        var dashboard = new FakeDashboardService(Snapshot(activePeople: 0));
+        await using var context = CreateContext(dashboard, new FakeReminderService(), out _);
+
+        var cut = context.Render<Home>();
+
+        cut.FindAll("[data-testid='dashboard-metrics']").Should().BeEmpty();
+    }
+
     private static DashboardSnapshot Snapshot(
         int activePeople,
         int archivedPeople = 0,

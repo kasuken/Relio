@@ -15,6 +15,26 @@ public static class PersonInitials
     public static string For(string? firstName, string? lastName) =>
         FirstElement(firstName) + FirstElement(lastName);
 
+    /// <summary>
+    /// Builds the monogram from a single formatted display name, e.g. "AL" for "Ada Lovelace" or "G" for "Grace".
+    /// </summary>
+    public static string ForDisplayName(string? displayName)
+    {
+        var trimmed = displayName?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return string.Empty;
+        }
+
+        var parts = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => string.Empty,
+            1 => FirstElement(parts[0]),
+            _ => FirstElement(parts[0]) + FirstElement(parts[^1]),
+        };
+    }
+
     private static string FirstElement(string? name)
     {
         var trimmed = name?.Trim();
