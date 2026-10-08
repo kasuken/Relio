@@ -29,17 +29,14 @@ RUN dotnet publish Relio.Web.csproj --configuration Release --output /app/publis
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Create a non-root user (appuser, UID 1000) for security
-RUN useradd -m -u 1000 -s /bin/bash appuser
-
 # Copy published application
 COPY --from=build /app/publish .
 
-# Create persistent data directory with non-root ownership
-RUN mkdir -p /var/opt/relio /var/opt/relio/keys && chown -R appuser:appuser /var/opt/relio /app
+# Create persistent data directory with non-root ownership (built-in app user)
+RUN mkdir -p /var/opt/relio /var/opt/relio/keys && chown -R app:app /var/opt/relio /app
 
 # Switch to non-root user
-USER appuser
+USER app
 
 # Expose HTTP port
 EXPOSE 8080

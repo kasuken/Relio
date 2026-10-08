@@ -1,0 +1,9 @@
+**/.git
+**/.github
+**/bin
+**/obj
+**/TestResults
+**/playwright-traces
+**/.vs
+**/.vscode
+**/.idea
