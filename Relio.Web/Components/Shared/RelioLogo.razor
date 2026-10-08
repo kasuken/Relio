@@ -1,0 +1,16 @@
+@* The Relio logo (docs/design-system/README.md "Logo"): the colour mark as an image and the wordmark
+   as a CSS mask filled with the `text` token, so it follows the light and dark themes. Both files
+   come from assets/brand/generate-web-assets.py. The visually hidden text is the accessible name,
+   also for a link that wraps the logo. Size it with --rl-logo-height (see .rl-logo in app.css). *@
+
+<span class="rl-logo @Class">
+    <img class="rl-logo-mark" src="@Assets["img/brand/relio-mark.png"]" alt="" width="121" height="128" />
+    <span class="rl-logo-wordmark" aria-hidden="true"></span>
+    <span class="rl-visually-hidden">Relio</span>
+</span>
+
+@code {
+    /// <summary>Gets or sets extra classes, for example one that sets <c>--rl-logo-height</c>.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+}

@@ -60,8 +60,8 @@
     flex-wrap: wrap;
 }
 
-.rl-marketing-header .rl-wordmark {
-    text-decoration: none;
+.rl-marketing-header .rl-logo {
+    --rl-logo-height: 32px;
 }
 
 .rl-marketing-nav,

@@ -29,7 +29,13 @@ def font(name, size):
 image = Image.new("RGB", (1200, 630), colors["paper"])
 draw = ImageDraw.Draw(image)
 draw.line((72, 480, 1128, 480), fill=colors["line-strong"], width=2)
-draw.text((72, 60), "Relio", font=font("Alegreya-Roman-latin.woff2", 100), fill=colors["pen"])
+# The supplied logo (assets/brand), trimmed and with its faint halo cleared, as in
+# assets/brand/generate-web-assets.py.
+logo = Image.open(root / "assets/brand/relio/relio-logo-primary.png").convert("RGBA").crop((17, 14, 801, 269))
+logo.putalpha(logo.getchannel("A").point(lambda value: 0 if value <= 12 else value))
+logo = logo.convert("RGBa").resize((round(logo.width * 110 / logo.height), 110), Image.Resampling.LANCZOS)
+logo = logo.convert("RGBA")
+image.paste(logo, (72, 60), logo)
 sans = font("HankenGrotesk-Roman-latin.woff2", 48)
 draw.text((72, 245), "A private notebook for", font=sans, fill=colors["text"])
 draw.text((72, 307), "the people in your life.", font=sans, fill=colors["text"])

@@ -51,6 +51,7 @@ public static class MarketingEndpointRouteBuilderExtensions
                         "Allow: /app*.css$",
                         "Allow: /marketing*.css$",
                         "Allow: /Relio.Web*.styles.css$",
+                        "Allow: /favicon*.ico$",
                         "Allow: /fonts/",
                         "Allow: /img/",
                         "Allow: /js/",

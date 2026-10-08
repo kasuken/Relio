@@ -82,7 +82,10 @@ The person timeline is the signature element of Relio and the one place the desi
 
 ## Logo
 
-- Relio has no logo yet. Set the wordmark "Relio" in Alegreya 600 in `text` (or `on-pen` on a pen fill). Don't draw a mark until one is designed.
+- The logo is the two-figure mark and the "Relio" wordmark. The source artwork and its crops are in `assets/brand/relio/` (`crop-manifest.json` records every crop). Never redraw, recolour or retype it.
+- In the app, always use `Components/Shared/RelioLogo.razor`: the mark is an image in its own fixed colours (the one exception to "colours come from tokens"), and the wordmark is a mask filled with `text`, so it follows light, dark and forced-colours modes. Set its size with `--rl-logo-height` (28px in the app bar, 32px in the marketing header, 36px on account pages); on phones the app bar shows the mark alone.
+- The favicon, the touch icons and the web files are the mark alone, derived by `assets/brand/generate-web-assets.py` (run it after the artwork changes). The social preview places the full logo through `docs/marketing/generate-preview.py`.
+- Give the logo clear space of at least half its height, and don't set it below 16px.
 
 ## MudBlazor mapping
 

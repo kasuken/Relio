@@ -28,7 +28,7 @@ public sealed class MarketingFeaturesTests(RelioAppFixture fixture)
                 .ToHaveAttributeAsync("data-enhance-nav", "false");
             (await page.EvaluateAsync<bool>(
                 "() => document.documentElement.scrollWidth <= document.documentElement.clientWidth")).Should().BeTrue();
-            await page.Locator("header .rl-wordmark").ClickAsync();
+            await page.Locator("header a.rl-logo-link").ClickAsync();
             await Expect(page.Locator("main h1")).ToHaveTextAsync("A private notebook for your relationships");
             await Expect(page.Locator("link[rel='canonical']")).ToHaveAttributeAsync("href", "https://localhost/");
         }

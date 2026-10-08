@@ -134,12 +134,55 @@ a {
     color: var(--link);
 }
 
-.rl-wordmark {
-    font-family: var(--font-serif);
-    font-weight: 600;
-    font-size: 1.625rem;
-    line-height: 1;
-    color: var(--text);
+/* The logo (Components/Shared/RelioLogo.razor). The mark and the wordmark files share one height and
+   sit 43/255 of it apart, as in the original artwork; the wordmark is 500 x 255. */
+.rl-logo {
+    --rl-logo-height: 28px;
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: calc(var(--rl-logo-height) * 43 / 255);
+    line-height: 0;
+}
+
+.rl-logo-mark {
+    width: auto;
+    height: var(--rl-logo-height);
+}
+
+.rl-logo-wordmark {
+    display: block;
+    height: var(--rl-logo-height);
+    aspect-ratio: 500 / 255;
+    background-color: var(--text);
+    -webkit-mask: url("img/brand/relio-wordmark.png") center / contain no-repeat;
+    mask: url("img/brand/relio-wordmark.png") center / contain no-repeat;
+}
+
+@media (forced-colors: active) {
+    .rl-logo-wordmark {
+        forced-color-adjust: none;
+        background-color: CanvasText;
+    }
+}
+
+/* On phones the app bar keeps only the mark; the hidden "Relio" text still names it. */
+@media (max-width: 599.98px) {
+    .rl-logo-compact .rl-logo-wordmark {
+        display: none;
+    }
+}
+
+.rl-logo-account {
+    --rl-logo-height: 36px;
+}
+
+.rl-logo-link {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    border-radius: var(--radius-sm);
+    text-decoration: none;
 }
 
 .rl-page {

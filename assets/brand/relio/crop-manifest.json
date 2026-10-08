@@ -1,0 +1,67 @@
+{
+  "received": "2026-10-08",
+  "source": "relio-logo-sheet-original.png",
+  "source_sha256": "5ABC24A13227CA16BEE8A5ECFD0CF243BE7DECDF750DD41C53A9F4D85441A91D",
+  "source_width": 1774,
+  "source_height": 887,
+  "operation": "Rectangular crops only; no resizing, recoloring, background removal, or redrawing",
+  "coordinate_system": "Pixel coordinates from top-left; x/y are zero-based",
+  "crops": [
+    {
+      "x": 155,
+      "height": 282,
+      "variant": "Large color mark with dark wordmark; original transparency",
+      "width": 815,
+      "file": "relio-logo-primary.png",
+      "y": 250
+    },
+    {
+      "x": 122,
+      "height": 102,
+      "variant": "Small color mark with dark wordmark; original transparency",
+      "width": 246,
+      "file": "relio-logo-small-color.png",
+      "y": 713
+    },
+    {
+      "x": 486,
+      "height": 114,
+      "variant": "Small standalone color mark; original transparency",
+      "width": 111,
+      "file": "relio-mark-small-color.png",
+      "y": 710
+    },
+    {
+      "x": 738,
+      "height": 99,
+      "variant": "Small light monochrome mark and wordmark; original transparency",
+      "width": 249,
+      "file": "relio-logo-small-monochrome.png",
+      "y": 715
+    },
+    {
+      "x": 1178,
+      "height": 189,
+      "variant": "Color mark and white wordmark on supplied dark background",
+      "width": 525,
+      "file": "relio-logo-on-dark.png",
+      "y": 167
+    },
+    {
+      "x": 1158,
+      "height": 275,
+      "variant": "Light app icon with supplied surrounding background",
+      "width": 260,
+      "file": "relio-app-icon-light.png",
+      "y": 533
+    },
+    {
+      "x": 1461,
+      "height": 275,
+      "variant": "Dark app icon with supplied surrounding background",
+      "width": 260,
+      "file": "relio-app-icon-dark.png",
+      "y": 533
+    }
+  ]
+}

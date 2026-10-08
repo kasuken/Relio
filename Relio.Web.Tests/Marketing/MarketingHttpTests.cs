@@ -62,7 +62,10 @@ public sealed class MarketingHttpTests
                 .Should().Be(Origin + "/img/og-preview.png");
             titles.Add(document.QuerySelector("title")!.TextContent);
             descriptions.Add(document.QuerySelector("meta[name='description']")!.GetAttribute("content")!);
-            foreach (var element in document.QuerySelectorAll("link[rel='stylesheet'][href], script[src], img[src]"))
+            document.QuerySelectorAll("link[rel='icon'][href], link[rel='apple-touch-icon'][href]")
+                .Should().HaveCount(3, "every public page links the favicon and touch icons");
+            foreach (var element in document.QuerySelectorAll(
+                "link[rel='stylesheet'][href], link[rel='icon'][href], link[rel='apple-touch-icon'][href], script[src], img[src]"))
             {
                 var asset = new Uri(client.BaseAddress!, element.GetAttribute("href") ?? element.GetAttribute("src")!);
                 asset.Authority.Should().Be(client.BaseAddress!.Authority, "public assets must be self-hosted");
@@ -96,6 +99,7 @@ public sealed class MarketingHttpTests
                 "/", "/features", "/pricing", "/changelog",
                 "/app.abc.css", "/marketing.abc.css", "/Relio.Web.abc.styles.css",
                 "/fonts/HankenGrotesk-Roman-latin.woff2", "/img/og-preview.png",
+                "/favicon.ico", "/favicon.abc.ico", "/img/brand/apple-touch-icon.png",
                 "/js/theme.abc.js", "/_framework/blazor.web.abc.js",
                 "/_content/MudBlazor/MudBlazor.min.abc.css", "/Components/Layout/ReconnectModal.abc.razor.js",
             })
