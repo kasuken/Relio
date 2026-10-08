@@ -25,25 +25,18 @@ permissions:
   contents: write
   actions: read
   id-token: write
-  packages: write
 
 jobs:
   release:
-    uses: kasuken/.github/.github/workflows/release-azure-webapp.yml@main
+    uses: kasuken/.github/.github/workflows/release-azure-webapp.yml@0b46dd070731c0946a9428167f38aa3e6f7f3ca4 # reviewed shared release workflow
     with:
-      app-name: relio-prod-001
+      app-name: app-relio-prod-edff
       web-project: Relio.Web/Relio.Web.csproj
-      base-url: https://relio-prod-001.azurewebsites.net
-      migrations-project: Relio.Data/Relio.Data.csproj
-      migrations-connection-variable: ConnectionStrings__Relio
-      resource-group: Relio.Prod
-      sql-server: relio-prod-001-server
-      sql-database: relio-prod-001-database
+      base-url: https://app-relio-prod-edff.azurewebsites.net
       health-path: /health/ready
       smoke-paths: /Account/Login /pricing
       bump: ${{ inputs.bump || 'patch' }}
       redeploy: ${{ inputs.redeploy || '' }}
-    secrets: inherit
 
   docker:
     name: Publish Docker image to GHCR
