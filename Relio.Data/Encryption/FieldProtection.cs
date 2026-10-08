@@ -46,6 +46,18 @@ public static class ProtectedFieldPurposes
 
     /// <summary>The purpose for <c>UserProfile.UnsubscribeToken</c>.</summary>
     public const string UnsubscribeToken = "Relio.FieldProtection.v1.UserProfile.UnsubscribeToken";
+
+    /// <summary>The purpose for <c>DifficultMoment.Description</c>.</summary>
+    public const string DifficultMomentDescription = "Relio.FieldProtection.v1.DifficultMoment.Description";
+
+    /// <summary>The purpose for <c>DifficultMoment.Trigger</c>.</summary>
+    public const string DifficultMomentTrigger = "Relio.FieldProtection.v1.DifficultMoment.Trigger";
+
+    /// <summary>The purpose for <c>DifficultMoment.Resolution</c>.</summary>
+    public const string DifficultMomentResolution = "Relio.FieldProtection.v1.DifficultMoment.Resolution";
+
+    /// <summary>The purpose for <c>DifficultMoment.LessonsLearned</c>.</summary>
+    public const string DifficultMomentLessonsLearned = "Relio.FieldProtection.v1.DifficultMoment.LessonsLearned";
 }
 
 /// <summary>

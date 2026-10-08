@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Relio.Application.DifficultMoments;
 using Relio.Application.Interactions;
 using Relio.Application.Notes;
 using Relio.Application.People;
@@ -104,6 +105,16 @@ public sealed class UserDataPortabilityService(
                 .AsNoTracking()
                 .Where(item => item.OwnerId == ownerId && personIds.Contains(item.PersonId))
                 .OrderBy(item => item.DueDate)
+                .ThenBy(item => item.Id)
+                .ToListAsync(cancellationToken);
+
+        var difficultMoments = personIds.Length == 0
+            ? new List<DifficultMoment>()
+            : await dbContext.DifficultMoments
+                .AsNoTracking()
+                .Where(item => item.OwnerId == ownerId && personIds.Contains(item.PersonId))
+                .OrderBy(item => item.OccurredOn)
+                .ThenBy(item => item.CreatedAtUtc)
                 .ThenBy(item => item.Id)
                 .ToListAsync(cancellationToken);
 
@@ -213,6 +224,21 @@ public sealed class UserDataPortabilityService(
                 IsCompleted = item.IsCompleted,
                 CompletedAtUtc = item.CompletedAtUtc is { } completed ? AsUtc(completed) : null,
                 LastDeliveredDate = item.LastDeliveredDate,
+                CreatedAtUtc = AsUtc(item.CreatedAtUtc),
+                UpdatedAtUtc = AsUtc(item.UpdatedAtUtc),
+            }).ToArray(),
+            DifficultMoments = difficultMoments.Select(item => new DifficultMomentSnapshot
+            {
+                Id = item.Id,
+                PersonId = item.PersonId,
+                OccurredOn = item.OccurredOn,
+                Description = item.Description,
+                Trigger = item.Trigger,
+                Resolution = item.Resolution,
+                LessonsLearned = item.LessonsLearned,
+                Status = item.Status,
+                ResolvedOn = item.ResolvedOn,
+                RecurrenceOfId = item.RecurrenceOfId,
                 CreatedAtUtc = AsUtc(item.CreatedAtUtc),
                 UpdatedAtUtc = AsUtc(item.UpdatedAtUtc),
             }).ToArray(),
@@ -352,6 +378,12 @@ public sealed class UserDataPortabilityService(
             if (!profileExists)
             {
                 profileExists = await dbContext.Reminders.AsNoTracking()
+                    .AnyAsync(item => item.OwnerId == ownerId, cancellationToken);
+            }
+
+            if (!profileExists)
+            {
+                profileExists = await dbContext.DifficultMoments.AsNoTracking()
                     .AnyAsync(item => item.OwnerId == ownerId, cancellationToken);
             }
 
@@ -537,6 +569,35 @@ public sealed class UserDataPortabilityService(
                 };
                 dbContext.Reminders.Add(reminder);
                 PreserveAudit(reminder, sourceReminder.CreatedAtUtc, sourceReminder.UpdatedAtUtc);
+            }
+
+            var momentsBySourceId = new Dictionary<Guid, DifficultMoment>();
+            foreach (var sourceMoment in document.DifficultMoments)
+            {
+                var moment = new DifficultMoment
+                {
+                    OwnerId = ownerId,
+                    PersonId = peopleBySourceId[sourceMoment.PersonId].Id,
+                    OccurredOn = sourceMoment.OccurredOn,
+                    Description = DifficultMomentRules.NormalizeDescription(sourceMoment.Description),
+                    Trigger = DifficultMomentRules.NormalizeOptionalText(sourceMoment.Trigger),
+                    Resolution = DifficultMomentRules.NormalizeOptionalText(sourceMoment.Resolution),
+                    LessonsLearned = DifficultMomentRules.NormalizeOptionalText(sourceMoment.LessonsLearned),
+                    Status = sourceMoment.Status,
+                    ResolvedOn = sourceMoment.ResolvedOn,
+                };
+                momentsBySourceId.Add(sourceMoment.Id, moment);
+                dbContext.DifficultMoments.Add(moment);
+                PreserveAudit(moment, sourceMoment.CreatedAtUtc, sourceMoment.UpdatedAtUtc);
+            }
+
+            foreach (var sourceMoment in document.DifficultMoments)
+            {
+                if (sourceMoment.RecurrenceOfId is { } parentSourceId
+                    && momentsBySourceId.TryGetValue(parentSourceId, out var parentMoment))
+                {
+                    momentsBySourceId[sourceMoment.Id].RecurrenceOfId = parentMoment.Id;
+                }
             }
 
             try

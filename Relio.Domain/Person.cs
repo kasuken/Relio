@@ -98,6 +98,11 @@ public sealed class Person : OwnedEntity
     public ICollection<Reminder> Reminders { get; set; } = new List<Reminder>();
 
     /// <summary>
+    /// Difficult moments recorded for this person (epic #42). Deleted with the person.
+    /// </summary>
+    public ICollection<DifficultMoment> DifficultMoments { get; set; } = new List<DifficultMoment>();
+
+    /// <summary>
     /// Optional stay-in-touch cadence in days (issue #41), e.g. 30 days. When null, no cadence is enforced.
     /// </summary>
     public int? StayInTouchCadenceDays { get; set; }

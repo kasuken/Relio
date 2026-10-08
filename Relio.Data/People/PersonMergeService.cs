@@ -198,7 +198,7 @@ public sealed class PersonMergeService(RelioDbContext dbContext, ICurrentUser cu
     /// <item><description>[x] Interactions (#31) and their participants (#35): when the interaction already has the primary as a participant, remove the duplicate's participant row; otherwise set its <c>PersonId</c> to the primary.</description></item>
     /// <item><description>[x] Notes (#32): move the duplicate's notes to the primary, preserving text, pin state and creation dates; the normal save stamping advances <c>UpdatedAtUtc</c>.</description></item>
     /// <item><description>[x] Reminders (#37, #38): <c>PersonId = primary.Id</c>. Birthday reminders are derived from the birthday columns and need nothing.</description></item>
-    /// <item><description>[ ] Difficult moments (#43): <c>PersonId = primary.Id</c>.</description></item>
+    /// <item><description>[x] Difficult moments (#43): <c>PersonId = primary.Id</c>.</description></item>
     /// <item><description>[ ] Any person-to-person link (two foreign keys to <c>People</c>): drop a link between primary and duplicate, and dedupe the links both had.</description></item>
     /// </list>
     /// </para>
@@ -294,6 +294,15 @@ public sealed class PersonMergeService(RelioDbContext dbContext, ICurrentUser cu
         foreach (var reminder in reminders)
         {
             reminder.PersonId = primary.Id;
+        }
+
+        var moments = await dbContext.DifficultMoments
+            .Where(m => m.OwnerId == ownerId && m.PersonId == duplicate.Id)
+            .ToListAsync(cancellationToken);
+        foreach (var moment in moments)
+        {
+            moment.PersonId = primary.Id;
+            moment.Person = primary;
         }
     }
 }

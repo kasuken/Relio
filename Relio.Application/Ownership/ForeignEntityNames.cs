@@ -18,4 +18,7 @@ public static class ForeignEntityNames
 
     /// <summary>People selected as participants in an interaction.</summary>
     public const string People = "people";
+
+    /// <summary>An earlier difficult moment marked as the recurrence parent.</summary>
+    public const string DifficultMoments = "difficult moments";
 }

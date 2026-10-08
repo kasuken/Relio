@@ -74,8 +74,9 @@ dotnet user-secrets set DataProtection:KeyRingPath $keyDirectory --project Relio
 dotnet user-secrets set DataProtection:ProtectionMode Dpapi --project Relio.Web
 ```
 
-Linux, containers and shared deployments use certificate-protected keys instead. Follow
-[data protection](docs/security/data-protection.md) for provisioning, rotation and recovery.
+Linux, containers and shared deployments use certificate-protected keys instead. For a new Linux
+development installation, follow the [one-time local setup](docs/security/data-protection.md#linux-local-development).
+For deployments, follow [data protection](docs/security/data-protection.md) for provisioning, rotation and recovery.
 Back up the key ring and its required private-key material: losing them makes encrypted data
 unrecoverable. The application refuses missing configuration or unauthenticatable stored data;
 it never substitutes an ephemeral or plaintext production key ring.
@@ -243,6 +244,8 @@ administrator and accounts you register are not.
 For a quick look at the app with no database to set up, run against the EF Core InMemory provider
 with sample data seeded (a demo account and ~8 example people - see
 `Relio.Data.Seeding.DemoDataSeeder`):
+
+Complete the Data Protection setup under **Getting started** first; InMemory still needs protected keys.
 
 ```bash
 Database__Provider=InMemory DemoData__Enabled=true dotnet run --project Relio.Web

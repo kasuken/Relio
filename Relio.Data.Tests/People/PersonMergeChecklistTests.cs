@@ -27,6 +27,7 @@ public class PersonMergeChecklistTests
         typeof(Note).FullName!,
         typeof(InteractionParticipant).FullName!,
         typeof(Reminder).FullName!,
+        typeof(DifficultMoment).FullName!,
     ];
 
     /// <summary>

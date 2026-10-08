@@ -39,6 +39,9 @@ public sealed record UserDataExportDocument
     /// <summary>Reminders, including completion and delivery history.</summary>
     public required IReadOnlyList<ReminderSnapshot> Reminders { get; init; }
 
+    /// <summary>Difficult moments recorded for relationships.</summary>
+    public IReadOnlyList<DifficultMomentSnapshot> DifficultMoments { get; init; } = [];
+
     /// <summary>
     /// The source account's optional product-activity contribution. This is included for access and
     /// erasure portability only and is deliberately never restored into the destination instance.
@@ -246,6 +249,35 @@ public sealed record ReminderSnapshot
     public required DateTime? CompletedAtUtc { get; init; }
     /// <summary>Last date the reminder was delivered to the source user.</summary>
     public required DateOnly? LastDeliveredDate { get; init; }
+    /// <summary>UTC creation audit instant.</summary>
+    public required DateTime CreatedAtUtc { get; init; }
+    /// <summary>UTC update audit instant.</summary>
+    public required DateTime UpdatedAtUtc { get; init; }
+}
+
+/// <summary>A difficult moment snapshot for portability.</summary>
+public sealed record DifficultMomentSnapshot
+{
+    /// <summary>Source-local difficult moment ID.</summary>
+    public required Guid Id { get; init; }
+    /// <summary>Source-local person ID.</summary>
+    public required Guid PersonId { get; init; }
+    /// <summary>Calendar date on which the moment occurred.</summary>
+    public required DateOnly OccurredOn { get; init; }
+    /// <summary>Description of what happened.</summary>
+    public required string Description { get; init; }
+    /// <summary>Optional trigger.</summary>
+    public required string? Trigger { get; init; }
+    /// <summary>Optional resolution.</summary>
+    public required string? Resolution { get; init; }
+    /// <summary>Optional lessons learned.</summary>
+    public required string? LessonsLearned { get; init; }
+    /// <summary>Status of the moment.</summary>
+    public required DifficultMomentStatus Status { get; init; }
+    /// <summary>Calendar date when resolved, if applicable.</summary>
+    public required DateOnly? ResolvedOn { get; init; }
+    /// <summary>Referenced earlier moment ID, if this is a recurrence.</summary>
+    public required Guid? RecurrenceOfId { get; init; }
     /// <summary>UTC creation audit instant.</summary>
     public required DateTime CreatedAtUtc { get; init; }
     /// <summary>UTC update audit instant.</summary>

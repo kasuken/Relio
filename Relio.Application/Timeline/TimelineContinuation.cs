@@ -6,10 +6,14 @@ namespace Relio.Application.Timeline;
 /// </summary>
 public sealed record TimelineContinuation(
     InteractionTimelineCursor? Interaction,
-    NoteTimelineCursor? Note);
+    NoteTimelineCursor? Note,
+    DifficultMomentTimelineCursor? DifficultMoment = null);
 
 /// <summary>The last interaction consumed by a timeline page.</summary>
 public sealed record InteractionTimelineCursor(DateOnly OccurredOn, DateTime CreatedAtUtc, Guid Id);
 
 /// <summary>The last note consumed by a timeline page.</summary>
 public sealed record NoteTimelineCursor(DateTime CreatedAtUtc, Guid Id);
+
+/// <summary>The last difficult moment consumed by a timeline page.</summary>
+public sealed record DifficultMomentTimelineCursor(DateOnly OccurredOn, DateTime CreatedAtUtc, Guid Id);

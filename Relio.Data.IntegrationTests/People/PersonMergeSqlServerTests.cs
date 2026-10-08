@@ -200,6 +200,7 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
                 "FK_InteractionParticipants_People_PersonId",
                 "FK_Notes_People_PersonId",
                 "FK_Reminders_People_PersonId",
+                "FK_DifficultMoments_People_PersonId",
             ],
             "a new foreign key to People needs a line in PersonMergeService.MoveDependentsAsync (and in "
             + "PeopleService.RemoveDependentsAsync), and an entry here and in PersonMergeChecklistTests");

@@ -358,6 +358,80 @@ namespace Relio.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Relio.Domain.DifficultMoment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(51024)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("LessonsLearned")
+                        .HasMaxLength(51024)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateOnly>("OccurredOn")
+                        .HasColumnType("date");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("RecurrenceOfId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(51024)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateOnly?>("ResolvedOn")
+                        .HasColumnType("date");
+
+                    b.Property<int>("SensitiveDataProtectionVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Trigger")
+                        .HasMaxLength(51024)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PersonId");
+
+                    b.HasIndex("RecurrenceOfId");
+
+                    b.HasIndex("OwnerId", "RecurrenceOfId");
+
+                    b.HasIndex("OwnerId", "PersonId", "OccurredOn");
+
+                    b.HasIndex("OwnerId", "Status", "OccurredOn");
+
+                    b.HasIndex("OwnerId", "PersonId", "CreatedAtUtc", "Id");
+
+                    b.ToTable("DifficultMoments", (string)null);
+                });
+
             modelBuilder.Entity("Relio.Domain.Interaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -908,6 +982,31 @@ namespace Relio.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Relio.Domain.DifficultMoment", b =>
+                {
+                    b.HasOne("Relio.Data.Identity.RelioUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_DifficultMoments_AspNetUsers_OwnerId");
+
+                    b.HasOne("Relio.Domain.Person", "Person")
+                        .WithMany("DifficultMoments")
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Relio.Domain.DifficultMoment", "RecurrenceOf")
+                        .WithMany("Recurrences")
+                        .HasForeignKey("RecurrenceOfId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Person");
+
+                    b.Navigation("RecurrenceOf");
+                });
+
             modelBuilder.Entity("Relio.Domain.Interaction", b =>
                 {
                     b.HasOne("Relio.Data.Identity.RelioUser", null)
@@ -1037,6 +1136,11 @@ namespace Relio.Data.Migrations
                         .HasConstraintName("FK_UserProfiles_AspNetUsers_OwnerId");
                 });
 
+            modelBuilder.Entity("Relio.Domain.DifficultMoment", b =>
+                {
+                    b.Navigation("Recurrences");
+                });
+
             modelBuilder.Entity("Relio.Domain.Interaction", b =>
                 {
                     b.Navigation("Participants");
@@ -1045,6 +1149,8 @@ namespace Relio.Data.Migrations
             modelBuilder.Entity("Relio.Domain.Person", b =>
                 {
                     b.Navigation("ContactMethods");
+
+                    b.Navigation("DifficultMoments");
 
                     b.Navigation("Reminders");
                 });

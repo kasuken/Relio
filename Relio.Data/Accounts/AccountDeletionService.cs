@@ -109,6 +109,11 @@ public sealed class AccountDeletionService(
                 cancellationToken);
             await RemoveOwnedRowsAsync(
                 dbContext,
+                dbContext.DifficultMoments.Where(item => item.OwnerId == ownerId),
+                id => new DifficultMoment { Id = id, OwnerId = ownerId },
+                cancellationToken);
+            await RemoveOwnedRowsAsync(
+                dbContext,
                 dbContext.Interactions.Where(item => item.OwnerId == ownerId),
                 id => new Interaction { Id = id, OwnerId = ownerId },
                 cancellationToken);

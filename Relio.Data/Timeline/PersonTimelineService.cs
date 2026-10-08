@@ -41,21 +41,18 @@ public sealed class PersonTimelineService(RelioDbContext dbContext, ICurrentUser
             return null;
         }
 
-        if (filter == TimelineFilter.DifficultMoment)
-        {
-            // Difficult moments do not have a model or service yet; keep the filter as an explicit
-            // extension seam rather than inventing placeholder timeline rows.
-            return new PersonTimelinePage([], boundedPageSize, false, null);
-        }
-
         var includeInteractions = filter is TimelineFilter.All or TimelineFilter.Interaction;
         var includeNotes = filter is TimelineFilter.All or TimelineFilter.Note;
+        var includeDifficultMoments = filter is TimelineFilter.All or TimelineFilter.DifficultMoment;
 
         var interactions = includeInteractions
             ? await LoadInteractionsAsync(ownerId, personId, continuation?.Interaction, boundedPageSize + 1, cancellationToken)
             : [];
         var notes = includeNotes
             ? await LoadNotesAsync(ownerId, personId, continuation?.Note, boundedPageSize + 1, cancellationToken)
+            : [];
+        var difficultMoments = includeDifficultMoments
+            ? await LoadDifficultMomentsAsync(ownerId, personId, continuation?.DifficultMoment, boundedPageSize + 1, cancellationToken)
             : [];
 
         var timeZone = includeNotes
@@ -81,6 +78,21 @@ public sealed class PersonTimelineService(RelioDbContext dbContext, ICurrentUser
                 null,
                 note.IsPinned,
                 []), 1, index)))
+            .Concat(difficultMoments.Select((moment, index) => new TimelineCandidate(new PersonTimelineEntry(
+                moment.Id,
+                TimelineEntryKind.DifficultMoment,
+                moment.OccurredOn,
+                moment.CreatedAtUtc,
+                moment.Description,
+                null,
+                false,
+                [],
+                moment.Status,
+                moment.Trigger,
+                moment.Resolution,
+                moment.LessonsLearned,
+                moment.RecurrenceOfId,
+                moment.RecurrencesCount), 2, index)))
             .OrderByDescending(candidate => candidate.Entry.Date)
             .ThenByDescending(candidate => candidate.Entry.CreatedAtUtc)
             // Each stream arrives from SQL Server ordered by its indexed id. The stream rank keeps
@@ -133,11 +145,21 @@ public sealed class PersonTimelineService(RelioDbContext dbContext, ICurrentUser
             nextNote = new NoteTimelineCursor(lastNote.CreatedAtUtc, lastNote.Id);
         }
 
+        var nextDifficultMoment = continuation?.DifficultMoment;
+        var lastDifficultMoment = completedItems.LastOrDefault(entry => entry.Kind == TimelineEntryKind.DifficultMoment);
+        if (lastDifficultMoment is not null)
+        {
+            nextDifficultMoment = new DifficultMomentTimelineCursor(
+                lastDifficultMoment.Date,
+                lastDifficultMoment.CreatedAtUtc,
+                lastDifficultMoment.Id);
+        }
+
         return new PersonTimelinePage(
             completedItems,
             boundedPageSize,
             true,
-            new TimelineContinuation(nextInteraction, nextNote));
+            new TimelineContinuation(nextInteraction, nextNote, nextDifficultMoment));
     }
 
     private async Task<List<InteractionRow>> LoadInteractionsAsync(
@@ -250,6 +272,47 @@ public sealed class PersonTimelineService(RelioDbContext dbContext, ICurrentUser
             : TimeZoneInfo.Utc;
     }
 
+    private async Task<List<DifficultMomentRow>> LoadDifficultMomentsAsync(
+        string ownerId,
+        Guid personId,
+        DifficultMomentTimelineCursor? cursor,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var query = dbContext.DifficultMoments
+            .AsNoTracking()
+            .Include(m => m.Recurrences)
+            .Where(moment => moment.OwnerId == ownerId && moment.PersonId == personId);
+
+        if (cursor is not null)
+        {
+            query = query.Where(moment =>
+                moment.OccurredOn < cursor.OccurredOn
+                || (moment.OccurredOn == cursor.OccurredOn
+                    && (moment.CreatedAtUtc < cursor.CreatedAtUtc
+                        || (moment.CreatedAtUtc == cursor.CreatedAtUtc
+                            && moment.Id.CompareTo(cursor.Id) < 0))));
+        }
+
+        return await query
+            .OrderByDescending(moment => moment.OccurredOn)
+            .ThenByDescending(moment => moment.CreatedAtUtc)
+            .ThenByDescending(moment => moment.Id)
+            .Take(take)
+            .Select(moment => new DifficultMomentRow(
+                moment.Id,
+                moment.OccurredOn,
+                moment.CreatedAtUtc,
+                moment.Description,
+                moment.Trigger,
+                moment.Resolution,
+                moment.LessonsLearned,
+                moment.Status,
+                moment.RecurrenceOfId,
+                moment.Recurrences.Count))
+            .ToListAsync(cancellationToken);
+    }
+
     private static void ValidateContinuation(TimelineContinuation? continuation)
     {
         if (continuation?.Interaction is { } interaction
@@ -262,6 +325,12 @@ public sealed class PersonTimelineService(RelioDbContext dbContext, ICurrentUser
             && (note.Id == Guid.Empty || note.CreatedAtUtc == default))
         {
             throw new ArgumentException("The note timeline cursor is invalid.", nameof(continuation));
+        }
+
+        if (continuation?.DifficultMoment is { } moment
+            && (moment.Id == Guid.Empty || moment.OccurredOn == default || moment.CreatedAtUtc == default))
+        {
+            throw new ArgumentException("The difficult moment timeline cursor is invalid.", nameof(continuation));
         }
     }
 
@@ -276,6 +345,18 @@ public sealed class PersonTimelineService(RelioDbContext dbContext, ICurrentUser
         string Description);
 
     private sealed record NoteRow(Guid Id, DateTime CreatedAtUtc, string Text, bool IsPinned);
+
+    private sealed record DifficultMomentRow(
+        Guid Id,
+        DateOnly OccurredOn,
+        DateTime CreatedAtUtc,
+        string Description,
+        string? Trigger,
+        string? Resolution,
+        string? LessonsLearned,
+        DifficultMomentStatus Status,
+        Guid? RecurrenceOfId,
+        int RecurrencesCount);
 
     private sealed record ParticipantRow(
         Guid InteractionId,

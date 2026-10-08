@@ -26,6 +26,7 @@ public class PersonDeleteChecklistTests
         typeof(Note).FullName!,
         typeof(InteractionParticipant).FullName!,
         typeof(Reminder).FullName!,
+        typeof(DifficultMoment).FullName!,
     ];
 
     [Fact]

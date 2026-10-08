@@ -484,6 +484,15 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
             .Where(r => r.OwnerId == ownerId && r.PersonId == person.Id)
             .ToListAsync(cancellationToken);
         dbContext.Reminders.RemoveRange(reminders);
+
+        var moments = await dbContext.DifficultMoments
+            .Where(m => m.OwnerId == ownerId && m.PersonId == person.Id)
+            .ToListAsync(cancellationToken);
+        foreach (var moment in moments)
+        {
+            moment.RecurrenceOfId = null;
+        }
+        dbContext.DifficultMoments.RemoveRange(moments);
     }
 
     /// <summary>
