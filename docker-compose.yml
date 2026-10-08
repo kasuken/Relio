@@ -1,0 +1,57 @@
+services:
+  relio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/kasuken/relio:latest
+    container_name: relio-app
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__Relio=Server=sqlserver,1433;Database=Relio;User Id=sa;Password=${MSSQL_SA_PASSWORD:?MSSQL_SA_PASSWORD must be set in .env};Encrypt=False;TrustServerCertificate=True
+      - Database__ApplyMigrationsOnStartup=true
+      - DataProtection__ApplicationName=Relio
+      - DataProtection__KeyRingPath=/var/opt/relio/keys
+      - DataProtection__ProtectionMode=Certificate
+      - DataProtection__Certificate__Path=/var/opt/relio/certificate.pfx
+      - DataProtection__Certificate__Password=${RELIO_DP_PASSWORD:?RELIO_DP_PASSWORD must be set in .env}
+      - DataProtection__AutoGenerateIfMissing=true
+      - Registration__Mode=${REGISTRATION_MODE:-Open}
+      - Email__Provider=${EMAIL_PROVIDER:-None}
+      - Billing__Provider=None
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    volumes:
+      - relio-data:/var/opt/relio
+    restart: unless-stopped
+    networks:
+      - relio-network
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: relio-sqlserver
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:?MSSQL_SA_PASSWORD must be set in .env}
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    ports:
+      - "1433:1433"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - relio-network
+
+volumes:
+  sqlserver-data:
+  relio-data:
+
+networks:
+  relio-network:
+    driver: bridge

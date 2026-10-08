@@ -40,7 +40,7 @@ is interpreted by the current page, even if an operator supplies prospective bil
 There is no payment integration, commercial offer schema or second entitlement model. Adding
 paid offers requires #67's actual service contract and approved commercial values, not a marketing
 configuration override. Self-hosting links point to the existing setup and protected-key
-documentation; the dedicated deployment guide remains #65's planned work.
+documentation, as well as the [self-hosting guide](../self-hosting.md).
 
 ## Changelog publication
 

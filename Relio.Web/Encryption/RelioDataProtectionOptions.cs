@@ -23,6 +23,12 @@ public sealed class RelioDataProtectionOptions
     /// certificate rotation.
     /// </summary>
     public List<DataProtectionCertificateOptions> PreviousCertificates { get; set; } = [];
+
+    /// <summary>
+    /// When true, automatically generates a self-signed certificate if the configured certificate file does not exist.
+    /// Useful for self-hosted Docker deployments on first launch.
+    /// </summary>
+    public bool AutoGenerateIfMissing { get; set; }
 }
 
 /// <summary>External PKCS#12 certificate configuration for protecting key-ring entries.</summary>

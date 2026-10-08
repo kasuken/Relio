@@ -23,6 +23,8 @@ using Relio.Web.Metrics;
 using Relio.Web.Security;
 using Relio.Web.Time;
 using Relio.Web.Theme;
+using Relio.Application.Billing;
+using Relio.Web.Billing;
 using DataServiceCollectionExtensions = Relio.Data.DependencyInjection.ServiceCollectionExtensions;
 using IdentityServiceCollectionExtensions = Relio.Web.Identity.ServiceCollectionExtensions;
 
@@ -98,6 +100,8 @@ builder.Services.AddScoped<IBrowserTimeZoneReader, BrowserTimeZoneReader>();
 builder.Services.Configure<ReminderSchedulerOptions>(builder.Configuration.GetSection(ReminderSchedulerOptions.SectionName));
 builder.Services.AddHostedService<ReminderSchedulerBackgroundService>();
 
+builder.Services.AddRelioBilling(builder.Configuration);
+
 // "live" answers whether the process is up; "ready" also covers the database so load
 // balancers and the shared release workflow (which smoke-tests /health/ready) know when
 // Relio can actually serve requests.
@@ -153,11 +157,12 @@ if (DataServiceCollectionExtensions.IsInMemoryProvider(builder.Configuration))
     using var scope = app.Services.CreateScope();
     await scope.ServiceProvider.GetRequiredService<RelioDbContext>().Database.EnsureCreatedAsync();
 }
-else if (app.Environment.IsDevelopment())
+else if (app.Environment.IsDevelopment()
+    || builder.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup", false))
 {
     // Production schema changes are an explicit, reviewed step (`dotnet ef database update`);
-    // Development auto-applies pending migrations so the app always runs against the latest
-    // schema.
+    // Development and configured self-hosted environments (Database:ApplyMigrationsOnStartup=true)
+    // auto-apply pending migrations so the app always runs against the latest schema.
     using var scope = app.Services.CreateScope();
     await scope.ServiceProvider.GetRequiredService<RelioDbContext>().Database.MigrateAsync();
 }
