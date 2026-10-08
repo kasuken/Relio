@@ -97,4 +97,40 @@ public sealed class RelioDataProtectionOptionsValidatorTests
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*Data Protection configuration is invalid*");
     }
+
+    [Fact]
+    public void AutoGenerateIfMissing_generates_certificate_and_registers_data_protection()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "Relio-DP-Auto-" + Guid.NewGuid().ToString("N"));
+        var keyRingPath = Path.Combine(tempDir, "keys");
+        var certPath = Path.Combine(tempDir, "auto-cert.pfx");
+
+        try
+        {
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["DataProtection:ApplicationName"] = "Relio.Test",
+                    ["DataProtection:KeyRingPath"] = keyRingPath,
+                    ["DataProtection:ProtectionMode"] = "Certificate",
+                    ["DataProtection:Certificate:Path"] = certPath,
+                    ["DataProtection:Certificate:Password"] = "auto-test-pass",
+                    ["DataProtection:AutoGenerateIfMissing"] = "true",
+                })
+                .Build();
+
+            var services = new ServiceCollection();
+            services.AddRelioDataProtection(configuration, AppContext.BaseDirectory);
+
+            File.Exists(certPath).Should().BeTrue();
+            Directory.Exists(keyRingPath).Should().BeTrue();
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
 }

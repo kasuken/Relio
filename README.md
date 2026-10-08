@@ -51,6 +51,21 @@ feature claims, visual sources and safe Markdown rules.
 
 ## Getting started
 
+### Quickstart with Docker Compose
+
+For a one-command self-hosted deployment:
+
+```bash
+cp .env.example .env
+# Edit .env to set your passwords
+docker compose up -d
+```
+
+Open `http://localhost:8080`. The first account you register becomes the instance Administrator.
+See the complete [Self-Hosting Guide](docs/self-hosting.md) for reverse proxy setup, configuration reference, backup procedures, and upgrade instructions.
+
+### Manual Setup
+
 Prerequisites: the .NET 10 SDK (see `global.json`) and a SQL Server instance (local, Docker or
 Azure SQL).
 

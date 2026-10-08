@@ -105,3 +105,9 @@ jobs:
           dotnet ef database update
           --project Relio.Data --startup-project Relio.Web
           --no-build --configuration Release
+
+      - name: Validate Docker Compose
+        run: MSSQL_SA_PASSWORD=TestPass123! RELIO_DP_PASSWORD=TestCertPass123! docker compose config
+
+      - name: Build Docker image
+        run: docker build -t relio:ci-test .

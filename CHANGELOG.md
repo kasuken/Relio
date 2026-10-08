@@ -6,6 +6,25 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- SaaS and self-hosted deployment (epic #63; issues #64–#67). Multi-stage Dockerfile
+  running as a non-root user with an in-container `/dev/tcp` health check against `/health/live`.
+  `docker-compose.yml` stack with SQL Server 2022, persistent data and key volumes, and automated
+  startup migrations via `Database:ApplyMigrationsOnStartup`. Self-hosted Data Protection
+  auto-provisions wrapping certificates on first boot via `DataProtection:AutoGenerateIfMissing`.
+  Comprehensive self-hosting guide (`docs/self-hosting.md`) detailing setup, configuration reference,
+  reverse proxy TLS termination, and ADR-0002 backup, retention, and post-erasure guidelines.
+  Automated Azure App Service release pipeline (`release.yml`) using OIDC authentication and
+  publishing container images to GitHub Container Registry. Provider-agnostic billing subsystem
+  (`IBillingProvider`, `BillingOptions`) defaulting to `Billing:Provider=None`, ensuring all
+  relationship features run unconstrained with no billing UI displayed while allowing hosted
+  Stripe billing via configuration without code changes.
+
+- Search and filtering (epic #51; issues #52–#53). Instant name and nickname search
+  across active people, combined with multi-select filtering by tags and relationship types.
+  Two-way URL query synchronization (`q`, `tag`, `type`) for bookmarkable and shareable views.
+  Global search shortcut in the application bar with responsive mobile adaptation. Compound
+  index on `(OwnerId, IsArchived, Nickname)` for SQL Server query efficiency.
+
 - Public marketing pages (epic #85): a static anonymous landing page, verified feature overview,
   hosting information without unimplemented paid offers, and locally embedded release notes.
   The authenticated workspace now starts at `/dashboard`; default sign-in and account

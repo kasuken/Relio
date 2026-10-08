@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
@@ -103,6 +104,7 @@ internal sealed class RelioDataProtectionCertificateSet : IDisposable
 
     public static RelioDataProtectionCertificateSet Load(RelioDataProtectionOptions options)
     {
+        EnsureCertificateExistsIfConfigured(options);
         var loaded = new List<X509Certificate2>();
         try
         {
@@ -152,4 +154,36 @@ internal sealed class RelioDataProtectionCertificateSet : IDisposable
             options.Path,
             options.Password,
             X509KeyStorageFlags.EphemeralKeySet);
+
+    private static void EnsureCertificateExistsIfConfigured(RelioDataProtectionOptions options)
+    {
+        if (!options.AutoGenerateIfMissing || options.Certificate is null)
+        {
+            return;
+        }
+
+        if (File.Exists(options.Certificate.Path))
+        {
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(options.Certificate.Path);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        using var rsa = RSA.Create(3072);
+        var request = new CertificateRequest(
+            "CN=Relio Data Protection",
+            rsa,
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+        using var certificate = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddDays(-1),
+            DateTimeOffset.UtcNow.AddYears(10));
+        File.WriteAllBytes(
+            options.Certificate.Path,
+            certificate.Export(X509ContentType.Pkcs12, options.Certificate.Password));
+    }
 }
