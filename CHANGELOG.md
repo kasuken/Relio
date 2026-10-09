@@ -6,6 +6,25 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Hosted billing with Stripe, following the LearnStack implementation. Off by default
+  (`Billing:Provider=None`): a self-hosted instance has no plans and no limits. With
+  `Billing:Provider=Stripe`, accounts are on a Free plan for up to 25 active people (archived people
+  don't count) and can subscribe to Relio Pro, with unlimited people, for $2 a month or $12 a year.
+  - `/Account/Manage/Plan` shows the plan and usage, starts Stripe Checkout (monthly or yearly),
+    confirms a purchase as soon as the user returns, and opens the Stripe customer portal to change
+    payment details, see invoices or cancel. Settings links to it when billing is on.
+  - The limit is enforced in the services that add or restore people (create, restore, import, merge
+    and JSON restore); nothing is deleted when an account returns to Free.
+  - Signature-verified webhooks at `/api/webhooks/billing`, applied once per event id in the same save
+    as their ledger row, ignoring out-of-order and other products' events on a shared Stripe account.
+    A failed payment keeps Relio Pro through Stripe's retries.
+  - Account deletion cancels the subscription at Stripe before deleting anything; account email
+    changes are passed on to the Stripe customer.
+  - `/pricing`, the landing page and the features page show the plans and prices when billing is on.
+  - Migration `AddHostedBilling` adds `UserSubscriptions` and `ProcessedBillingEvents`. Setup and the
+    privacy boundaries are in `docs/security/billing.md`; the Bicep templates take `billingProvider`
+    and the two price ids, with the secrets in Key Vault.
+
 - SaaS and self-hosted deployment (epic #63; issues #64–#67). Multi-stage Dockerfile
   running as a non-root user with an in-container `/dev/tcp` health check against `/health/live`.
   `docker-compose.yml` stack with SQL Server 2022, persistent data and key volumes, and automated

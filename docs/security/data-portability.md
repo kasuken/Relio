@@ -42,6 +42,13 @@ access and erasure portability, but is not restored. It is instance-local
 analytics and must not alter the destination instance's cohort measurements.
 Collection remains governed by the destination's own configuration.
 
+Hosted billing state (`UserSubscriptions`: the plan, its dates and the Stripe customer and
+subscription ids) is not exported: the billing history belongs to Stripe and is available through
+its customer portal. A restore never creates or changes a subscription, so it can never grant a plan.
+On a hosted instance with billing on, a restore into a free account is refused, with nothing saved,
+when the export has more active people than the free plan allows; the account holder subscribes
+first and then restores. See [billing.md](billing.md).
+
 ## vCard boundaries
 
 vCard is for moving contact details, not backing up a Relio account. It contains

@@ -17,6 +17,7 @@
 @inject IOptions<EmailOptions> EmailOptionsAccessor
 @inject NavigationManager NavigationManager
 @inject ILogger<Email> Logger
+@inject Relio.Application.Billing.IBillingCustomerEmailSync BillingEmailSync
 
 <PageTitle>Change your email - Relio</PageTitle>
 
@@ -223,6 +224,13 @@ else if (Status == "changed")
         await SignInManager.RefreshSignInAsync(user);
 
         Logger.LogInformation("User {UserId} changed their email address.", user.Id);
+
+        // Best effort, as on ConfirmEmailChange: the change itself has already succeeded.
+        if (!await BillingEmailSync.SyncAsync(user.Id, Input.NewEmail, HttpContext.RequestAborted))
+        {
+            Logger.LogWarning("The billing customer email was not updated after user {UserId} changed their email.", user.Id);
+        }
+
         NavigationManager.NavigateTo("/Account/Manage/Email?status=changed", forceLoad: true);
     }
 

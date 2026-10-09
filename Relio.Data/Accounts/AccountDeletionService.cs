@@ -6,8 +6,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Relio.Application.Accounts;
 using Relio.Application.Administration;
+using Relio.Application.Billing;
 using Relio.Application.Security;
 using Relio.Data.Administration;
+using Relio.Data.Billing;
 using Relio.Data.Encryption;
 using Relio.Data.Identity;
 using Relio.Domain;
@@ -19,7 +21,8 @@ public sealed class AccountDeletionService(
     RelioDbContext dbContext,
     ICurrentUser currentUser,
     IPasswordHasher<RelioUser> passwordHasher,
-    ILogger<AccountDeletionService> logger) : IAccountDeletionService
+    ILogger<AccountDeletionService> logger,
+    IBillingProvider? billingProvider = null) : IAccountDeletionService
 {
     /// <inheritdoc />
     public async Task<AccountDeletionResult> DeleteAsync(
@@ -72,6 +75,26 @@ public sealed class AccountDeletionService(
                 && await CountActiveAdministratorsAsync(cancellationToken) <= 1)
             {
                 return new AccountDeletionResult(AccountDeletionStatus.LastActiveAdministrator);
+            }
+
+            // Billing is cancelled before any row is removed, because the subscription row holds the
+            // only link to the provider's customer: deleting first would leave a subscription that
+            // keeps charging and can no longer be traced to anyone. If the save below then fails, the
+            // account survives on the free plan, which is the safe direction. With billing turned off
+            // there is no provider to call; the operator cancels any leftover subscription themselves.
+            var subscription = await dbContext.UserSubscriptions
+                .AsNoTracking()
+                .Where(row => row.UserId == ownerId)
+                .Select(row => new { row.Id, row.BillingProviderCustomerId })
+                .SingleOrDefaultAsync(cancellationToken);
+            if (subscription?.BillingProviderCustomerId is { Length: > 0 } customerId
+                && billingProvider is { IsEnabled: true })
+            {
+                var cancellation = await billingProvider.CancelSubscriptionsAsync(customerId, cancellationToken);
+                if (!cancellation.Succeeded)
+                {
+                    return new AccountDeletionResult(AccountDeletionStatus.BillingCancellationFailed);
+                }
             }
 
             var personIds = await dbContext.People
@@ -142,6 +165,12 @@ public sealed class AccountDeletionService(
                 dbContext.Set<ProductActivity>().Where(item => item.OwnerId == ownerId),
                 id => new ProductActivity { Id = id, OwnerId = ownerId },
                 cancellationToken);
+
+            if (subscription is not null)
+            {
+                // The user id is the foreign key EF needs to order this delete before the user's.
+                MarkDeleted(new UserSubscription { Id = subscription.Id, UserId = ownerId });
+            }
 
             await RemoveInvitationsAsync(ownerId, account.NormalizedEmail, cancellationToken);
             await RemoveIdentityDependentsAsync(ownerId, cancellationToken);

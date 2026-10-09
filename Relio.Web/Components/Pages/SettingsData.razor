@@ -212,6 +212,10 @@
         {
             SetMessage(UserDataPortabilityText.For(exception.Errors), Severity.Warning);
         }
+        catch (Relio.Application.Billing.PlanLimitReachedException exception)
+        {
+            SetMessage(UserDataPortabilityText.PlanLimit(exception.Limit), Severity.Warning);
+        }
         catch (JsonException)
         {
             SetMessage("This file isn't valid Relio JSON.", Severity.Error);

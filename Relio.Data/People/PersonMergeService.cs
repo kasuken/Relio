@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Relio.Application.People;
 using Relio.Application.Security;
+using Relio.Data.Billing;
 using Relio.Domain;
 
 namespace Relio.Data.People;
@@ -28,7 +29,11 @@ namespace Relio.Data.People;
 /// provider used by the unit tests supports neither.
 /// </para>
 /// </remarks>
-public sealed class PersonMergeService(RelioDbContext dbContext, ICurrentUser currentUser, TimeProvider timeProvider) : IPersonMergeService
+public sealed class PersonMergeService(
+    RelioDbContext dbContext,
+    ICurrentUser currentUser,
+    TimeProvider timeProvider,
+    PlanLimits? planLimits = null) : IPersonMergeService
 {
     /// <inheritdoc />
     public async Task<MergeCandidates?> ListCandidatesAsync(Guid personId, CancellationToken cancellationToken = default)
@@ -118,6 +123,14 @@ public sealed class PersonMergeService(RelioDbContext dbContext, ICurrentUser cu
             {
                 throw new PersonValidationException(errors);
             }
+
+            // A merge normally lowers the active count; only two archived profiles merged into an
+            // active one raise it, and that must fit the plan's limit.
+            var activeChange = (merged.IsArchived ? 0 : 1)
+                - (primary.IsArchived ? 0 : 1)
+                - (duplicate.IsArchived ? 0 : 1);
+            await (planLimits ?? PlanLimits.Unlimited).EnsureRoomForActivePeopleAsync(
+                dbContext, ownerId, activeChange, timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
 
             ApplyFields(primary, merged);
             await MoveDependentsAsync(ownerId, primary, duplicate, merged, cancellationToken);

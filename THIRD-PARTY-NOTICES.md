@@ -12,6 +12,8 @@ The .NET runtime and ASP.NET Core are © .NET Foundation and Contributors, licen
 | [Microsoft.EntityFrameworkCore.SqlServer](https://docs.microsoft.com/ef/core/) | 10.0.12 | MIT |
 | [Net.Codecrete.QrCodeGenerator](https://github.com/manuelbl/QrCodeGenerator) | 3.2.1 | MIT |
 | [Markdig](https://github.com/xoofx/markdig) | 1.4.0 | BSD-2-Clause |
+| [Stripe.net](https://github.com/stripe/stripe-dotnet) | 52.4.2 | Apache-2.0 |
+| [Newtonsoft.Json](https://www.newtonsoft.com/json) (dependency of Stripe.net) | 13.0.3 | MIT |
 
 ## Fonts
 

@@ -230,6 +230,84 @@ namespace Relio.Data.Migrations
                     b.ToTable("RegistrationInvitations", (string)null);
                 });
 
+            modelBuilder.Entity("Relio.Data.Billing.ProcessedBillingEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("ProcessedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ProviderEventId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProviderEventId")
+                        .IsUnique();
+
+                    b.ToTable("ProcessedBillingEvents", (string)null);
+                });
+
+            modelBuilder.Entity("Relio.Data.Billing.UserSubscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BillingProviderCustomerId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("BillingProviderSubscriptionId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("GracePeriodEndsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastBillingEventAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("PlanCancelsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("PlanRenewsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Tier")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BillingProviderCustomerId");
+
+                    b.HasIndex("BillingProviderSubscriptionId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserSubscriptions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_UserSubscriptions_Tier", "[Tier] IN (N'Free', N'Pro')");
+                        });
+                });
+
             modelBuilder.Entity("Relio.Data.Identity.RelioUser", b =>
                 {
                     b.Property<string>("Id")
@@ -965,6 +1043,15 @@ namespace Relio.Data.Migrations
                         .WithMany()
                         .HasForeignKey("TagsId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Relio.Data.Billing.UserSubscription", b =>
+                {
+                    b.HasOne("Relio.Data.Identity.RelioUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });
 

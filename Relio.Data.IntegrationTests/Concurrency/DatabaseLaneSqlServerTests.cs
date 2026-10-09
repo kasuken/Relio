@@ -89,7 +89,8 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
             dashboard.GetAsync(),
             onboarding.GetStateAsync(),
             interactions.ListParticipantCandidatesAsync(Guid.Empty),
-            timeZone.GetTodayAsync());
+            timeZone.GetTodayAsync(),
+            scope.ServiceProvider.GetRequiredService<Relio.Application.Billing.ISubscriptionService>().GetSummaryAsync());
 
         await act.Should().NotThrowAsync();
     }
@@ -366,6 +367,8 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
         services.AddLogging();
         ConfigureDataProtection(services);
         services.AddRelioFieldProtection();
+        // Relio.Web registers the provider (AddRelioBilling); billing is off, as by default.
+        services.AddSingleton<Relio.Application.Billing.IBillingProvider>(new Relio.Application.Billing.NullBillingProvider());
         services.AddRelioData(configuration);
         // UserAdministrationService needs a UserManager over the same scoped context, as in the app.
         services.AddIdentityCore<RelioUser>().AddRoles<IdentityRole>().AddEntityFrameworkStores<RelioDbContext>();
