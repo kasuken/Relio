@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "14729688844383912556"
+      "templateHash": "5577544596979070933"
     }
   },
   "parameters": {
@@ -528,7 +528,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.40.2.10011",
-              "templateHash": "90879065812029926"
+              "templateHash": "4137276724298488507"
             }
           },
           "parameters": {
@@ -664,7 +664,7 @@
               "apiVersion": "2023-12-01",
               "name": "[format('{0}/{1}', parameters('appServiceName'), 'scm')]",
               "properties": {
-                "allow": true
+                "allow": false
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Web/sites', parameters('appServiceName'))]"
@@ -726,6 +726,57 @@
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resourceGroupName')), 'Microsoft.Resources/deployments', 'appServicePlan')]",
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resourceGroupName')), 'Microsoft.Resources/deployments', 'keyVault')]",
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resourceGroupName')), 'Microsoft.Resources/deployments', 'logAnalytics')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', variables('resourceGroupName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "appServiceCustomDomain",
+      "resourceGroup": "[variables('resourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "appServiceName": {
+            "value": "[variables('webAppName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.40.2.10011",
+              "templateHash": "2532133623015782669"
+            }
+          },
+          "parameters": {
+            "appServiceName": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Web/sites/hostNameBindings",
+              "apiVersion": "2026-08-01",
+              "name": "[format('{0}/{1}', parameters('appServiceName'), 'www.relio.club')]",
+              "properties": {
+                "siteName": "[parameters('appServiceName')]",
+                "hostNameType": "Verified",
+                "customHostNameDnsRecordType": "CName",
+                "sslState": "SniEnabled",
+                "thumbprint": "[reference(resourceId('Microsoft.Web/certificates', 'www.relio.club'), '2026-08-01').thumbprint]"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resourceGroupName')), 'Microsoft.Resources/deployments', 'appService')]",
         "[subscriptionResourceId('Microsoft.Resources/resourceGroups', variables('resourceGroupName'))]"
       ]
     },

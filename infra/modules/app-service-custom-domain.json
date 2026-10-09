@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.40.2.10011",
+      "templateHash": "2532133623015782669"
+    }
+  },
+  "parameters": {
+    "appServiceName": {
+      "type": "string"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/sites/hostNameBindings",
+      "apiVersion": "2026-08-01",
+      "name": "[format('{0}/{1}', parameters('appServiceName'), 'www.relio.club')]",
+      "properties": {
+        "siteName": "[parameters('appServiceName')]",
+        "hostNameType": "Verified",
+        "customHostNameDnsRecordType": "CName",
+        "sslState": "SniEnabled",
+        "thumbprint": "[reference(resourceId('Microsoft.Web/certificates', 'www.relio.club'), '2026-08-01').thumbprint]"
+      }
+    }
+  ]
+}

@@ -110,6 +110,17 @@ module appService './modules/app-service.bicep' = {
   }
 }
 
+module appServiceCustomDomain './modules/app-service-custom-domain.bicep' = {
+  name: 'appServiceCustomDomain'
+  scope: rg
+  params: {
+    appServiceName: webAppName
+  }
+  dependsOn: [
+    appService
+  ]
+}
+
 module roleAssignments './modules/role-assignments.bicep' = {
   name: 'roleAssignments'
   scope: rg

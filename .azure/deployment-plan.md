@@ -89,6 +89,16 @@ No resources are being provisioned or resized; resource quotas and capacity are 
 | Live verification | App Service settings query and HTTPS requests to `/health/ready` and `/Account/Register` | ✅ `Registration__Mode=Open`; registration form present (HTTP 200); readiness HTTP 200; SCM publishing basic auth remains disabled | 2026-10-08 |
 | Static RBAC review | Reviewed `infra/modules/role-assignments.bicep` | ✅ App system-assigned identity retains Key Vault Secrets User scoped to the vault; deployer role unchanged | 2026-10-08 |
 | Azure Policy review | `az policy assignment list --subscription da80e753-e223-4526-835c-6cc1ec387035 --scope /subscriptions/da80e753-e223-4526-835c-6cc1ec387035` | ✅ `SecurityCenterBuiltIn` assignment only; no additional blocking assignments observed. Azure Policy MCP unavailable due tenant mismatch. | 2026-10-08 |
+| Custom-domain DNS | `Resolve-DnsName www.relio.club -Type CNAME` and `Resolve-DnsName asuid.www.relio.club -Type TXT -Server 1.1.1.1` | ✅ CNAME targets `app-relio-prod-edff.azurewebsites.net`; ownership TXT resolves. | 2026-10-08 |
+| Custom-domain Bicep build | `az bicep build --file infra/modules/app-service-custom-domain.bicep`; `az bicep build --file infra/main.bicep` | ✅ Pass; compiles with non-blocking BCP081 type-metadata warnings. | 2026-10-08 |
+| Custom-domain ARM validation/what-if | `validate-deployment.ps1 -Scope group -ResourceGroup rg-relio-prod -Template infra/modules/app-service-custom-domain.bicep -Parameters <temporary app-name parameters>` | ✅ Overall PASS; direct resource-level preview shows one hostname-binding create, zero modifies/deletes. | 2026-10-08 |
+| Custom-domain lint | `az bicep lint --file infra/modules/app-service-custom-domain.bicep` | ✅ Pass; only non-blocking BCP081 warnings. | 2026-10-08 |
+| Custom-domain RBAC and policy review | Reviewed `infra/modules/app-service-custom-domain.bicep`; `az policy assignment list` | ✅ No RBAC added; one existing Azure Security Center subscription assignment. | 2026-10-08 |
+| Managed certificate and SNI | `az webapp config ssl create`; `az webapp config ssl bind --ssl-type SNI` | ✅ Managed certificate issued for `www.relio.club` and bound with SNI; expiry 2027-04-08. | 2026-10-08 |
+| Final custom-domain Bicep validation | `validate-deployment.ps1 -Scope group -ResourceGroup rg-relio-prod -Template infra/modules/app-service-custom-domain.bicep -Parameters <temporary app-name parameters>` | ✅ Overall PASS; final what-if is Create: 0, Modify: 0, Delete: 0. | 2026-10-08 |
+| Final custom-domain deployment | `az deployment group create --name relio-custom-domain-https-20261008 --resource-group rg-relio-prod --template-file infra/modules/app-service-custom-domain.bicep` | ✅ Succeeded; applies the final HTTPS/SNI desired state. | 2026-10-08 |
+| HTTPS endpoint | `curl.exe --resolve www.relio.club:443:20.105.232.51 https://www.relio.club/health/ready` | ✅ HTTP 200; TLS verification passed. Local DNS cache still had the old CNAME; public DNS resolvers return the new App Service CNAME. | 2026-10-08 |
+| Final repository checks | `dotnet build Relio.slnx --configuration Release --no-restore`; `dotnet test Relio.slnx --configuration Release --no-build`; vulnerable-package scan; EF model check; `git diff --check` | ✅ Build passed; 2,330 tests passed, 211 skipped, 0 failed; no vulnerable packages or pending EF model changes; diff check passed. | 2026-10-08 |
 
 **Validated by:** azure-validate workflow completed through `UpdateStatus`; full main-template ARM validation was not used because it is not the scoped target and waits on unrelated secure deployment parameters.
 **Validation timestamp:** 2026-10-08
@@ -98,6 +108,34 @@ No resources are being provisioned or resized; resource quotas and capacity are 
 - **Status:** Verified for the App Service and GitHub release deployment.
 - **Identities checked:** App Service system-assigned identity, current deployment user, and `id-relio-github-deploy`.
 - **Roles confirmed:** Key Vault Secrets User for the app identity and Key Vault Secrets Officer for the deployment user, both scoped to `kv-relio-prod-edff`; Website Contributor for the GitHub identity, scoped only to `app-relio-prod-edff`.
+
+## Additional request: `www.relio.club` custom domain
+
+**Status:** Validated — hostname and HTTPS deployed
+
+**Goal:** Attach `www.relio.club` to the existing production App Service and enable HTTPS.
+
+**Scope:** Add the hostname to `app-relio-prod-edff` in `rg-relio-prod`, then provision and bind an App Service managed certificate with SNI. Preserve the existing `relio.club` apex DNS records; the GoDaddy CNAME for `www` already points to `app-relio-prod-edff.azurewebsites.net`. Keep the hostname binding represented in the existing Bicep deployment where supported.
+
+**Azure context:** Microsoft Azure Sponsorship (`da80e753-e223-4526-835c-6cc1ec387035`), West Europe, existing `rg-relio-prod`.
+
+**Recipe:** The hostname binding was deployed through `infra/modules/app-service-custom-domain.bicep`, then the free App Service managed certificate was provisioned and bound with SNI. The module now references the existing managed certificate's current thumbprint so later deployments preserve HTTPS.
+
+**Validation:** The GoDaddy CNAME and Azure ownership TXT record are publicly resolvable. Build and run a resource-group what-if for the targeted App Service module before deployment. No compute resources are being added or resized.
+
+**Validation/deployment gate:** The Azure CLI is authenticated to the selected subscription. Validate the targeted change before applying it; do not rerun the subscription-wide infrastructure deployment.
+
+**Validation steps for this request:**
+- Resolve `www.relio.club` CNAME and `asuid.www.relio.club` TXT using public DNS.
+- Build `infra/modules/app-service-custom-domain.bicep` and `infra/main.bicep`.
+- Run a resource-group what-if for only the custom-domain module, with `appServiceName` set to the existing production app; confirm the live HTTPS/SNI binding is the desired state.
+- Review the Bicep RBAC declarations; this change adds no role assignments.
+- Confirm the hostname binding, managed certificate/SNI state and an HTTPS response from `https://www.relio.club`.
+
+**All validation checks pass**
+- [x] 1. Core Validation (CLI, auth, build, validate, what-if) — targeted resource-group validation passed; final what-if has no changes.
+- [x] 2. Linting (optional) — Bicep lint passed with non-blocking type-metadata warnings.
+- [x] 3. Azure Policy Validation — existing subscription assignment reviewed; no blocking policy observed for this change.
 - **GitHub OIDC:** The managed identity trusts `repo:kasuken/Relio:environment:production` with audience `api://AzureADTokenExchange`. The GitHub `production` environment contains the three required Azure identifiers and permits only the `main` branch and `v*` tags.
 - **Issues:** None identified. The release workflow has not been triggered.
 
