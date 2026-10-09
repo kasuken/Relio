@@ -232,6 +232,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 
 app.MapRelioIdentityEndpoints();
 app.MapRelioMarketingEndpoints();
+app.MapRelioBillingEndpoints();
 
 // Static assets (app.css, MudBlazor, _framework/blazor.web.js, fonts, favicon) must be anonymous:
 // the fallback authorization policy (AddRelioIdentity) would otherwise redirect every asset request

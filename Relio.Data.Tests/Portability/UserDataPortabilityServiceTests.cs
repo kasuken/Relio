@@ -228,6 +228,55 @@ public sealed class UserDataPortabilityServiceTests
     }
 
     [Fact]
+    public async Task Restore_on_a_hosted_free_plan_rejects_more_active_people_than_the_limit_and_saves_nothing()
+    {
+        var clock = new FakeTimeProvider(Start);
+        await using var dbContext = CreateDbContext(clock);
+        await SeedRegistrationOnlyAccountAsync(dbContext, DestinationOwner);
+        var limit = Relio.Application.Billing.PlanCatalog.FreeActivePeopleLimit;
+        var document = ValidEmptyDocument() with
+        {
+            People = Enumerable.Range(0, limit + 1).Select(_ => PersonSnapshotFor(Guid.NewGuid())).ToArray(),
+        };
+        var service = new UserDataPortabilityService(
+            dbContext,
+            new FakeCurrentUser(DestinationOwner),
+            clock,
+            new Relio.Data.Billing.PlanLimits(new Billing.FakeBillingProvider()));
+
+        var act = () => service.RestoreAsync(document);
+
+        (await act.Should().ThrowAsync<Relio.Application.Billing.PlanLimitReachedException>()).Which.Limit.Should().Be(limit);
+        (await dbContext.People.AsNoTracking().CountAsync(person => person.OwnerId == DestinationOwner)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Restore_on_a_hosted_free_plan_does_not_count_archived_people()
+    {
+        var clock = new FakeTimeProvider(Start);
+        await using var dbContext = CreateDbContext(clock);
+        await SeedRegistrationOnlyAccountAsync(dbContext, DestinationOwner);
+        var limit = Relio.Application.Billing.PlanCatalog.FreeActivePeopleLimit;
+        var document = ValidEmptyDocument() with
+        {
+            People =
+            [
+                .. Enumerable.Range(0, limit).Select(_ => PersonSnapshotFor(Guid.NewGuid())),
+                PersonSnapshotFor(Guid.NewGuid()) with { IsArchived = true },
+            ],
+        };
+        var service = new UserDataPortabilityService(
+            dbContext,
+            new FakeCurrentUser(DestinationOwner),
+            clock,
+            new Relio.Data.Billing.PlanLimits(new Billing.FakeBillingProvider()));
+
+        var result = await service.RestoreAsync(document);
+
+        result.People.Should().Be(limit + 1);
+    }
+
+    [Fact]
     public async Task Restore_rejects_an_account_with_existing_content_without_replacing_it()
     {
         var clock = new FakeTimeProvider(Start);

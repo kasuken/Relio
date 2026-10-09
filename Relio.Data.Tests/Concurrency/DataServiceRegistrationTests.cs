@@ -69,6 +69,7 @@ public class DataServiceRegistrationTests
         services.AddLogging();
         services.AddSingleton<ICurrentUser>(new FakeCurrentUser("user"));
         services.AddSingleton<IReminderEmailSender>(new Reminders.FakeReminderEmailSender());
+        services.AddSingleton<Relio.Application.Billing.IBillingProvider>(new Relio.Application.Billing.NullBillingProvider());
         services.AddSingleton<IDataProtectionFieldProtector>(FieldProtector);
         services.AddIdentityCore<RelioUser>().AddRoles<IdentityRole>().AddEntityFrameworkStores<RelioDbContext>();
         var before = services.ToList();

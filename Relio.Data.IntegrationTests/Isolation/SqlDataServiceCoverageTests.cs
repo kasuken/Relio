@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Relio.Application.Accounts;
 using Relio.Application.Administration;
+using Relio.Application.Billing;
 using Relio.Application.Dashboard;
 using Relio.Application.DifficultMoments;
 using Relio.Application.Interactions;
@@ -816,6 +817,39 @@ internal static class ServiceCoverageCatalog
                 Scenario<ProductActivityLaneSqlServerTests>(
                     nameof(ProductActivityLaneSqlServerTests.Concurrent_activity_records_are_serialized_on_one_context),
                     SqlIsolationEvidence.OwnerOperation))),
+
+        CurrentUser<ISubscriptionService>(
+            Method(nameof(ISubscriptionService.GetSummaryAsync),
+                Scenario<BillingSqlIsolationTests>(
+                    nameof(BillingSqlIsolationTests.Subscription_service_reads_and_writes_only_the_signed_in_owners_plan),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.OwnerOperation)),
+            Method(nameof(ISubscriptionService.StartCheckoutAsync),
+                Scenario<BillingSqlIsolationTests>(
+                    nameof(BillingSqlIsolationTests.Subscription_service_reads_and_writes_only_the_signed_in_owners_plan),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.OwnerOperation)),
+            Method(nameof(ISubscriptionService.OpenPortalAsync),
+                Scenario<BillingSqlIsolationTests>(
+                    nameof(BillingSqlIsolationTests.Subscription_service_reads_and_writes_only_the_signed_in_owners_plan),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.OwnerOperation)),
+            Method(nameof(ISubscriptionService.ConfirmCheckoutAsync),
+                Scenario<BillingSqlIsolationTests>(
+                    nameof(BillingSqlIsolationTests.Subscription_service_reads_and_writes_only_the_signed_in_owners_plan),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.OwnerOperation))),
+
+        Capability<IBillingWebhookProcessor>(
+            Method(nameof(IBillingWebhookProcessor.ProcessAsync),
+                Scenario<BillingSqlIsolationTests>(
+                    nameof(BillingSqlIsolationTests.Webhook_processor_applies_signed_events_to_the_named_owner_only_and_rejects_unsigned_ones),
+                    SqlIsolationEvidence.CapabilityAccepted | SqlIsolationEvidence.CapabilityRejected),
+                Scenario<BillingSqlIsolationTests>(
+                    nameof(BillingSqlIsolationTests.A_concurrent_duplicate_delivery_loses_on_the_unique_event_index_and_changes_nothing),
+                    SqlIsolationEvidence.CapabilityAccepted))),
+
+        Trusted<IBillingCustomerEmailSync>(
+            Method(nameof(IBillingCustomerEmailSync.SyncAsync),
+                Scenario<BillingSqlIsolationTests>(
+                    nameof(BillingSqlIsolationTests.Email_sync_updates_only_the_named_users_billing_customer),
+                    SqlIsolationEvidence.TrustedMultiOwner))),
 
         AggregateAdministrator<IProductMetricsReportService>(
             Method(nameof(IProductMetricsReportService.GetAsync),

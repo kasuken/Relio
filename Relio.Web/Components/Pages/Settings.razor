@@ -1,8 +1,24 @@
 @page "/settings"
+@using Relio.Application.Billing
+@using Relio.Web.Components.Billing
+@inject IBillingProvider BillingProvider
 
 <PageTitle>Settings - Relio</PageTitle>
 
 <MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-6">Settings</MudText>
+
+@* Hosted billing only. IsEnabled is configuration, not a data call: the plan page owns the data. *@
+@if (BillingProvider.IsEnabled)
+{
+    <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-2">Plan and billing</MudText>
+    <MudText Typo="Typo.body1" Class="mud-text-secondary mb-4">
+        See your plan, subscribe to Relio Pro, or manage your billing details and invoices.
+    </MudText>
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="@PlanText.PlanPagePath"
+               Class="mb-8" data-testid="settings-plan-link">
+        View plan and billing
+    </MudButton>
+}
 
 <MudText Typo="Typo.h3" HtmlTag="h2" Class="mb-2">Profile</MudText>
 <DisplayNameSettings />

@@ -5,8 +5,61 @@ param appServiceName string
 param keyVaultName string
 param logAnalyticsWorkspaceId string
 
+@description('Hosted billing. Stripe needs the two Key Vault secrets stripe-api-key and stripe-webhook-signing-secret and both price ids (see docs/security/billing.md); None turns plans and limits off.')
+@allowed([
+  'None'
+  'Stripe'
+])
+param billingProvider string = 'None'
+
+@description('Stripe price id of Relio Pro billed monthly ($2 / month). Required when billingProvider is Stripe.')
+param stripeProMonthlyPriceId string = ''
+
+@description('Stripe price id of Relio Pro billed yearly ($12 / year). Required when billingProvider is Stripe.')
+param stripeProYearlyPriceId string = ''
+
+@description('Public origin of the site, used for canonical URLs and the Stripe return URLs.')
+param publicOrigin string = 'https://www.relio.club'
+
 var sqlConnectionStringReference = '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=sql-connection-string)'
 var dataProtectionCertificatePasswordReference = '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=dp-cert-password)'
+var stripeApiKeyReference = '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=stripe-api-key)'
+var stripeWebhookSigningSecretReference = '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=stripe-webhook-signing-secret)'
+var planPageUrl = '${publicOrigin}/Account/Manage/Plan'
+
+// Only with Stripe: the app validates these at startup and refuses to start if one is missing.
+var billingAppSettings = billingProvider == 'Stripe'
+  ? [
+      {
+        name: 'Billing__ApiKey'
+        value: stripeApiKeyReference
+      }
+      {
+        name: 'Billing__WebhookSigningSecret'
+        value: stripeWebhookSigningSecretReference
+      }
+      {
+        name: 'Billing__ProMonthlyPriceId'
+        value: stripeProMonthlyPriceId
+      }
+      {
+        name: 'Billing__ProYearlyPriceId'
+        value: stripeProYearlyPriceId
+      }
+      {
+        name: 'Billing__CheckoutSuccessUrl'
+        value: planPageUrl
+      }
+      {
+        name: 'Billing__CheckoutCancelUrl'
+        value: planPageUrl
+      }
+      {
+        name: 'Billing__PortalReturnUrl'
+        value: planPageUrl
+      }
+    ]
+  : []
 
 resource appService 'Microsoft.Web/sites@2026-08-01' = {
   name: appServiceName
@@ -28,7 +81,7 @@ resource appService 'Microsoft.Web/sites@2026-08-01' = {
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
       http20Enabled: true
-      appSettings: [
+      appSettings: concat([
         {
           name: 'ConnectionStrings__Relio'
           value: sqlConnectionStringReference
@@ -71,7 +124,7 @@ resource appService 'Microsoft.Web/sites@2026-08-01' = {
         }
         {
           name: 'Billing__Provider'
-          value: 'None'
+          value: billingProvider
         }
         {
           name: 'DemoData__Enabled'
@@ -103,9 +156,9 @@ resource appService 'Microsoft.Web/sites@2026-08-01' = {
         }
         {
           name: 'Seo__PublicOrigin'
-          value: 'https://www.relio.club'
+          value: publicOrigin
         }
-      ]
+      ], billingAppSettings)
     }
   }
 }

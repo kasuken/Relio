@@ -6,24 +6,43 @@ namespace Relio.Application.Tests.Billing;
 
 public sealed class NullBillingProviderTests
 {
+    private readonly NullBillingProvider _provider = new();
+
     [Fact]
-    public async Task NullBillingProvider_has_billing_disabled_and_returns_unsupported_results()
+    public void Billing_is_off()
     {
-        var provider = new NullBillingProvider();
+        _provider.IsEnabled.Should().BeFalse();
+    }
 
-        provider.IsBillingEnabled.Should().BeFalse();
-        provider.ProviderType.Should().Be(BillingProviderType.None);
+    [Fact]
+    public async Task Checkout_and_portal_are_unsupported_with_a_calm_reason()
+    {
+        var checkout = await _provider.CreateCheckoutSessionAsync(
+            new BillingCheckoutRequest("user", BillingInterval.Yearly, null, null));
+        var portal = await _provider.CreatePortalSessionAsync("cus_1");
 
-        var checkout = await provider.CreateCheckoutSessionAsync("user1", "price1");
-        checkout.Success.Should().BeFalse();
-        checkout.Url.Should().BeNull();
-        checkout.ErrorMessage.Should().Contain("No payment provider is configured");
+        checkout.Supported.Should().BeFalse();
+        checkout.RedirectUrl.Should().BeNull();
+        checkout.UnsupportedReason.Should().Be(NullBillingProvider.NotConfiguredReason);
+        portal.Supported.Should().BeFalse();
+        portal.RedirectUrl.Should().BeNull();
+    }
 
-        var portal = await provider.CreatePortalSessionAsync("cust1");
-        portal.Success.Should().BeFalse();
-        portal.Url.Should().BeNull();
+    [Fact]
+    public async Task Webhooks_never_verify_so_no_request_can_change_a_plan()
+    {
+        var verification = await _provider.VerifyWebhookSignatureAsync("{}", "t=1,v1=abc");
+        var parsed = await _provider.ParseWebhookEventAsync("{}");
 
-        var webhook = await provider.VerifyWebhookSignatureAsync("payload", "sig");
-        webhook.Success.Should().BeFalse();
+        verification.IsValid.Should().BeFalse();
+        parsed.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task There_is_nothing_to_cancel_or_sync()
+    {
+        (await _provider.CancelSubscriptionsAsync("cus_1")).Succeeded.Should().BeTrue();
+        (await _provider.UpdateCustomerEmailAsync("cus_1", "a@example.com")).Should().BeTrue();
+        (await _provider.GetCompletedCheckoutAsync("user", "cs_test_1")).Should().BeNull();
     }
 }

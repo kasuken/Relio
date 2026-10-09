@@ -5,6 +5,7 @@ using Relio.Application.Paging;
 using Relio.Application.People;
 using Relio.Application.Security;
 using Relio.Application.Time;
+using Relio.Data.Billing;
 using Relio.Data.Configurations;
 using Relio.Domain;
 
@@ -45,7 +46,11 @@ namespace Relio.Data.People;
 /// token, so a save from a stale tab replaces what is there, apart from the stale-id check above.
 /// </para>
 /// </remarks>
-public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser currentUser, TimeProvider timeProvider) : IPeopleService
+public sealed class PeopleService(
+    RelioDbContext dbContext,
+    ICurrentUser currentUser,
+    TimeProvider timeProvider,
+    PlanLimits? planLimits = null) : IPeopleService
 {
     /// <inheritdoc />
     public async Task<Person?> GetAsync(Guid personId, CancellationToken cancellationToken = default)
@@ -305,6 +310,10 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
                 throw new ForeignEntityNotOwnedException(ForeignEntityNames.ContactMethods);
             }
 
+            // A new person is active, so it counts towards the plan's limit (hosted billing only).
+            await (planLimits ?? PlanLimits.Unlimited).EnsureRoomForActivePeopleAsync(
+                dbContext, ownerId, 1, timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
+
             // The person and its contact methods are built by PersonEntityBuilder, shared with the import.
             var person = PersonEntityBuilder.NewPerson(ownerId, request);
 
@@ -456,6 +465,10 @@ public sealed class PeopleService(RelioDbContext dbContext, ICurrentUser current
 
             if (person.IsArchived)
             {
+                // Restoring makes the person active again, so it counts towards the plan's limit.
+                await (planLimits ?? PlanLimits.Unlimited).EnsureRoomForActivePeopleAsync(
+                    dbContext, ownerId, 1, timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
+
                 person.IsArchived = false;
                 person.ArchivedAtUtc = null;
                 await dbContext.SaveChangesAsync(cancellationToken);

@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Components.Endpoints;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Relio.Application.Billing;
 using Relio.Web.Components.Marketing;
 using Relio.Web.Configuration;
 
@@ -21,6 +23,8 @@ internal sealed class SecurityHeadersMiddleware
         IOptions<HostedPoliciesOptions> policyOptions)
     {
         var nonce = ContentSecurityPolicyNonce.Create();
+        // Optional: a host without billing registered at all is the same as billing off.
+        var billingEnabled = context.RequestServices.GetService<IBillingProvider>()?.IsEnabled == true;
         ContentSecurityPolicyNonce.Set(context, nonce);
 
         context.Response.OnStarting(() =>
@@ -29,7 +33,7 @@ internal sealed class SecurityHeadersMiddleware
             headers["X-Content-Type-Options"] = "nosniff";
             headers["Referrer-Policy"] = "no-referrer";
             headers["X-Frame-Options"] = "DENY";
-            headers["Content-Security-Policy"] = BuildContentSecurityPolicy(nonce);
+            headers["Content-Security-Policy"] = BuildContentSecurityPolicy(nonce, billingEnabled);
             var isMarketing = context.GetEndpoint()?.Metadata.GetMetadata<ComponentTypeMetadata>()?.Type
                 .IsDefined(typeof(MarketingPageAttribute), inherit: false) == true;
             var canIndex = environment.IsProduction()
@@ -45,7 +49,12 @@ internal sealed class SecurityHeadersMiddleware
         await _next(context);
     }
 
-    private static string BuildContentSecurityPolicy(string nonce) => string.Join("; ",
+    // The plan page posts a form whose answer is a redirect to Stripe's hosted Checkout or customer
+    // portal, and browsers apply form-action to the redirect too, so those two origins are allowed -
+    // only when billing is on. They are navigations, not requests from the page.
+    private const string StripeFormTargets = " https://checkout.stripe.com https://billing.stripe.com";
+
+    internal static string BuildContentSecurityPolicy(string nonce, bool billingEnabled) => string.Join("; ",
         "default-src 'self'",
         $"script-src 'self' 'nonce-{nonce}'",
         "script-src-attr 'none'",
@@ -56,7 +65,7 @@ internal sealed class SecurityHeadersMiddleware
         "connect-src 'self'",
         "object-src 'none'",
         "base-uri 'self'",
-        "form-action 'self'",
+        "form-action 'self'" + (billingEnabled ? StripeFormTargets : string.Empty),
         "frame-ancestors 'none'",
         "frame-src 'none'");
 }

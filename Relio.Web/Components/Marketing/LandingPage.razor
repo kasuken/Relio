@@ -1,6 +1,8 @@
 @page "/"
 @attribute [MarketingPage]
 @layout MarketingLayout
+@using Relio.Application.Billing
+@inject IBillingProvider BillingProvider
 
 <SeoHeadContent Title="A private notebook for your relationships"
                 Description="Remember conversations, keep personal notes and follow up with the people in your life. Explore Relio and hosted or self-hosted use."
@@ -54,7 +56,14 @@
     <h2 id="hosting-heading">Choose where your notebook lives</h2>
     <div class="rl-marketing-grid">
         <div><h3>Use this instance</h3><p>Sign in here, or create an account if registration is open.
-            Availability is set by the person running this instance.</p><MarketingStartLink /></div>
+            Availability is set by the person running this instance.</p>
+            @if (BillingProvider.IsEnabled)
+            {
+                <p>Free for up to @PlanCatalog.FreeActivePeopleLimit active people. Relio Pro, with unlimited
+                    people, is @PlanCatalog.MonthlyPriceText or @PlanCatalog.YearlyPriceText.
+                    <a href="/pricing">See plans and pricing</a></p>
+            }
+            <MarketingStartLink /></div>
         <div><h3>Run your own instance</h3><p>Relio's source is available under the AGPL.
             Self-hosting needs SQL Server, protected storage keys and an operator to keep them backed up.</p>
             <a href="/pricing#self-hosting">Read the hosting information</a></div>

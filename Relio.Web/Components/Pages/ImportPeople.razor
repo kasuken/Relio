@@ -222,6 +222,11 @@
             Snackbar.Problem(ImportText.DetailsChanged);
             await RefreshPreviewAsync();
         }
+        catch (Relio.Application.Billing.PlanLimitReachedException exception)
+        {
+            // All or nothing: an import that does not fit the free plan imports nobody.
+            Snackbar.Problem(PlanText.LimitRefused(exception.Limit));
+        }
         catch (Exception exception) when (exception is not (OperationCanceledException or UnauthenticatedUserException))
         {
             // The type only: the message can hold content, and nothing about the file is logged.

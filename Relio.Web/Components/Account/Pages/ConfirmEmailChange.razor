@@ -11,6 +11,7 @@
 @inject UserManager<RelioUser> UserManager
 @inject SignInManager<RelioUser> SignInManager
 @inject ILogger<ConfirmEmailChange> Logger
+@inject Relio.Application.Billing.IBillingCustomerEmailSync BillingEmailSync
 
 <PageTitle>Confirm your new email - Relio</PageTitle>
 
@@ -104,6 +105,13 @@ else
         }
 
         Logger.LogInformation("User {UserId} confirmed an email change.", user.Id);
+
+        // Best effort: the change has already succeeded; a failure here only means billing receipts
+        // keep going to the old address until the next successful sync.
+        if (!await BillingEmailSync.SyncAsync(user.Id, newEmail, HttpContext.RequestAborted))
+        {
+            Logger.LogWarning("The billing customer email was not updated after user {UserId} changed their email.", user.Id);
+        }
 
         _succeeded = true;
         _heading = "Email address changed";
