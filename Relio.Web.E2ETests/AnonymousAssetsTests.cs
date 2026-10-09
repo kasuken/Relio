@@ -64,4 +64,32 @@ public class AnonymousAssetsTests(RelioAppFixture fixture)
 
         await RelioAppFixture.ClosePageAsync(page);
     }
+
+    [Fact]
+    public async Task Signed_out_visitor_gets_install_metadata_and_registers_the_service_worker()
+    {
+        var page = await fixture.NewPageAsync();
+        await page.GotoAsync("/Account/Login");
+
+        var manifestPath = await page.Locator("link[rel='manifest']").GetAttributeAsync("href");
+        var manifest = await page.Context.APIRequest.GetAsync(manifestPath!);
+        manifest.Status.Should().Be((int)HttpStatusCode.OK);
+        manifest.Headers.GetValueOrDefault("content-type", "")
+            .Should().Contain("manifest");
+
+        using var json = System.Text.Json.JsonDocument.Parse(await manifest.TextAsync());
+        var icons = json.RootElement.GetProperty("icons").EnumerateArray()
+            .Select(icon => icon.GetProperty("src").GetString())
+            .ToArray();
+        icons.Should().Contain("/img/brand/icon-192.png")
+            .And.Contain("/img/brand/icon-512.png");
+
+        (await page.Locator("meta[name='apple-mobile-web-app-capable']").GetAttributeAsync("content"))
+            .Should().Be("yes");
+        (await page.EvaluateAsync<string>(
+            "navigator.serviceWorker.ready.then(registration => registration.scope)"))
+            .Should().EndWith("/");
+
+        await RelioAppFixture.ClosePageAsync(page);
+    }
 }
