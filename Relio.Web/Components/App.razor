@@ -12,7 +12,11 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#263A63" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Relio" />
     <base href="/" />
+    <link rel="manifest" href="@Assets["manifest.webmanifest"]" />
     <link rel="icon" href="@Assets["favicon.ico"]" sizes="16x16 32x32 48x48" />
     <link rel="icon" type="image/png" href="@Assets["img/brand/icon-192.png"]" sizes="192x192" />
     <link rel="apple-touch-icon" href="@Assets["img/brand/apple-touch-icon.png"]" />
@@ -42,6 +46,7 @@
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script src="@Assets["_content/MudBlazor/MudBlazor.min.js"]"></script>
+    <script src="@Assets["js/service-worker-registration.js"]"></script>
 </body>
 
 </html>

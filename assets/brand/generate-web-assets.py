@@ -68,6 +68,7 @@ tight = mark.crop(mark.getchannel("A").point(lambda value: 255 if value > 16 els
 icon = square(tight, padding=0.03)
 icon.save(web / "favicon.ico", sizes=[(16, 16), (32, 32), (48, 48)])
 resize(icon, (192, 192)).save(brand / "icon-192.png", optimize=True)
+resize(icon, (512, 512)).save(brand / "icon-512.png", optimize=True)
 
 # iOS fills transparency with black and rounds the corners itself, so the touch icon is a full-bleed
 # square on the `surface` colour (the light app icon's tile) with the mark inset.
