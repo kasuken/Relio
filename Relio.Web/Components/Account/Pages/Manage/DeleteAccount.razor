@@ -124,6 +124,8 @@
                     "This is the only active administrator. Add another active administrator before deleting this account.",
                 AccountDeletionStatus.ConcurrentChange =>
                     "The account changed while deletion was in progress. No changes were saved; please try again.",
+                AccountDeletionStatus.BillingCancellationFailed =>
+                    "Your Relio Pro subscription couldn't be cancelled just now, so nothing was deleted. Please try again in a moment.",
                 _ => "The account could not be deleted. Please try again.",
             };
             return;

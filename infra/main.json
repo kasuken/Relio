@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "5577544596979070933"
+      "templateHash": "18086972890998083138"
     }
   },
   "parameters": {
@@ -43,6 +43,31 @@
     "sqlAdminLogin": {
       "type": "string",
       "defaultValue": "relioadmin"
+    },
+    "billingProvider": {
+      "type": "string",
+      "defaultValue": "None",
+      "allowedValues": [
+        "None",
+        "Stripe"
+      ],
+      "metadata": {
+        "description": "Hosted billing: None (no plans or limits) or Stripe. See docs/security/billing.md before switching."
+      }
+    },
+    "stripeProMonthlyPriceId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Stripe price id of Relio Pro billed monthly. Required when billingProvider is Stripe."
+      }
+    },
+    "stripeProYearlyPriceId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Stripe price id of Relio Pro billed yearly. Required when billingProvider is Stripe."
+      }
     }
   },
   "variables": {
@@ -519,6 +544,15 @@
           },
           "logAnalyticsWorkspaceId": {
             "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resourceGroupName')), 'Microsoft.Resources/deployments', 'logAnalytics'), '2025-04-01').outputs.workspaceId.value]"
+          },
+          "billingProvider": {
+            "value": "[parameters('billingProvider')]"
+          },
+          "stripeProMonthlyPriceId": {
+            "value": "[parameters('stripeProMonthlyPriceId')]"
+          },
+          "stripeProYearlyPriceId": {
+            "value": "[parameters('stripeProYearlyPriceId')]"
           }
         },
         "template": {
@@ -528,7 +562,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.40.2.10011",
-              "templateHash": "4137276724298488507"
+              "templateHash": "10101854586285793716"
             }
           },
           "parameters": {
@@ -549,11 +583,47 @@
             },
             "logAnalyticsWorkspaceId": {
               "type": "string"
+            },
+            "billingProvider": {
+              "type": "string",
+              "defaultValue": "None",
+              "allowedValues": [
+                "None",
+                "Stripe"
+              ],
+              "metadata": {
+                "description": "Hosted billing. Stripe needs the two Key Vault secrets stripe-api-key and stripe-webhook-signing-secret and both price ids (see docs/security/billing.md); None turns plans and limits off."
+              }
+            },
+            "stripeProMonthlyPriceId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Stripe price id of Relio Pro billed monthly ($2 / month). Required when billingProvider is Stripe."
+              }
+            },
+            "stripeProYearlyPriceId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Stripe price id of Relio Pro billed yearly ($12 / year). Required when billingProvider is Stripe."
+              }
+            },
+            "publicOrigin": {
+              "type": "string",
+              "defaultValue": "https://www.relio.club",
+              "metadata": {
+                "description": "Public origin of the site, used for canonical URLs and the Stripe return URLs."
+              }
             }
           },
           "variables": {
             "sqlConnectionStringReference": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=sql-connection-string)', parameters('keyVaultName'))]",
-            "dataProtectionCertificatePasswordReference": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=dp-cert-password)', parameters('keyVaultName'))]"
+            "dataProtectionCertificatePasswordReference": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=dp-cert-password)', parameters('keyVaultName'))]",
+            "stripeApiKeyReference": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=stripe-api-key)', parameters('keyVaultName'))]",
+            "stripeWebhookSigningSecretReference": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=stripe-webhook-signing-secret)', parameters('keyVaultName'))]",
+            "planPageUrl": "[format('{0}/Account/Manage/Plan', parameters('publicOrigin'))]",
+            "billingAppSettings": "[if(equals(parameters('billingProvider'), 'Stripe'), createArray(createObject('name', 'Billing__ApiKey', 'value', variables('stripeApiKeyReference')), createObject('name', 'Billing__WebhookSigningSecret', 'value', variables('stripeWebhookSigningSecretReference')), createObject('name', 'Billing__ProMonthlyPriceId', 'value', parameters('stripeProMonthlyPriceId')), createObject('name', 'Billing__ProYearlyPriceId', 'value', parameters('stripeProYearlyPriceId')), createObject('name', 'Billing__CheckoutSuccessUrl', 'value', variables('planPageUrl')), createObject('name', 'Billing__CheckoutCancelUrl', 'value', variables('planPageUrl')), createObject('name', 'Billing__PortalReturnUrl', 'value', variables('planPageUrl'))), createArray())]"
           },
           "resources": [
             {
@@ -578,84 +648,7 @@
                   "minTlsVersion": "1.2",
                   "ftpsState": "Disabled",
                   "http20Enabled": true,
-                  "appSettings": [
-                    {
-                      "name": "ConnectionStrings__Relio",
-                      "value": "[variables('sqlConnectionStringReference')]"
-                    },
-                    {
-                      "name": "Database__ApplyMigrationsOnStartup",
-                      "value": "true"
-                    },
-                    {
-                      "name": "DataProtection__ApplicationName",
-                      "value": "Relio"
-                    },
-                    {
-                      "name": "DataProtection__KeyRingPath",
-                      "value": "/home/relio/keys"
-                    },
-                    {
-                      "name": "DataProtection__ProtectionMode",
-                      "value": "Certificate"
-                    },
-                    {
-                      "name": "DataProtection__Certificate__Path",
-                      "value": "/home/relio/certificate.pfx"
-                    },
-                    {
-                      "name": "DataProtection__Certificate__Password",
-                      "value": "[variables('dataProtectionCertificatePasswordReference')]"
-                    },
-                    {
-                      "name": "DataProtection__AutoGenerateIfMissing",
-                      "value": "true"
-                    },
-                    {
-                      "name": "Registration__Mode",
-                      "value": "Open"
-                    },
-                    {
-                      "name": "Email__Provider",
-                      "value": "None"
-                    },
-                    {
-                      "name": "Billing__Provider",
-                      "value": "None"
-                    },
-                    {
-                      "name": "DemoData__Enabled",
-                      "value": "false"
-                    },
-                    {
-                      "name": "ASPNETCORE_ENVIRONMENT",
-                      "value": "Production"
-                    },
-                    {
-                      "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
-                      "value": "true"
-                    },
-                    {
-                      "name": "ENABLE_ORYX_BUILD",
-                      "value": "true"
-                    },
-                    {
-                      "name": "ORYX_DISABLE_COMPRESSION",
-                      "value": "true"
-                    },
-                    {
-                      "name": "PROJECT",
-                      "value": "Relio.Web/Relio.Web.csproj"
-                    },
-                    {
-                      "name": "WEBSITES_CONTAINER_START_TIME_LIMIT",
-                      "value": "1800"
-                    },
-                    {
-                      "name": "Seo__PublicOrigin",
-                      "value": "https://www.relio.club"
-                    }
-                  ]
+                  "appSettings": "[concat(createArray(createObject('name', 'ConnectionStrings__Relio', 'value', variables('sqlConnectionStringReference')), createObject('name', 'Database__ApplyMigrationsOnStartup', 'value', 'true'), createObject('name', 'DataProtection__ApplicationName', 'value', 'Relio'), createObject('name', 'DataProtection__KeyRingPath', 'value', '/home/relio/keys'), createObject('name', 'DataProtection__ProtectionMode', 'value', 'Certificate'), createObject('name', 'DataProtection__Certificate__Path', 'value', '/home/relio/certificate.pfx'), createObject('name', 'DataProtection__Certificate__Password', 'value', variables('dataProtectionCertificatePasswordReference')), createObject('name', 'DataProtection__AutoGenerateIfMissing', 'value', 'true'), createObject('name', 'Registration__Mode', 'value', 'Open'), createObject('name', 'Email__Provider', 'value', 'None'), createObject('name', 'Billing__Provider', 'value', parameters('billingProvider')), createObject('name', 'DemoData__Enabled', 'value', 'false'), createObject('name', 'ASPNETCORE_ENVIRONMENT', 'value', 'Production'), createObject('name', 'SCM_DO_BUILD_DURING_DEPLOYMENT', 'value', 'true'), createObject('name', 'ENABLE_ORYX_BUILD', 'value', 'true'), createObject('name', 'ORYX_DISABLE_COMPRESSION', 'value', 'true'), createObject('name', 'PROJECT', 'value', 'Relio.Web/Relio.Web.csproj'), createObject('name', 'WEBSITES_CONTAINER_START_TIME_LIMIT', 'value', '1800'), createObject('name', 'Seo__PublicOrigin', 'value', parameters('publicOrigin'))), variables('billingAppSettings'))]"
                 }
               }
             },

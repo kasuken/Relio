@@ -130,7 +130,7 @@ Relio encrypts sensitive user content (`HowWeMet`, `Details`, `Note.Text`, `Inte
 
 | Setting | Environment Variable | Default | Description |
 |---|---|---|---|
-| `Billing:Provider` | `Billing__Provider` | `None` | `None` disables billing UI and runs all features unconstrained. `Stripe` enables hosted Stripe subscription management. |
+| `Billing:Provider` | `Billing__Provider` | `None` | `None`: no plans, no limits and no billing UI - every feature is included. `Stripe` turns on the hosted Free plan (25 active people) and Relio Pro subscriptions; it needs the other `Billing:*` settings described in [billing.md](security/billing.md). |
 | `HostedFeatures:ProductMetrics:Enabled` | `HostedFeatures__ProductMetrics__Enabled` | `false` | Privacy-preserving aggregated product metrics (off by default). |
 | `HostedFeatures:Policies:Enabled` | `HostedFeatures__Policies__Enabled` | `false` | Hosted legal policy pages (Terms/Privacy). Requires reviewed documents before enabling. |
 | `Seo:PublicOrigin` | `Seo__PublicOrigin` | `https://localhost` | Canonical HTTPS public origin for SEO tags and sitemap (e.g. `https://relio.example.com`). |

@@ -14,6 +14,7 @@
    Possible duplicates (issue #27) are checked when Save is pressed, never while typing: the warning
    replaces the save, and "Save anyway" carries on. In edit mode only a rename is checked. *@
 @using System.Globalization
+@using Relio.Application.Billing
 @using Relio.Application.Ownership
 @using Relio.Application.People
 @using Relio.Domain
@@ -251,6 +252,11 @@
         <PossibleDuplicateWarning Matches="_duplicates" Busy="_saving" OnSaveAnyway="SaveAnywayAsync" ItemActions="@MergeInstead" />
     }
 
+    @if (_planLimit is int planLimit)
+    {
+        <PlanLimitNotice Limit="planLimit" Class="mb-4" />
+    }
+
     <div class="rl-form-actions">
         <MudButton ButtonType="ButtonType.Button"
                    Variant="Variant.Filled"
@@ -277,6 +283,9 @@
     private IReadOnlyList<Tag> _tags = [];
     private bool _saving;
     private bool _stale;
+
+    // Set when the service refused a new person because the free plan's limit is reached (hosted billing).
+    private int? _planLimit;
 
     // Possible duplicates (issue #27). Checked only when the user presses Save, never while typing and
     // never from a lifecycle method (prerendering runs those twice). The keys are the probe's
@@ -404,6 +413,7 @@
         }
 
         _saving = true;
+        _planLimit = null;
         _errors.Clear();
         _contactErrors = [];
         IReadOnlyList<ContactMethodFormRow> sentRows = [];
@@ -472,6 +482,11 @@
             // A contact method this form still shows was deleted elsewhere: the page is out of date,
             // and saving it would put back or lose rows without telling anyone.
             _stale = true;
+        }
+        catch (PlanLimitReachedException exception)
+        {
+            // Nothing was saved; the form keeps everything that was typed.
+            _planLimit = exception.Limit;
         }
         finally
         {

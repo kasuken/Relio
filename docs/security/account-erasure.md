@@ -23,6 +23,14 @@ on another instance may continue displaying its already-rendered page until it n
 the owner foreign key still rejects any write after erasure. Operators should account for that
 idle-display limitation when assessing their deployment's session requirements.
 
+With hosted billing on, erasure first cancels every live Relio subscription of the account's
+Stripe customer, before any row is removed: the subscription row holds the only link to that
+customer, and deleting it first would leave Stripe charging an account that no longer exists. If the
+cancellation fails, nothing is deleted and the user is asked to try again. The subscription row is
+then deleted in the same save as the account (its foreign key to the account is `NO ACTION`, like
+every owner reference). With billing off there is no provider to call, and the operator cancels any
+leftover subscription in the Stripe Dashboard. See [billing.md](billing.md).
+
 The confirmation email is sent only after the database commit. It contains no names or Relio
 content and says that backups are handled under the instance operator's retention policy. Deleting
 the live account does not delete backups; backup retention and disposal are operated separately.

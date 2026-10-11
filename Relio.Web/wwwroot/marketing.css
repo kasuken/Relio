@@ -175,6 +175,31 @@ ol.rl-marketing-grid {
     min-width: 0;
 }
 
+.rl-marketing-plan {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-6);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+}
+
+.rl-marketing-plan ul {
+    margin: 0;
+    padding-inline-start: var(--space-6);
+}
+
+.rl-marketing-main .rl-marketing-price {
+    margin-block: 0;
+    color: var(--text-muted);
+}
+
+.rl-marketing-price strong {
+    color: var(--text);
+    font-size: 1.625rem;
+}
+
 .rl-marketing-faq details {
     max-width: var(--measure);
     padding-block: var(--space-4);

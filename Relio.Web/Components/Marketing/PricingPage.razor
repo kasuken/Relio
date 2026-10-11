@@ -1,32 +1,95 @@
 @page "/pricing"
 @attribute [MarketingPage]
 @layout MarketingLayout
+@using Relio.Application.Billing
+@using Relio.Web.Components.Billing
+@inject IBillingProvider BillingProvider
 
-<SeoHeadContent Title="Hosting and pricing"
-                Description="Choose this Relio instance or run your own. Learn about self-hosting requirements, optional mail delivery and the current availability of hosted billing."
+@* Plans are shown only when this instance has a billing provider (Billing:Provider=Stripe); the
+   prices come from PlanCatalog, the same values the plan page and the limit use. Without billing the
+   page says plainly that there are no paid plans. Static marketing: no owned data is read here. *@
+
+<SeoHeadContent Title="@(BillingProvider.IsEnabled ? "Pricing" : "Hosting and pricing")"
+                Description="@(BillingProvider.IsEnabled
+                    ? $"Relio is free for up to {PlanCatalog.FreeActivePeopleLimit} active people. Relio Pro is {PlanCatalog.MonthlyPriceText}, or {PlanCatalog.YearlyPriceText}. Or run your own instance for free."
+                    : "Choose this Relio instance or run your own. Learn about self-hosting requirements and optional mail delivery.")"
                 CanonicalPath="/pricing" />
 
 <header>
-    <p class="rl-marketing-eyebrow">Choose where Relio runs</p>
-    <h1>Hosting choices</h1>
-    <p class="rl-marketing-lead">Use an existing instance, or take responsibility for your own notebook's home.</p>
+    <p class="rl-marketing-eyebrow">@(BillingProvider.IsEnabled ? "Simple pricing" : "Choose where Relio runs")</p>
+    <h1>@(BillingProvider.IsEnabled ? "Plans and pricing" : "Hosting choices")</h1>
+    <p class="rl-marketing-lead">
+        @if (BillingProvider.IsEnabled)
+        {
+            <text>Start free. Subscribe when your notebook outgrows @PlanCatalog.FreeActivePeopleLimit active people.</text>
+        }
+        else
+        {
+            <text>Use an existing instance, or take responsibility for your own notebook's home.</text>
+        }
+    </p>
 </header>
 
-<section class="rl-marketing-section" aria-labelledby="instance-heading">
-    <h2 id="instance-heading">Use this instance</h2>
-    <p>You are viewing an instance of Relio. Its operator decides who can register and is responsible
-        for hosting, mail delivery, backups and any published policies. Sign in if you already have an
-        account, or create one when registration is available.</p>
-    <MarketingStartLink ShowSignIn="true" />
-    <p>No commercial offers are published here. Hosted billing and approved plan information are
-        not implemented yet; enabling a provider setting alone does not make a paid service available.</p>
-    <RelioPolicyLinks AriaLabel="Available policies for this instance" />
-</section>
+@if (BillingProvider.IsEnabled)
+{
+    <section class="rl-marketing-section" aria-labelledby="plans-heading">
+        <h2 id="plans-heading">Plans on this instance</h2>
+        <div class="rl-marketing-grid">
+            <article class="rl-marketing-plan" aria-labelledby="plan-free-heading" data-testid="pricing-plan-free">
+                <h3 id="plan-free-heading">@PlanCatalog.Free.DisplayName</h3>
+                <p class="rl-marketing-price"><strong>$0</strong></p>
+                <ul>
+                    @foreach (var capability in PlanCatalog.Free.Capabilities)
+                    {
+                        <li>@capability</li>
+                    }
+                </ul>
+                <MarketingStartLink />
+            </article>
+            <article class="rl-marketing-plan" aria-labelledby="plan-pro-heading" data-testid="pricing-plan-pro">
+                <h3 id="plan-pro-heading">@PlanCatalog.Pro.DisplayName</h3>
+                <p class="rl-marketing-price">
+                    <strong>@PlanCatalog.YearlyMonthlyEquivalentText</strong> billed yearly (@PlanCatalog.YearlyPriceText),
+                    or @PlanCatalog.MonthlyPriceText billed monthly
+                </p>
+                <ul>
+                    @foreach (var capability in PlanCatalog.Pro.Capabilities)
+                    {
+                        <li>@capability</li>
+                    }
+                </ul>
+                <div class="rl-marketing-actions">
+                    @* The plan page needs a signed-in user: the sign-in redirect brings a visitor back to it. *@
+                    <a class="rl-marketing-primary" href="@PlanText.PlanPagePath" data-enhance-nav="false"
+                       data-testid="pricing-subscribe">Subscribe to Relio Pro</a>
+                </div>
+            </article>
+        </div>
+        <p>Prices are in US dollars. Archived people don't count towards the Free plan's limit, and
+            nothing is deleted if you cancel: you keep everything you recorded and can still export it.
+            Payments are handled by Stripe; Relio sends it your account email and an opaque account id
+            only, never anything you have written about people.</p>
+        <RelioPolicyLinks AriaLabel="Available policies for this instance" />
+    </section>
+}
+else
+{
+    <section class="rl-marketing-section" aria-labelledby="instance-heading">
+        <h2 id="instance-heading">Use this instance</h2>
+        <p>You are viewing an instance of Relio. Its operator decides who can register and is responsible
+            for hosting, mail delivery, backups and any published policies. Sign in if you already have an
+            account, or create one when registration is available.</p>
+        <MarketingStartLink ShowSignIn="true" />
+        <p>This instance has no paid plans: every feature is included for every account.</p>
+        <RelioPolicyLinks AriaLabel="Available policies for this instance" />
+    </section>
+}
 
 <section id="self-hosting" class="rl-marketing-section" aria-labelledby="self-hosting-heading">
     <h2 id="self-hosting-heading">Run your own instance</h2>
-    <p>Relio's source is available under the AGPL. The same relationship features run without a
-        billing provider or hosted product metrics. No paid entitlement is required by the current app.</p>
+    <p>Relio's source is available under the AGPL. A self-hosted instance runs without a billing
+        provider or hosted product metrics, with no plans and no limits: billing is off unless an
+        operator configures Stripe.</p>
     <p>You will need .NET 10, SQL Server, HTTPS, and durable externally stored Data Protection keys
         protected by a certificate or the supported Windows protection mode.
         Keep the database, keys and required decryption material backed up together.</p>
@@ -41,7 +104,23 @@
 </section>
 
 <section class="rl-marketing-section rl-marketing-faq" aria-labelledby="hosting-faq-heading">
-    <h2 id="hosting-faq-heading">Hosting questions</h2>
+    <h2 id="hosting-faq-heading">@(BillingProvider.IsEnabled ? "Pricing and hosting questions" : "Hosting questions")</h2>
+    @if (BillingProvider.IsEnabled)
+    {
+        <details><summary>What counts towards the Free plan's limit?</summary><p>People who are not archived.
+            Archive someone you are not keeping up with and they stop counting; restoring them counts again.
+            Interactions, notes, reminders and difficult moments are not limited.</p></details>
+        <details><summary>What happens if I cancel Relio Pro?</summary><p>Your subscription runs to the end of
+            the period you paid for, then the account returns to the Free plan. Nothing is deleted: if you
+            have more than @PlanCatalog.FreeActivePeopleLimit active people you keep them all, and you can't add
+            or restore more until you archive some or subscribe again.</p></details>
+        <details><summary>How do I change or cancel my subscription?</summary><p>Open Settings, then Plan and
+            billing, and choose Manage billing. Stripe's billing portal lets you update your payment method,
+            download invoices and cancel.</p></details>
+        <details><summary>What if a payment fails?</summary><p>Relio Pro continues while Stripe retries the
+            payment, and the plan page tells you what to update. If every retry fails, the account returns to
+            the Free plan; nothing is deleted.</p></details>
+    }
     <details><summary>Can I use Relio without hosted services?</summary><p>Yes. The relationship workspace
         does not need billing or analytics. Optional hosted product metrics are off by default,
         and there are no browser tracking scripts.</p></details>

@@ -1,0 +1,250 @@
+@page "/Account/Manage/Plan"
+@attribute [Authorize]
+@attribute [ExcludeFromInteractiveRouting]
+@layout Relio.Web.Components.Account.Shared.AccountLayout
+
+@using Relio.Application.Billing
+@using Relio.Application.Time
+@using Relio.Web.Billing
+@using Relio.Web.Components.Billing
+
+@inject ISubscriptionService Subscriptions
+@inject IUserTimeZoneService TimeZones
+@inject NavigationManager Navigation
+@inject ILogger<Plan> Logger
+
+@* The hosted plan (Stripe). Static SSR, like LearnStack's plan page, because both actions answer a
+   form post with a redirect to a Stripe-hosted page, and Stripe returns here with the checkout's id.
+   Every rule (who may check out, the limit, the grace period) lives in ISubscriptionService; this page
+   only words the summary. *@
+
+<PageTitle>Plan and billing - Relio</PageTitle>
+
+<MudText Typo="Typo.h2" HtmlTag="h1" Class="mb-2" data-testid="plan-heading">Plan and billing</MudText>
+
+@if (_summary is null)
+{
+    <MudText Typo="Typo.body1">Loading...</MudText>
+}
+else if (!_summary.BillingEnabled)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-6" data-testid="plan-not-available">
+        @NullBillingProvider.NotConfiguredReason
+    </MudAlert>
+}
+else
+{
+    @if (_checkoutNotice is not null)
+    {
+        <MudAlert Severity="@(_checkoutNoticeIsSuccess ? Severity.Success : Severity.Info)" Class="mb-4"
+                  data-testid="plan-checkout-notice">
+            @_checkoutNotice
+        </MudAlert>
+    }
+
+    @if (_actionError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="plan-error">@_actionError</MudAlert>
+    }
+
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">Current plan</MudText>
+    <MudText Typo="Typo.h3" HtmlTag="p" Class="mb-1" data-testid="plan-current">@_summary.Plan.DisplayName</MudText>
+    <MudText Typo="Typo.body1" Class="mb-4" data-testid="plan-usage">@PlanText.Usage(_summary)</MudText>
+
+    @if (_summary.PaidAccessSuspended)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4" data-testid="plan-suspended">@PlanText.PaidAccessSuspended</MudAlert>
+    }
+    else if (_summary.Tier == PlanTier.Pro && _summary.GracePeriodEndsAtUtc is { } graceEnds)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4" data-testid="plan-grace">
+            @PlanText.GracePeriod(graceEnds, _timeZone, _today)
+        </MudAlert>
+    }
+
+    @if (_summary.LimitReached && _summary.MaxActivePeople is int limit)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4" data-testid="plan-limit-reached">@PlanText.LimitReached(limit)</MudAlert>
+    }
+
+    @if (_summary.Tier == PlanTier.Pro)
+    {
+        @if (_summary.PlanCancelsAtUtc is { } cancelsAt)
+        {
+            <MudText Typo="Typo.body1" Class="mb-4" data-testid="plan-cancels">@PlanText.Cancels(cancelsAt, _timeZone, _today)</MudText>
+        }
+        else if (_summary.PlanRenewsAtUtc is { } renewsAt)
+        {
+            <MudText Typo="Typo.body1" Class="mb-4" data-testid="plan-renews">@PlanText.Renews(renewsAt, _timeZone, _today)</MudText>
+        }
+    }
+
+    @* A suspended subscription still exists at Stripe and is fixed in the portal: a second checkout
+       would start a duplicate, so only the free plan (and not a suspended Pro) can subscribe. *@
+    @if (_summary.Tier == PlanTier.Free && !_summary.PaidAccessSuspended)
+    {
+        <form method="post" @formname="plan-subscribe" @onsubmit="SubscribeAsync" class="d-flex flex-column gap-2 mb-4">
+            <AntiforgeryToken />
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                       name="Interval" value="@BillingInterval.Yearly" data-testid="plan-subscribe-yearly">
+                @PlanText.SubscribeYearly
+            </MudButton>
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Primary"
+                       name="Interval" value="@BillingInterval.Monthly" data-testid="plan-subscribe-monthly">
+                @PlanText.SubscribeMonthly
+            </MudButton>
+        </form>
+    }
+
+    @if (_summary.HasBillingAccount)
+    {
+        <form method="post" @formname="plan-portal" @onsubmit="OpenPortalAsync" class="mb-4">
+            <AntiforgeryToken />
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Primary"
+                       data-testid="plan-manage-billing">
+                Manage billing
+            </MudButton>
+        </form>
+    }
+
+    <MudText Typo="Typo.h3" HtmlTag="h2" Class="mt-8 mb-3">Plans</MudText>
+    @foreach (var plan in PlanCatalog.All)
+    {
+        <div class="mb-4" data-testid="@($"plan-definition-{plan.Tier.ToString().ToLowerInvariant()}")">
+            <MudText Typo="Typo.h4" HtmlTag="h3">@plan.DisplayName</MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary mb-1">
+                @(plan.Tier == PlanTier.Free
+                    ? "Free"
+                    : $"{PlanCatalog.MonthlyPriceText}, or {PlanCatalog.YearlyPriceText} ({PlanCatalog.YearlyMonthlyEquivalentText})")
+            </MudText>
+            <ul>
+                @foreach (var capability in plan.Capabilities)
+                {
+                    <li>@capability</li>
+                }
+            </ul>
+        </div>
+    }
+
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mt-4" data-testid="plan-stripe-notice">@PlanText.StripeNotice</MudText>
+}
+
+<MudText Typo="Typo.body2" Class="mud-text-secondary mt-6">
+    <MudLink Href="/settings" data-testid="plan-back">Back to settings</MudLink>
+</MudText>
+
+@code {
+    private PlanSummary? _summary;
+    private TimeZoneInfo _timeZone = TimeZoneInfo.Utc;
+    private DateOnly _today;
+    private string? _checkoutNotice;
+    private bool _checkoutNoticeIsSuccess;
+    private string? _actionError;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "plan-subscribe")]
+    private string? Interval { get; set; }
+
+    [SupplyParameterFromQuery(Name = StripeBillingProvider.CheckoutSessionIdQueryKey)]
+    private string? CheckoutSessionId { get; set; }
+
+    [SupplyParameterFromQuery(Name = StripeBillingProvider.CheckoutOutcomeQueryKey)]
+    private string? CheckoutOutcome { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var cancellationToken = HttpContext.RequestAborted;
+
+        // Only on the GET that Stripe redirects back to, never on a form post that carries the same
+        // address. One call after another: every data service shares the request's context.
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            await ShowCheckoutOutcomeAsync(cancellationToken);
+        }
+
+        _summary = await Subscriptions.GetSummaryAsync(cancellationToken);
+        _timeZone = await TimeZones.GetTimeZoneAsync(cancellationToken);
+        _today = await TimeZones.GetTodayAsync(cancellationToken);
+    }
+
+    private async Task ShowCheckoutOutcomeAsync(CancellationToken cancellationToken)
+    {
+        if (CheckoutOutcome == StripeBillingProvider.CheckoutCancelledValue)
+        {
+            _checkoutNotice = PlanText.CheckoutCancelled;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(CheckoutSessionId))
+        {
+            return;
+        }
+
+        // Confirmed against Stripe directly, because the webhook that would otherwise apply the plan
+        // usually lands a few seconds after the user is back here.
+        var confirmed = false;
+        try
+        {
+            confirmed = await Subscriptions.ConfirmCheckoutAsync(CheckoutSessionId, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            Logger.LogWarning("Confirming a returned checkout failed ({ExceptionType}).", exception.GetType().Name);
+        }
+
+        _checkoutNoticeIsSuccess = confirmed;
+        _checkoutNotice = confirmed ? PlanText.CheckoutConfirmed : PlanText.CheckoutPending;
+    }
+
+    private async Task SubscribeAsync()
+    {
+        var interval = Enum.TryParse<BillingInterval>(Interval, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
+            ? parsed
+            : BillingInterval.Yearly;
+
+        CheckoutSessionResult result;
+        try
+        {
+            result = await Subscriptions.StartCheckoutAsync(interval, HttpContext.RequestAborted);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            Logger.LogError("Starting checkout failed ({ExceptionType}).", exception.GetType().Name);
+            _actionError = PlanText.CheckoutFailed;
+            return;
+        }
+
+        if (!result.Supported || string.IsNullOrEmpty(result.RedirectUrl))
+        {
+            _actionError = result.UnsupportedReason ?? PlanText.CheckoutFailed;
+            return;
+        }
+
+        Navigation.NavigateTo(result.RedirectUrl, forceLoad: true);
+    }
+
+    private async Task OpenPortalAsync()
+    {
+        PortalSessionResult result;
+        try
+        {
+            result = await Subscriptions.OpenPortalAsync(HttpContext.RequestAborted);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            Logger.LogError("Opening the billing portal failed ({ExceptionType}).", exception.GetType().Name);
+            _actionError = PlanText.PortalFailed;
+            return;
+        }
+
+        if (!result.Supported || string.IsNullOrEmpty(result.RedirectUrl))
+        {
+            _actionError = result.UnsupportedReason ?? PlanText.PortalFailed;
+            return;
+        }
+
+        Navigation.NavigateTo(result.RedirectUrl, forceLoad: true);
+    }
+}

@@ -5,6 +5,11 @@ namespace Relio.Web.Components.Pages;
 /// <summary>Calm, content-free wording for JSON restore validation errors.</summary>
 public static class UserDataPortabilityText
 {
+    /// <summary>The message when the export has more active people than the free plan allows.</summary>
+    public static string PlanLimit(int limit) =>
+        $"This export has more than {limit} active people, the Free plan's limit, so nothing was imported. " +
+        "Subscribe to Relio Pro under Settings > Plan and billing, then restore again.";
+
     /// <summary>Returns a safe user-facing message for the supplied error codes.</summary>
     public static string For(IReadOnlyList<UserDataPortabilityError> errors)
     {

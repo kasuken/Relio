@@ -499,6 +499,11 @@
             Snackbar.Info(PersonArchiveText.Restored);
             await RefreshProfileAsync();
         }
+        catch (Relio.Application.Billing.PlanLimitReachedException exception)
+        {
+            // Restoring would take a free account over its limit; the person stays archived.
+            Snackbar.Problem(PlanText.LimitRefused(exception.Limit));
+        }
         finally
         {
             _busy = false;

@@ -44,7 +44,7 @@ public static class MarketingEndpointRouteBuilderExtensions
                 if (canIndex)
                 {
                     lines.Clear();
-                    lines.AddRange(["User-agent: *", "Disallow: /", "Disallow: /Account/", "Disallow: /dashboard", "Disallow: /people", "Disallow: /settings", "Disallow: /admin/", "Disallow: /onboarding", "Disallow: /interactions/", "Disallow: /unsubscribe", "Disallow: /health/", "Disallow: /Error", "Disallow: /not-found"]);
+                    lines.AddRange(["User-agent: *", "Disallow: /", "Disallow: /Account/", "Disallow: /dashboard", "Disallow: /people", "Disallow: /settings", "Disallow: /admin/", "Disallow: /onboarding", "Disallow: /interactions/", "Disallow: /unsubscribe", "Disallow: /health/", "Disallow: /api/", "Disallow: /Error", "Disallow: /not-found"]);
                     lines.AddRange(PublicRoutes.Concat(enabledDocuments.Select(document => document.CanonicalPath))
                         .Select(route => $"Allow: {route}$"));
                     lines.AddRange([

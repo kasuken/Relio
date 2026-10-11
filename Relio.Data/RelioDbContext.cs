@@ -119,6 +119,15 @@ public sealed partial class RelioDbContext : IdentityDbContext<RelioUser>
     /// </summary>
     public DbSet<Administration.RegistrationInvitation> RegistrationInvitations => Set<Administration.RegistrationInvitation>();
 
+    /// <summary>
+    /// Hosted plans, one row per user who has had a billing event. Billing infrastructure, not
+    /// user-owned content: see <see cref="Billing.UserSubscription"/>.
+    /// </summary>
+    public DbSet<Billing.UserSubscription> UserSubscriptions => Set<Billing.UserSubscription>();
+
+    /// <summary>The billing webhook idempotency ledger: see <see cref="Billing.ProcessedBillingEvent"/>.</summary>
+    public DbSet<Billing.ProcessedBillingEvent> ProcessedBillingEvents => Set<Billing.ProcessedBillingEvent>();
+
     /// <inheritdoc />
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

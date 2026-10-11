@@ -135,6 +135,13 @@ public sealed class CurrentUserSqlIsolationTests(SqlServerDatabaseFixture fixtur
         await RequiresUserAsync(() => timeZones.IsDueTodayAsync(today));
         await RequiresUserAsync(() => timeZones.IsOverdueAsync(today));
 
+        var subscriptions = new Relio.Data.Billing.SubscriptionService(
+            db, user, new Relio.Application.Billing.NullBillingProvider(), harness.Clock);
+        await RequiresUserAsync(() => subscriptions.GetSummaryAsync());
+        await RequiresUserAsync(() => subscriptions.StartCheckoutAsync(Relio.Application.Billing.BillingInterval.Yearly));
+        await RequiresUserAsync(() => subscriptions.OpenPortalAsync());
+        await RequiresUserAsync(() => subscriptions.ConfirmCheckoutAsync("cs_test_synthetic"));
+
         var profile = new UserProfileService(db, user);
         await RequiresUserAsync(() => profile.GetDisplayNameAsync());
         await RequiresUserAsync(() => profile.SetDisplayNameAsync("Synthetic"));

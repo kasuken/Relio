@@ -7,6 +7,7 @@ using Relio.Application.Portability;
 using Relio.Application.Reminders;
 using Relio.Application.Security;
 using Relio.Application.Time;
+using Relio.Data.Billing;
 using Relio.Data.People;
 using Relio.Data.Reminders;
 using Relio.Domain;
@@ -17,7 +18,8 @@ namespace Relio.Data.Portability;
 public sealed class UserDataPortabilityService(
     RelioDbContext dbContext,
     ICurrentUser currentUser,
-    TimeProvider timeProvider) : IUserDataPortabilityService
+    TimeProvider timeProvider,
+    PlanLimits? planLimits = null) : IUserDataPortabilityService
 {
     /// <inheritdoc />
     public async Task<UserDataExportDocument> ExportAsync(CancellationToken cancellationToken = default)
@@ -409,6 +411,15 @@ public sealed class UserDataPortabilityService(
             {
                 throw new UserDataPortabilityException([UserDataPortabilityError.DestinationNotFresh]);
             }
+
+            // The destination is fresh, so the document's active people are all the account will
+            // have: on a hosted free plan they must fit its limit (subscribe first, then restore).
+            await (planLimits ?? PlanLimits.Unlimited).EnsureRoomForActivePeopleAsync(
+                dbContext,
+                ownerId,
+                document.People.Count(person => !person.IsArchived),
+                nowUtc.UtcDateTime,
+                cancellationToken);
 
             var auditMappings = new List<ImportedAuditMapping>();
             void PreserveAudit(IOwnedEntity entity, DateTime createdAtUtc, DateTime updatedAtUtc) =>

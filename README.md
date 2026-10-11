@@ -33,8 +33,10 @@ after your relationships, available as a hosted service or self-hosted.
 `/`, `/features`, `/pricing` and `/changelog` are anonymous, statically rendered pages in the same
 web app. The relationship workspace is protected at `/dashboard`. Marketing entry points follow
 the instance's registration rules; account forms still perform full posts and registration
-captures the browser time zone. `/pricing` is hosting information, not a payment integration:
-billing remains unimplemented and off by default.
+captures the browser time zone. `/pricing` shows the hosted plans (Free for up to 25 active people;
+Relio Pro for $2 a month or $12 a year) only when Stripe billing is configured; billing is off by
+default, and a self-hosted instance has no plans and no limits. See
+[docs/security/billing.md](docs/security/billing.md) to set it up.
 
 Set `Seo:PublicOrigin` (or `Seo__PublicOrigin`) to your deployment's HTTPS origin for canonical
 and social URLs. Without it, metadata uses `https://localhost`; request Host headers are never

@@ -501,6 +501,10 @@
         {
             _problems = exception.Errors.Select(PersonMergeText.Problem).Distinct().ToList();
         }
+        catch (Relio.Application.Billing.PlanLimitReachedException exception)
+        {
+            _problems = [PlanText.LimitRefused(exception.Limit)];
+        }
         finally
         {
             _busy = false;

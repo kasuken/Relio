@@ -1,0 +1,18 @@
+@using Relio.Web.Components.Billing
+
+@* Shown where a save, restore, import or merge was refused by the free plan's active-people limit
+   (PlanLimitReachedException). The plan page is static SSR, so the link is a full page load. *@
+<MudAlert Severity="Severity.Warning" Class="@Class" data-testid="plan-limit-notice">
+    @PlanText.LimitRefused(Limit)
+    <MudLink Href="@PlanText.PlanPagePath" Class="ml-1" data-testid="plan-limit-upgrade">See plans</MudLink>
+</MudAlert>
+
+@code {
+    /// <summary>The limit of the user's current plan, from the exception.</summary>
+    [Parameter, EditorRequired]
+    public int Limit { get; set; }
+
+    /// <summary>Extra classes for spacing.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+}

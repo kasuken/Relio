@@ -27,6 +27,19 @@ param dpCertPassword string
 
 param sqlAdminLogin string = 'relioadmin'
 
+@description('Hosted billing: None (no plans or limits) or Stripe. See docs/security/billing.md before switching.')
+@allowed([
+  'None'
+  'Stripe'
+])
+param billingProvider string = 'None'
+
+@description('Stripe price id of Relio Pro billed monthly. Required when billingProvider is Stripe.')
+param stripeProMonthlyPriceId string = ''
+
+@description('Stripe price id of Relio Pro billed yearly. Required when billingProvider is Stripe.')
+param stripeProYearlyPriceId string = ''
+
 var resourceGroupName = 'rg-relio-prod'
 var appServicePlanName = 'asp-relio-prod-edff'
 var webAppName = 'app-relio-prod-edff'
@@ -107,6 +120,9 @@ module appService './modules/app-service.bicep' = {
     appServiceName: webAppName
     keyVaultName: keyVault.outputs.vaultName
     logAnalyticsWorkspaceId: logAnalytics.outputs.workspaceId
+    billingProvider: billingProvider
+    stripeProMonthlyPriceId: stripeProMonthlyPriceId
+    stripeProYearlyPriceId: stripeProYearlyPriceId
   }
 }
 

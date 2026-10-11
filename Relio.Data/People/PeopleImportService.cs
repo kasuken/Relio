@@ -1,6 +1,7 @@
 using Relio.Application.People;
 using Relio.Application.People.Import;
 using Relio.Application.Security;
+using Relio.Data.Billing;
 using Relio.Domain;
 
 namespace Relio.Data.People;
@@ -30,7 +31,11 @@ namespace Relio.Data.People;
 /// ids to make: an import sets no relationship type and no tags.
 /// </para>
 /// </remarks>
-public sealed class PeopleImportService(RelioDbContext dbContext, ICurrentUser currentUser, TimeProvider timeProvider) : IPeopleImportService
+public sealed class PeopleImportService(
+    RelioDbContext dbContext,
+    ICurrentUser currentUser,
+    TimeProvider timeProvider,
+    PlanLimits? planLimits = null) : IPeopleImportService
 {
     /// <inheritdoc />
     public async Task<ImportPreview> PreviewAsync(ImportReadResult read, CancellationToken cancellationToken = default)
@@ -92,6 +97,10 @@ public sealed class PeopleImportService(RelioDbContext dbContext, ICurrentUser c
         {
             throw new PeopleImportValidationException(rowErrors);
         }
+
+        // Every imported person is active: all of them must fit the plan's limit, or none is imported.
+        await (planLimits ?? PlanLimits.Unlimited).EnsureRoomForActivePeopleAsync(
+            dbContext, ownerId, people.Count, timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
 
         try
         {

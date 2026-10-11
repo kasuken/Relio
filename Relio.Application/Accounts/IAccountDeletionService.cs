@@ -40,6 +40,12 @@ public enum AccountDeletionStatus
 
     /// <summary>A concurrent account or owned-data change prevented a safe deletion.</summary>
     ConcurrentChange,
+
+    /// <summary>
+    /// The hosted subscription could not be cancelled at the billing provider, so nothing was
+    /// deleted: deleting anyway would leave the provider charging an account that no longer exists.
+    /// </summary>
+    BillingCancellationFailed,
 }
 
 /// <summary>The result of an account-erasure request.</summary>

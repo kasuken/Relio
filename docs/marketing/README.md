@@ -34,13 +34,24 @@ by the published site. The social preview is 1200 × 630; the thread illustratio
 
 ## Hosting and pricing
 
-`/pricing` is information-only until #67 delivers a shared billing/approved-offer contract.
-`Billing:Provider=None` is the documented default. No provider setting, plan name, price or limit
-is interpreted by the current page, even if an operator supplies prospective billing settings.
-There is no payment integration, commercial offer schema or second entitlement model. Adding
-paid offers requires #67's actual service contract and approved commercial values, not a marketing
-configuration override. Self-hosting links point to the existing setup and protected-key
-documentation, as well as the [self-hosting guide](../self-hosting.md).
+`/pricing` reads the plans from `PlanCatalog` - the same values the plan page shows and
+`PlanLimits` enforces - and shows them only when the instance has a billing provider
+(`Billing:Provider=Stripe`). With the documented default `Billing:Provider=None` it says the
+instance has no paid plans. No other configuration (a plan name, a price, a limit) is read by the
+page, so prospective settings can never publish an offer, and the page emits no `offers` structured
+data. The claims it makes and their evidence:
+
+| Claim | Evidence |
+|---|---|
+| Free for up to 25 active people; archived people don't count | `PlanCatalog.FreeActivePeopleLimit`, `PlanLimits`, `PlanLimitsTests` |
+| Relio Pro is $2 / month or $12 / year ($1 / month) | `PlanCatalog`, the two configured Stripe prices ([billing.md](../security/billing.md)) |
+| Nothing is deleted when a subscription ends | `SubscriptionStateRules` only changes the tier; no service deletes on a downgrade |
+| Change or cancel under Settings > Plan and billing > Manage billing | `/Account/Manage/Plan` and the Stripe customer portal |
+| Relio sends Stripe only the account email and an opaque account id | `StripeBillingProvider`, [billing.md](../security/billing.md) |
+
+The "Subscribe to Relio Pro" call to action links to `/Account/Manage/Plan`; a visitor who is not
+signed in is sent through sign-in and back. Self-hosting links point to the existing setup and
+protected-key documentation, as well as the [self-hosting guide](../self-hosting.md).
 
 ## Changelog publication
 

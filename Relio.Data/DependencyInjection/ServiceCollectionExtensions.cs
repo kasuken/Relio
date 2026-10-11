@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Relio.Application.Accounts;
 using Relio.Application.Administration;
+using Relio.Application.Billing;
 using Relio.Application.Dashboard;
 using Relio.Application.DifficultMoments;
 using Relio.Application.Interactions;
@@ -17,6 +18,7 @@ using Relio.Application.Timeline;
 using Relio.Application.Reminders;
 using Relio.Data.Accounts;
 using Relio.Data.Administration;
+using Relio.Data.Billing;
 using Relio.Data.Concurrency;
 using Relio.Data.Dashboard;
 using Relio.Data.DifficultMoments;
@@ -140,6 +142,14 @@ public static class ServiceCollectionExtensions
         AddDataService<IProductActivityService, ProductActivityService>(services);
         AddDataService<IProductMetricsReportService, ProductMetricsReportService>(services);
         AddDataService<IProductMetricsRetentionRunner, ProductMetricsRetentionRunner>(services);
+
+        // Hosted billing. IBillingProvider itself is registered by Relio.Web (AddRelioBilling), which
+        // picks Stripe or the no-op provider; nothing here talks to a provider except through it.
+        // PlanLimits has no context of its own (see its remarks), so it is a plain singleton.
+        services.TryAddSingleton<PlanLimits>();
+        AddDataService<ISubscriptionService, SubscriptionService>(services);
+        AddDataService<IBillingWebhookProcessor, BillingWebhookProcessor>(services);
+        AddDataService<IBillingCustomerEmailSync, BillingCustomerEmailSync>(services);
 
         // Self-hosted administration (issue #19). RegistrationLock is a singleton on purpose: it
         // serializes registrations process-wide (see AccountRegistrationService's remarks). Both

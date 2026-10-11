@@ -1267,8 +1267,8 @@ Established by epic #46 (issues #47, #48 and #49).
   registration always disable enhanced navigation so the browser time zone script executes.
 - Public `/features`, `/pricing` and `/changelog` share that static boundary. Never query owned
   relationship services from marketing. Claims distinguish shipped behavior from planned work;
-  `docs/marketing/README.md` maps them to implementation evidence. Keep billing information-only
-  until an actual approved-offer service contract exists. Changelog Markdown is build-embedded
+  `docs/marketing/README.md` maps them to implementation evidence. Plans and prices appear only
+  when billing is on, and only from `PlanCatalog` (see "Hosted billing"). Changelog Markdown is build-embedded
   and rendered only through `Relio.Web.Marketing.ReleaseNotes`, not raw `MarkupString`.
 - Canonical/social URLs use `Seo:PublicOrigin`, with `https://localhost` as the nonindexing
   fallback. Production indexing requires an explicit configured origin and opt-in. Public
@@ -1316,6 +1316,52 @@ Established by epic #46 (issues #47, #48 and #49).
 - **Upgrade** applies `AddOnboardingState` before starting the new app. Its required bit column
   defaults to true for existing profiles; `HasSentinel(true)` ensures a new registration's
   explicit false is inserted rather than replaced by that SQL default.
+
+## Hosted billing
+
+Stripe, following LearnStack's implementation; operator guide and privacy boundaries in
+`docs/security/billing.md`. **Off by default** (`Billing:Provider=None`): no plans, no limits, no
+billing UI, webhooks refused, no provider request. Every feature must keep working that way.
+
+- **Plans** live in `Relio.Application/Billing/PlanCatalog.cs`: Free = 25 **active** people
+  (archived don't count), Relio Pro = unlimited, $2 / month or $12 / year. The pricing page, the plan
+  page and the limit all read these values; never hard-code a price or limit elsewhere.
+- **Layers.** `IBillingProvider` (Application) only talks to the provider and never touches the
+  database: `NullBillingProvider` (Application) or `Relio.Web.Billing.StripeBillingProvider`
+  (Stripe.net, a singleton), registered by `AddRelioBilling` in Web, which validates every Stripe
+  setting at startup. The data services are in `Relio.Data.Billing`, registered with `AddDataService`:
+  `ISubscriptionService` (current user: summary, checkout, portal, checkout-return confirmation),
+  `IBillingWebhookProcessor` (signed capability, no current user) and `IBillingCustomerEmailSync`
+  (called by the email-change pages with the user id Identity verified). Tests that build
+  `AddRelioData` alone must register an `IBillingProvider` themselves.
+- **State.** `UserSubscription` (table `UserSubscriptions`, one row per user, `NO ACTION` foreign key
+  to `AspNetUsers`) and the `ProcessedBillingEvent` ledger (event id, type, time - no user id) live
+  in `Relio.Data` next to `RelioUser`: billing infrastructure, **not** `IOwnedEntity`, not exported,
+  never created by a restore. Only `SubscriptionStateRules.Apply` changes a subscription; the webhook
+  processor writes the change and its ledger row in **one** save. Events older than the last applied
+  one change no state. A shared Stripe account's other products are ignored: an object is Relio's only
+  with the `relio_user_id` metadata or one of the two configured prices, never by
+  `client_reference_id` alone.
+- **The limit** is `PlanLimits` (singleton, no context of its own), an optional constructor parameter
+  (default `PlanLimits.Unlimited`) of `PeopleService`, `PeopleImportService`, `PersonMergeService` and
+  `UserDataPortabilityService`. **Every new code path that makes a person active** (adds, restores,
+  imports, un-archives) calls `EnsureRoomForActivePeopleAsync` before mutating and lets
+  `PlanLimitReachedException` reach the page, which shows `PlanText.LimitRefused` / `PlanLimitNotice`.
+  A downgrade never deletes or hides anything.
+- **Erasure** cancels the customer's Relio subscriptions at the provider before deleting anything
+  (`AccountDeletionStatus.BillingCancellationFailed` deletes nothing) and removes the subscription row
+  in the same save.
+- **Web.** `/Account/Manage/Plan` is static SSR (its forms answer with a redirect to Stripe and
+  Stripe returns there with `session_id`); `/settings` links to it only when billing is on. With
+  billing on, the CSP's `form-action` also allows `checkout.stripe.com` and `billing.stripe.com`; no
+  Stripe script is ever loaded. `POST /api/webhooks/billing` is anonymous, has no antiforgery, turns
+  off status code pages, caps the payload at 256 KB, and answers 401 only for a bad signature.
+- **Logging.** Ids, event types and outcomes only. Stripe exception messages can quote an email:
+  log the type, HTTP status and Stripe error code, never the message.
+- **Tests.** `Relio.Web.Tests/Billing` (provider against `FakeStripeClient`, never the network; the
+  endpoint over real HTTP), `Relio.Data.Tests/Billing` (`FakeBillingProvider`), and
+  `BillingSqlIsolationTests` in the SQL coverage catalog. E2E (`MarketingPricingTests`) configures
+  Stripe with fake values and never starts a checkout.
 
 ## End-to-end tests
 
