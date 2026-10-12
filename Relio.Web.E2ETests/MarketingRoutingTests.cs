@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 using Relio.Web.E2ETests.Infrastructure;
 using static Microsoft.Playwright.Assertions;
