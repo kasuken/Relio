@@ -3,7 +3,7 @@
 # Based on the SQL Server image the compose file already pulls, so it reuses those layers and ships
 # sqlcmd (/opt/mssql-tools18/bin/sqlcmd). It adds `age` (file encryption), curl (optional ping URLs)
 # and CA certificates. See docs/operations/backup-restore.md.
-FROM mcr.microsoft.com/mssql/server:2022-latest
+FROM mcr.microsoft.com/mssql/server:2025-latest
 
 # age is downloaded as a pinned release and verified against a pinned SHA-256 (the GitHub release
 # digest, also checked when this file was written). Bump the version and both digests together.
