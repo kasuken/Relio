@@ -38,8 +38,6 @@ jobs:
     name: Restore into a separate environment
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      RELIO_DRILL_DIR: ${{ runner.temp }}/relio-drill
 
     steps:
       - name: Checkout
@@ -97,7 +95,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: restore-drill-evidence
-          path: ${{ env.RELIO_DRILL_DIR }}/evidence/
+          path: ${{ runner.temp }}/relio-drill/evidence/
           retention-days: 90
           if-no-files-found: error
 
