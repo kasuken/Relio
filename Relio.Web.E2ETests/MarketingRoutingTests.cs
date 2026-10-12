@@ -53,7 +53,7 @@ public sealed class MarketingRoutingTests(RelioAppFixture fixture)
     }
 
     [Fact]
-    public async Task Marketing_registration_captures_timezone_and_signed_in_root_opens_workspace()
+    public async Task Marketing_registration_captures_timezone_and_signed_in_root_redirects_to_workspace()
     {
         var page = await fixture.NewPageAsync(Viewports.Phone, timezoneId: "Pacific/Kiritimati");
         try
@@ -69,12 +69,10 @@ public sealed class MarketingRoutingTests(RelioAppFixture fixture)
             await Expect(page.GetByTestId("onboarding-page")).ToBeVisibleAsync();
 
             await page.GotoAsync("/");
-            await Expect(page.Locator("header a[href='/dashboard']")).ToHaveTextAsync("Open Relio");
-            await Expect(page.Locator("header a[href='/Account/Register']")).ToHaveCountAsync(0);
-            await page.Locator("header a[href='/dashboard']").ClickAsync();
             await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Dashboard", Exact = true })).ToBeVisibleAsync();
             await page.Locator("html[data-app-ready='true']").WaitForAsync();
             await Expect(page.GetByTestId("signed-in-as")).ToHaveTextAsync(email);
+            await Expect(page).ToHaveURLAsync(new Regex("^" + Regex.Escape(fixture.BaseUrl) + "/dashboard$"));
         }
         finally
         {
