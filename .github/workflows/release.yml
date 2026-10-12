@@ -37,6 +37,8 @@ jobs:
       smoke-paths: /Account/Login /pricing
       bump: ${{ inputs.bump || 'patch' }}
       redeploy: ${{ inputs.redeploy || '' }}
+    # The reusable workflow's deploy job reads the AZURE_* secrets of the `production` environment.
+    secrets: inherit
 
   docker:
     name: Publish Docker image to GHCR
