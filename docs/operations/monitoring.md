@@ -111,5 +111,8 @@ operator's choice; Relio itself sends nothing to third parties.
   framework reports at Error level count, which includes every unhandled render, lifecycle and event
   handler exception that ends a circuit.
 - Failures during page rendering on static pages surface as 9001, not 9002.
-- Event 9005 exists so alert rules and runbooks can be written now; it starts firing when the backup
-  automation (#119) reports failures.
+- Event 9005 stays reserved for in-app backup reporting. The shell-based backup sidecar (#119) runs
+  outside the web app and does not emit it: its failure signal is the `relio-backup` container health,
+  `relio-backup status` and the optional ping URLs, and for the hosted service the failing
+  `hosted-backup-check.yml` run. See [backup-restore.md](backup-restore.md). Route those signals into
+  the same alert channel as 9001-9005.

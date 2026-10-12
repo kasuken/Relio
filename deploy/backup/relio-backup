@@ -1,0 +1,371 @@
+#!/usr/bin/env bash
+# relio-backup: encrypted, verified backups of a self-hosted Relio instance.
+#
+#   relio-backup schedule   run `once` at start (unless RELIO_BACKUP_RUN_ON_START=false) and then every
+#                           day at RELIO_BACKUP_SCHEDULE_UTC (the container's default command)
+#   relio-backup once       take one backup now (database set + key-material set), then prune
+#   relio-backup prune      apply the retention rules only
+#   relio-backup status     exit 0 only when the last backup succeeded and is recent enough
+#                           (the container HEALTHCHECK runs this)
+#
+# Two separately encrypted sets are written, because they are needed together to read a restore:
+#   relio-db-<id>/     database.bak.gz.age      native SQL Server full backup, gzip, age
+#   relio-keys-<id>/   key-material.tar.gz.age  the Data Protection key ring and wrapping certificate
+# Each set carries a plain manifest.json (no secrets) with sizes and checksums. A set is renamed from
+# <name>.partial to <name> only when complete, so a final directory is always a whole backup.
+#
+# Encryption is `age` with public-key recipients, outside SQL Server: the server (and this container)
+# can write backups but never read them. The private identity stays offline. See
+# docs/operations/backup-restore.md.
+set -Eeuo pipefail
+umask 077
+
+# shellcheck source-path=SCRIPTDIR source=lib.sh
+source "$(dirname "$(readlink -f "$0")")/lib.sh"
+
+STATE_FILE="$RELIO_BACKUP_STATE_DIR/state.json"
+STARTED_FILE="$RELIO_BACKUP_STATE_DIR/started"
+
+# ---------------------------------------------------------------------------------------------
+# State and failure signal
+# ---------------------------------------------------------------------------------------------
+
+# state_write <result> <backupId> <message>: keeps lastSuccessUtc across a failure.
+state_write() {
+    local result="$1" backup="$2" message="$3" now last_success=""
+    now="$(utc_now)"
+    if [[ -f "$STATE_FILE" ]]; then
+        last_success="$(json_get "$STATE_FILE" lastSuccessUtc)"
+    fi
+    if [[ "$result" == "success" ]]; then
+        last_success="$now"
+    fi
+    mkdir -p "$RELIO_BACKUP_STATE_DIR"
+    {
+        printf '{\n'
+        printf '  "lastAttemptUtc": "%s",\n' "$now"
+        printf '  "lastSuccessUtc": "%s",\n' "$last_success"
+        printf '  "lastResult": "%s",\n' "$result"
+        printf '  "lastBackupId": "%s",\n' "$backup"
+        printf '  "message": "%s"\n' "$(json_escape "$message")"
+        printf '}\n'
+    } >"$STATE_FILE.tmp"
+    mv -f "$STATE_FILE.tmp" "$STATE_FILE"
+}
+
+# ping <url>: optional dead-man / failure notification. The URL can carry a secret token, so it is
+# never logged.
+ping() {
+    local url="$1"
+    [[ -n "$url" ]] || return 0
+    if ! curl -fsS -m 10 --retry 3 -o /dev/null "$url" 2>/dev/null; then
+        log WARN "could not reach the configured ping URL"
+    fi
+}
+
+# ---------------------------------------------------------------------------------------------
+# once
+# ---------------------------------------------------------------------------------------------
+
+STEP="starting"
+BACKUP_ID=""
+STAGING_BAK=""
+KEY_TMP=""
+PARTIAL_DIRS=()
+
+once_cleanup() {
+    local rc=$?
+    trap - EXIT
+    if [[ -n "$STAGING_BAK" ]]; then
+        rm -f -- "$STAGING_BAK"
+    fi
+    if [[ -n "$KEY_TMP" ]]; then
+        rm -f -- "$KEY_TMP"
+    fi
+    if ((${#PARTIAL_DIRS[@]} > 0)); then
+        rm -rf -- "${PARTIAL_DIRS[@]}"
+    fi
+    if ((rc != 0)); then
+        log ERROR "backup failed while: $STEP"
+        state_write failure "$BACKUP_ID" "failed while: $STEP" || true
+        ping "$RELIO_BACKUP_FAILURE_URL"
+    fi
+    exit "$rc"
+}
+
+# write_manifest <file> <kind> <setName> <pairedSetName> <encryptedFile> <plaintextSha> <recipientKeys...>
+write_manifest() {
+    local file="$1" kind="$2" set_name="$3" paired="$4" encrypted="$5" plain_sha="$6"
+    shift 6
+    local recipients="" key
+    for key in "$@"; do
+        recipients+="${recipients:+, }\"$key\""
+    done
+    {
+        printf '{\n'
+        printf '  "format": "relio-backup/1",\n'
+        printf '  "id": "%s",\n' "$BACKUP_ID"
+        printf '  "createdUtc": "%s",\n' "$(utc_now)"
+        printf '  "kind": "%s",\n' "$kind"
+        printf '  "set": "%s",\n' "$set_name"
+        printf '  "pairedSet": "%s",\n' "$paired"
+        printf '  "database": "%s",\n' "$RELIO_BACKUP_DATABASE"
+        printf '  "sqlEdition": "%s",\n' "$(json_escape "$SQL_EDITION")"
+        printf '  "latestMigrationId": "%s",\n' "$(json_escape "$LATEST_MIGRATION")"
+        printf '  "file": {\n'
+        printf '    "name": "%s",\n' "$(basename "$encrypted")"
+        printf '    "sizeBytes": %s,\n' "$(file_size "$encrypted")"
+        printf '    "sha256Encrypted": "%s",\n' "$(sha256_of "$encrypted")"
+        printf '    "sha256Plaintext": "%s"\n' "$plain_sha"
+        printf '  },\n'
+        printf '  "recipients": [%s]\n' "$recipients"
+        printf '}\n'
+    } >"$file"
+}
+
+# check_age_header <file>: a cheap proof that the output really is an age file.
+check_age_header() {
+    local header
+    header="$(head -c 21 -- "$1")"
+    [[ "$header" == "age-encryption.org/v1" ]] || die "$(basename "$1") is not an age file"
+}
+
+finalize_set() {
+    local partial="$1" final="$2"
+    mv -- "$partial" "$final"
+    if [[ -n "$RELIO_BACKUP_FILE_OWNER" ]]; then
+        chown -R "$RELIO_BACKUP_FILE_OWNER" -- "$final"
+    fi
+}
+
+cmd_once() {
+    require_uint RELIO_BACKUP_RETENTION_DAYS
+    require_uint RELIO_KEY_BACKUP_RETENTION_DAYS
+    require_uint RELIO_BACKUP_KEEP_MIN
+    validate_database_name
+
+    mkdir -p "$RELIO_BACKUP_STATE_DIR" "$RELIO_BACKUP_DB_DIR" "$RELIO_BACKUP_KEY_DIR"
+    exec 9>"$RELIO_BACKUP_STATE_DIR/lock"
+    if ! flock -n 9; then
+        # Not a failure of the backup itself: another run owns the lock, so leave its state alone.
+        log WARN "another backup is already running"
+        exit 0
+    fi
+    trap once_cleanup EXIT
+
+    BACKUP_ID="$(backup_id)"
+    log INFO "backup $BACKUP_ID starting"
+
+    STEP="checking configuration"
+    local -a db_recipients=() key_recipients=()
+    build_recipient_args "$RELIO_BACKUP_AGE_RECIPIENTS"
+    db_recipients=("${RECIPIENT_ARGS[@]}")
+    build_recipient_args "${RELIO_KEY_BACKUP_AGE_RECIPIENTS:-$RELIO_BACKUP_AGE_RECIPIENTS}"
+    key_recipients=("${RECIPIENT_ARGS[@]}")
+    local -a db_keys=() key_keys=()
+    local i
+    for ((i = 1; i < ${#db_recipients[@]}; i += 2)); do db_keys+=("${db_recipients[i]}"); done
+    for ((i = 1; i < ${#key_recipients[@]}; i += 2)); do key_keys+=("${key_recipients[i]}"); done
+
+    if ! compgen -G "$RELIO_KEY_SOURCE/keys/key-*.xml" >/dev/null || [[ ! -s "$RELIO_KEY_SOURCE/certificate.pfx" ]]; then
+        die "key material is missing from $RELIO_KEY_SOURCE (keys/key-*.xml and certificate.pfx) - refusing to produce a backup that cannot be decrypted"
+    fi
+
+    # A previous run killed mid-way (docker stop, host reboot) can leave a staging file behind.
+    rm -f -- "$RELIO_LOCAL_STAGING_PATH"/relio-*.bak
+
+    STEP="reading database metadata"
+    SQL_EDITION="$(sql_scalar "SELECT CAST(SERVERPROPERTY('Edition') AS nvarchar(100))")"
+    LATEST_MIGRATION="$(sql_scalar "SELECT TOP 1 MigrationId FROM [$RELIO_BACKUP_DATABASE].dbo.__EFMigrationsHistory ORDER BY MigrationId DESC")"
+    local recovery log_backups
+    recovery="$(sql_scalar "SELECT recovery_model_desc FROM sys.databases WHERE name = N'$RELIO_BACKUP_DATABASE'")"
+    if [[ "$recovery" == "FULL" ]]; then
+        log_backups="$(sql_scalar "SELECT COUNT(*) FROM msdb.dbo.backupset WHERE database_name = N'$RELIO_BACKUP_DATABASE' AND type = 'L' AND backup_finish_date > DATEADD(hour, -24, GETDATE())")"
+        if [[ "$log_backups" == "0" ]]; then
+            log WARN "the database uses the FULL recovery model but no transaction log backup ran in 24 hours, so the log grows without bound; either take log backups or run ALTER DATABASE [$RELIO_BACKUP_DATABASE] SET RECOVERY SIMPLE (see docs/operations/backup-restore.md)"
+        fi
+    fi
+
+    local sql_bak="$RELIO_SQL_STAGING_PATH/relio-$BACKUP_ID.bak"
+    STAGING_BAK="$RELIO_LOCAL_STAGING_PATH/relio-$BACKUP_ID.bak"
+
+    STEP="taking the native backup"
+    sql_run "BACKUP DATABASE [$RELIO_BACKUP_DATABASE] TO DISK = N'$sql_bak' WITH FORMAT, INIT, CHECKSUM, NAME = N'Relio full $BACKUP_ID', STATS = 25"
+    STEP="verifying the native backup"
+    sql_run "RESTORE VERIFYONLY FROM DISK = N'$sql_bak' WITH CHECKSUM"
+
+    local db_set="relio-db-$BACKUP_ID" key_set="relio-keys-$BACKUP_ID"
+    local db_partial="$RELIO_BACKUP_DB_DIR/$db_set.partial" key_partial="$RELIO_BACKUP_KEY_DIR/$key_set.partial"
+    PARTIAL_DIRS=("$db_partial" "$key_partial")
+    mkdir -p "$db_partial" "$key_partial"
+
+    STEP="encrypting the database backup"
+    local plain_sha
+    plain_sha="$(sha256_of "$STAGING_BAK")"
+    gzip -c -- "$STAGING_BAK" | age "${db_recipients[@]}" -o "$db_partial/database.bak.gz.age"
+    check_age_header "$db_partial/database.bak.gz.age"
+    rm -f -- "$STAGING_BAK"
+    STAGING_BAK=""
+    write_manifest "$db_partial/manifest.json" database "$db_set" "$key_set" \
+        "$db_partial/database.bak.gz.age" "$plain_sha" "${db_keys[@]}"
+
+    STEP="encrypting the key material"
+    # The key ring is XML encrypted with the wrapping certificate, and the certificate is a PKCS#12
+    # file protected by RELIO_DP_PASSWORD. The password is never in this archive.
+    # The plain tar lives only in the container's own temporary directory, never on the backup mount.
+    local key_sha
+    KEY_TMP="$(mktemp)"
+    tar -C "$RELIO_KEY_SOURCE" -czf "$KEY_TMP" \
+        --exclude='./.pre-restore-*' --exclude='./.relio-key-ring-check-*' .
+    key_sha="$(sha256_of "$KEY_TMP")"
+    age "${key_recipients[@]}" -o "$key_partial/key-material.tar.gz.age" "$KEY_TMP"
+    rm -f -- "$KEY_TMP"
+    KEY_TMP=""
+    check_age_header "$key_partial/key-material.tar.gz.age"
+    write_manifest "$key_partial/manifest.json" key-material "$key_set" "$db_set" \
+        "$key_partial/key-material.tar.gz.age" "$key_sha" "${key_keys[@]}"
+
+    STEP="publishing the backup sets"
+    finalize_set "$db_partial" "$RELIO_BACKUP_DB_DIR/$db_set"
+    finalize_set "$key_partial" "$RELIO_BACKUP_KEY_DIR/$key_set"
+    PARTIAL_DIRS=()
+
+    STEP="pruning old backups"
+    cmd_prune
+
+    state_write success "$BACKUP_ID" "backup completed"
+    log INFO "backup $BACKUP_ID complete: $db_set ($(file_size "$RELIO_BACKUP_DB_DIR/$db_set/database.bak.gz.age") bytes), $key_set"
+    ping "$RELIO_BACKUP_SUCCESS_URL"
+    exit 0
+}
+
+# ---------------------------------------------------------------------------------------------
+# prune
+# ---------------------------------------------------------------------------------------------
+
+# prune_kind <dir> <prefix> <retentionDays>: delete sets older than the retention, but never the
+# newest RELIO_BACKUP_KEEP_MIN, so a long outage cannot prune away the only restorable copies.
+prune_kind() {
+    local dir="$1" prefix="$2" days="$3" now cutoff name epoch removed=0
+    local -a sets=()
+    now="$(date -u +%s)"
+    cutoff=$((now - days * 86400))
+    mapfile -t sets < <(list_sets "$dir" "$prefix")
+    local total=${#sets[@]} candidates i
+    candidates=$((total - RELIO_BACKUP_KEEP_MIN))
+    for ((i = 0; i < candidates; i++)); do
+        name="${sets[i]}"
+        if ! epoch="$(id_to_epoch "$(set_timestamp "$name")")"; then
+            log WARN "skipping $name: the name does not end in a backup id"
+            continue
+        fi
+        if ((epoch < cutoff)); then
+            rm -rf -- "${dir:?}/$name"
+            removed=$((removed + 1))
+        fi
+    done
+    # Unfinished sets from a run that was killed.
+    find "$dir" -maxdepth 1 -name "$prefix-*.partial" -mmin +1440 -exec rm -rf -- {} + 2>/dev/null || true
+    log INFO "retention for $prefix: kept $((total - removed)), removed $removed"
+}
+
+cmd_prune() {
+    require_uint RELIO_BACKUP_RETENTION_DAYS
+    require_uint RELIO_KEY_BACKUP_RETENTION_DAYS
+    require_uint RELIO_BACKUP_KEEP_MIN
+    prune_kind "$RELIO_BACKUP_DB_DIR" relio-db "$RELIO_BACKUP_RETENTION_DAYS"
+    prune_kind "$RELIO_BACKUP_KEY_DIR" relio-keys "$RELIO_KEY_BACKUP_RETENTION_DAYS"
+}
+
+# ---------------------------------------------------------------------------------------------
+# schedule
+# ---------------------------------------------------------------------------------------------
+
+seconds_until_next_run() {
+    local now target
+    now="$(date -u +%s)"
+    target="$(date -u -d "today $RELIO_BACKUP_SCHEDULE_UTC" +%s)"
+    if ((target <= now)); then
+        target="$(date -u -d "tomorrow $RELIO_BACKUP_SCHEDULE_UTC" +%s)"
+    fi
+    printf '%s' "$((target - now))"
+}
+
+cmd_schedule() {
+    if [[ ! "$RELIO_BACKUP_SCHEDULE_UTC" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+        log ERROR "RELIO_BACKUP_SCHEDULE_UTC must be HH:MM in UTC (24 hour)"
+        exit 2
+    fi
+    mkdir -p "$RELIO_BACKUP_STATE_DIR"
+    date -u +%s >"$STARTED_FILE"
+    trap 'exit 0' TERM INT
+
+    if [[ "$RELIO_BACKUP_RUN_ON_START" == "true" ]]; then
+        # A separate process, so one failed run can never end the schedule.
+        "$0" once || log WARN "the backup at start failed; the next attempt is at the scheduled time"
+    fi
+    local wait_seconds
+    while true; do
+        wait_seconds="$(seconds_until_next_run)"
+        log INFO "next backup at $RELIO_BACKUP_SCHEDULE_UTC UTC (in ${wait_seconds}s)"
+        sleep "$wait_seconds" &
+        wait $! || true
+        "$0" once || log WARN "the scheduled backup failed; the next attempt is tomorrow"
+    done
+}
+
+# ---------------------------------------------------------------------------------------------
+# status
+# ---------------------------------------------------------------------------------------------
+
+cmd_status() {
+    require_uint RELIO_BACKUP_MAX_AGE_HOURS
+    local now max_age_seconds
+    now="$(date -u +%s)"
+    max_age_seconds=$((RELIO_BACKUP_MAX_AGE_HOURS * 3600))
+
+    if [[ ! -f "$STATE_FILE" ]]; then
+        local started=""
+        if [[ -f "$STARTED_FILE" ]]; then
+            started="$(cat "$STARTED_FILE")"
+        fi
+        if [[ "$started" =~ ^[0-9]+$ ]] && ((now - started < max_age_seconds)); then
+            echo "waiting for the first backup"
+            return 0
+        fi
+        echo "no backup has completed yet"
+        return 1
+    fi
+
+    local result last_success last_epoch attempt
+    result="$(json_get "$STATE_FILE" lastResult)"
+    last_success="$(json_get "$STATE_FILE" lastSuccessUtc)"
+    attempt="$(json_get "$STATE_FILE" lastAttemptUtc)"
+    if [[ "$result" != "success" ]]; then
+        echo "the last backup attempt ($attempt) failed; last success: ${last_success:-never}"
+        return 1
+    fi
+    if ! last_epoch="$(date -u -d "$last_success" +%s 2>/dev/null)"; then
+        echo "the state file has no readable success time"
+        return 1
+    fi
+    if ((now - last_epoch > max_age_seconds)); then
+        echo "the last successful backup ($last_success) is older than $RELIO_BACKUP_MAX_AGE_HOURS hours"
+        return 1
+    fi
+    echo "last successful backup: $last_success ($(json_get "$STATE_FILE" lastBackupId))"
+    return 0
+}
+
+# ---------------------------------------------------------------------------------------------
+
+case "${1:-}" in
+once) cmd_once ;;
+prune) cmd_prune ;;
+schedule) cmd_schedule ;;
+status) cmd_status ;;
+*)
+    echo "usage: relio-backup once|schedule|prune|status" >&2
+    exit 2
+    ;;
+esac

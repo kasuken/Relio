@@ -1,0 +1,245 @@
+#!/usr/bin/env bash
+# relio-restore: restore a Relio database set and its key material from relio-backup archives.
+#
+#   relio-restore [--latest | --id <backupId>] [--keys-id <backupId>] [--force] [--skip-checkdb]
+#
+# Run it with the relio application STOPPED (never started against an empty key directory: with
+# DataProtection__AutoGenerateIfMissing=true it would create a brand new certificate and key ring,
+# and then fail closed because it cannot read the restored data). Typical use:
+#
+#   docker compose up -d sqlserver
+#   docker compose --profile restore run --rm \
+#       -v /secure/relio-backup.agekey:/run/secrets/relio-backup-identity:ro relio-restore --latest
+#   docker compose up -d relio
+#
+# The age private identity is read from RELIO_RESTORE_AGE_IDENTITY (default
+# /run/secrets/relio-backup-identity). RELIO_DP_PASSWORD must be the same value the source instance
+# used: it protects the restored certificate and is never part of a backup.
+set -Eeuo pipefail
+umask 077
+
+# shellcheck source-path=SCRIPTDIR source=lib.sh
+source "$(dirname "$(readlink -f "$0")")/lib.sh"
+RELIO_LOG_PREFIX=relio-restore
+
+IDENTITY="${RELIO_RESTORE_AGE_IDENTITY:-/run/secrets/relio-backup-identity}"
+DB_ID=""
+KEYS_ID=""
+FORCE=false
+SKIP_CHECKDB=false
+LATEST=false
+WORK_DIR=""
+STAGING_BAK=""
+
+cleanup() {
+    local rc=$?
+    trap - EXIT
+    if [[ -n "$STAGING_BAK" ]]; then
+        rm -f -- "$STAGING_BAK"
+    fi
+    if [[ -n "$WORK_DIR" ]]; then
+        rm -rf -- "$WORK_DIR"
+    fi
+    if ((rc != 0)); then
+        log ERROR "restore failed; nothing was started, fix the problem above and run it again"
+    fi
+    exit "$rc"
+}
+trap cleanup EXIT
+
+usage() {
+    sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 2
+}
+
+while (($# > 0)); do
+    case "$1" in
+    --latest) LATEST=true ;;
+    --id)
+        (($# >= 2)) || usage
+        DB_ID="$2"
+        shift
+        ;;
+    --keys-id)
+        (($# >= 2)) || usage
+        KEYS_ID="$2"
+        shift
+        ;;
+    --force) FORCE=true ;;
+    --skip-checkdb) SKIP_CHECKDB=true ;;
+    -h | --help) usage ;;
+    *) usage ;;
+    esac
+    shift
+done
+
+if [[ -n "$DB_ID" && "$LATEST" == "true" ]]; then
+    die "use either --latest or --id, not both"
+fi
+if [[ -z "$DB_ID" && "$LATEST" != "true" ]]; then
+    die "say which backup to restore: --latest or --id <backupId>"
+fi
+
+validate_database_name
+[[ -r "$IDENTITY" ]] || die "the age identity file is not readable at $IDENTITY (mount it read-only at that path)"
+
+# ---------------------------------------------------------------------------------------------
+# 1. Find and check the sets
+# ---------------------------------------------------------------------------------------------
+
+if [[ "$LATEST" == "true" ]]; then
+    DB_SET="$(list_sets "$RELIO_BACKUP_DB_DIR" relio-db | tail -n 1)"
+    [[ -n "$DB_SET" ]] || die "no database backup found in $RELIO_BACKUP_DB_DIR"
+    DB_ID="$(set_timestamp "$DB_SET")"
+else
+    [[ "$DB_ID" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || die "a backup id looks like 20260101T023000Z"
+    DB_SET="relio-db-$DB_ID"
+fi
+DB_DIR="$RELIO_BACKUP_DB_DIR/$DB_SET"
+[[ -d "$DB_DIR" ]] || die "database backup $DB_SET was not found"
+
+if [[ -n "$KEYS_ID" ]]; then
+    [[ "$KEYS_ID" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || die "a key backup id looks like 20260101T023000Z"
+    KEYS_SET="relio-keys-$KEYS_ID"
+else
+    KEYS_SET="$(json_get "$DB_DIR/manifest.json" pairedSet)"
+    if [[ ! "$KEYS_SET" =~ ^relio-keys-[0-9]{8}T[0-9]{6}Z$ || ! -d "$RELIO_BACKUP_KEY_DIR/$KEYS_SET" ]]; then
+        # The paired set was pruned or never copied: the newest set at least as new as the database
+        # backup decrypts it too, because the key ring only ever grows.
+        KEYS_SET=""
+        while read -r candidate; do
+            if [[ "$(set_timestamp "$candidate")" > "$DB_ID" || "$(set_timestamp "$candidate")" == "$DB_ID" ]]; then
+                KEYS_SET="$candidate"
+            fi
+        done < <(list_sets "$RELIO_BACKUP_KEY_DIR" relio-keys)
+        if [[ -z "$KEYS_SET" ]]; then
+            KEYS_SET="$(list_sets "$RELIO_BACKUP_KEY_DIR" relio-keys | tail -n 1)"
+        fi
+        [[ -n "$KEYS_SET" ]] || die "no key-material backup found in $RELIO_BACKUP_KEY_DIR"
+        log WARN "the key set paired with $DB_SET is not available; using $KEYS_SET"
+    fi
+fi
+KEYS_DIR="$RELIO_BACKUP_KEY_DIR/$KEYS_SET"
+[[ -d "$KEYS_DIR" ]] || die "key-material backup $KEYS_SET was not found"
+
+# check_set <dir> <encryptedFileName>: manifest format and checksum of the encrypted file.
+check_set() {
+    local dir="$1" file="$2" format expected actual
+    [[ -f "$dir/manifest.json" && -f "$dir/$file" ]] || die "$(basename "$dir") is incomplete"
+    format="$(json_get "$dir/manifest.json" format)"
+    [[ "$format" == "relio-backup/1" ]] || die "$(basename "$dir") has an unsupported manifest format"
+    expected="$(json_get "$dir/manifest.json" sha256Encrypted)"
+    actual="$(sha256_of "$dir/$file")"
+    [[ "$expected" == "$actual" ]] || die "$(basename "$dir")/$file does not match its manifest checksum (damaged or altered)"
+}
+check_set "$DB_DIR" database.bak.gz.age
+check_set "$KEYS_DIR" key-material.tar.gz.age
+log INFO "restoring $DB_SET with key material $KEYS_SET (checksums match)"
+
+# ---------------------------------------------------------------------------------------------
+# 2. Preconditions
+# ---------------------------------------------------------------------------------------------
+
+DB_EXISTS="$(sql_scalar "SELECT COUNT(*) FROM sys.databases WHERE name = N'$RELIO_BACKUP_DATABASE'")"
+if [[ "$DB_EXISTS" != "0" ]]; then
+    sessions="$(sql_scalar "SELECT COUNT(*) FROM sys.dm_exec_sessions WHERE database_id = DB_ID(N'$RELIO_BACKUP_DATABASE') AND session_id <> @@SPID")"
+    if [[ "$sessions" != "0" ]]; then
+        die "other sessions are using the $RELIO_BACKUP_DATABASE database; stop the relio service first (docker compose stop relio)"
+    fi
+    if [[ "$FORCE" != "true" ]]; then
+        die "the $RELIO_BACKUP_DATABASE database already exists; add --force to replace it"
+    fi
+fi
+
+KEY_DEST="$RELIO_KEY_SOURCE"
+mkdir -p "$KEY_DEST"
+KEY_DEST_HAS_FILES=false
+if [[ -n "$(ls -A "$KEY_DEST")" ]]; then
+    KEY_DEST_HAS_FILES=true
+    if [[ "$FORCE" != "true" ]]; then
+        die "$KEY_DEST already contains files (the application may have started and generated its own key ring); add --force to move them aside and restore"
+    fi
+fi
+
+# ---------------------------------------------------------------------------------------------
+# 3. Decrypt and check everything before anything is changed
+# ---------------------------------------------------------------------------------------------
+
+WORK_DIR="$(mktemp -d)"
+age -d -i "$IDENTITY" -o "$WORK_DIR/keys.tar.gz" "$KEYS_DIR/key-material.tar.gz.age" \
+    || die "the key-material archive could not be decrypted with the given identity"
+
+# Refuse an archive that could write outside the destination or plant links.
+while IFS= read -r entry; do
+    case "$entry" in
+    /* | ../* | */../* | */.. | ..) die "the key-material archive contains an unsafe path" ;;
+    esac
+done < <(tar -tzf "$WORK_DIR/keys.tar.gz")
+unsafe_entries="$(tar -tzvf "$WORK_DIR/keys.tar.gz" | awk 'substr($0, 1, 1) !~ /^[-d]$/ { count++ } END { print count + 0 }')"
+[[ "$unsafe_entries" == "0" ]] || die "the key-material archive contains links or special files"
+archive_listing="$(tar -tzf "$WORK_DIR/keys.tar.gz")"
+grep -qx './certificate.pfx' <<<"$archive_listing" || die "the key-material archive has no certificate.pfx"
+grep -q '^\./keys/key-.*\.xml$' <<<"$archive_listing" || die "the key-material archive has no key ring entries"
+log INFO "key material decrypted and checked"
+
+install -d -o "$RELIO_SQL_UID" -g 0 -m 0770 "$RELIO_LOCAL_STAGING_PATH"
+STAGING_BAK="$RELIO_LOCAL_STAGING_PATH/restore-$DB_ID.bak"
+age -d -i "$IDENTITY" "$DB_DIR/database.bak.gz.age" | gunzip -c >"$STAGING_BAK" \
+    || die "the database archive could not be decrypted with the given identity"
+expected_plain="$(json_get "$DB_DIR/manifest.json" sha256Plaintext)"
+[[ "$(sha256_of "$STAGING_BAK")" == "$expected_plain" ]] || die "the decrypted database backup does not match its manifest checksum"
+chown "$RELIO_SQL_UID:0" "$STAGING_BAK"
+
+SQL_BAK="$RELIO_SQL_STAGING_PATH/restore-$DB_ID.bak"
+sql_run "RESTORE VERIFYONLY FROM DISK = N'$SQL_BAK' WITH CHECKSUM"
+
+data_logical="" log_logical=""
+while IFS='|' read -r logical _ type _; do
+    if [[ "$type" == "D" && -z "$data_logical" ]]; then data_logical="$logical"; fi
+    if [[ "$type" == "L" && -z "$log_logical" ]]; then log_logical="$logical"; fi
+done < <(sql_lines "RESTORE FILELISTONLY FROM DISK = N'$SQL_BAK'")
+[[ "$data_logical" =~ ^[A-Za-z0-9_.\ -]+$ && "$log_logical" =~ ^[A-Za-z0-9_.\ -]+$ ]] \
+    || die "the backup does not list one data file and one log file with plain names"
+
+# ---------------------------------------------------------------------------------------------
+# 4. Restore: key material first, then the database
+# ---------------------------------------------------------------------------------------------
+
+if [[ "$KEY_DEST_HAS_FILES" == "true" ]]; then
+    aside="$(mktemp -d "$KEY_DEST/.pre-restore-$(backup_id).XXXXXX")"
+    # Moved, never deleted: key material is not destroyed by a restore.
+    find "$KEY_DEST" -mindepth 1 -maxdepth 1 ! -name '.pre-restore-*' -exec mv -- {} "$aside"/ \;
+    log WARN "existing files in $KEY_DEST were moved to $(basename "$aside")"
+fi
+tar -xzf "$WORK_DIR/keys.tar.gz" -C "$KEY_DEST" --no-same-owner --no-same-permissions
+rm -f -- "$WORK_DIR/keys.tar.gz"
+chown -R "$RELIO_APP_UID:$RELIO_APP_UID" "$KEY_DEST"
+find "$KEY_DEST" -type d -exec chmod 0700 {} +
+find "$KEY_DEST" -type f -exec chmod 0600 {} +
+log INFO "key material restored to $KEY_DEST"
+
+data_dir="$(sql_scalar "SELECT CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS nvarchar(260))")"
+log_dir="$(sql_scalar "SELECT CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS nvarchar(260))")"
+replace=""
+if [[ "$DB_EXISTS" != "0" ]]; then replace=", REPLACE"; fi
+sql_run "RESTORE DATABASE [$RELIO_BACKUP_DATABASE] FROM DISK = N'$SQL_BAK' WITH MOVE N'$data_logical' TO N'${data_dir}${RELIO_BACKUP_DATABASE}.mdf', MOVE N'$log_logical' TO N'${log_dir}${RELIO_BACKUP_DATABASE}_log.ldf', CHECKSUM, RECOVERY, STATS = 25$replace"
+log INFO "database $RELIO_BACKUP_DATABASE restored from $DB_SET"
+
+if [[ "$SKIP_CHECKDB" != "true" ]]; then
+    sql_run "DBCC CHECKDB ([$RELIO_BACKUP_DATABASE]) WITH NO_INFOMSGS"
+    log INFO "DBCC CHECKDB found no problems"
+fi
+
+latest_migration="$(sql_scalar "SELECT TOP 1 MigrationId FROM [$RELIO_BACKUP_DATABASE].dbo.__EFMigrationsHistory ORDER BY MigrationId DESC")"
+log INFO "restored schema version: $latest_migration"
+
+cat >&2 <<EOF
+
+Restore complete. Next steps:
+  1. Use the same RELIO_DP_PASSWORD as the source instance (it protects the restored certificate).
+  2. Start the application:  docker compose up -d relio
+  3. Wait for /health/ready. Startup authenticates every protected row with the restored keys, so a
+     ready application proves the key material matches the data.
+  4. If accounts were deleted after this backup was taken, delete them again before reopening the
+     instance (docs/operations/backup-restore.md, "Erasure and backups").
+EOF

@@ -11,6 +11,9 @@ param sqlAdminPassword string
 @secure()
 param dpCertPassword string
 
+@description('Irreversible once true. Protects dp-cert-password (the data protection certificate password) from being purged during the soft-delete window. Recommended for production; off by default so nothing changes until the owner decides.')
+param enablePurgeProtection bool = false
+
 var sqlConnectionString = 'Server=tcp:${sqlServerName}.database.windows.net,1433;Initial Catalog=${sqlDatabaseName};Persist Security Info=False;User ID=${sqlAdminLogin};Password=${sqlAdminPassword};MultipleActiveResultSets=True;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
 
 resource keyVault 'Microsoft.KeyVault/vaults@2026-05-15' = {
@@ -25,7 +28,11 @@ resource keyVault 'Microsoft.KeyVault/vaults@2026-05-15' = {
     tenantId: subscription().tenantId
     enableRbacAuthorization: true
     enableSoftDelete: true
+    // Cannot be changed after the vault is created. Secret versions of dp-cert-password are the
+    // backup of the certificate password (docs/operations/backup-restore.md).
     softDeleteRetentionInDays: 7
+    // ARM rejects false once purge protection has been enabled, so leave the property unset instead.
+    enablePurgeProtection: enablePurgeProtection ? true : null
     networkAcls: {
       defaultAction: 'Allow'
       bypass: 'AzureServices'

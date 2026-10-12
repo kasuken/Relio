@@ -39,3 +39,7 @@ rolls the erasure back for a retry instead of leaving an orphan.
 The confirmation email is sent only after the database commit. It contains no names or Relio
 content and says that backups are handled under the instance operator's retention policy. Deleting
 the live account does not delete backups; backup retention and disposal are operated separately.
+The automated backups keep database sets for 14 days by default (self-hosted) and the hosted service
+keeps up to about 35 days (7 days point-in-time restore plus 4 weeks of weekly copies); see
+[Backups and restore](../operations/backup-restore.md#8-erasure-and-backups) for what to do after
+restoring from a point before an erasure.

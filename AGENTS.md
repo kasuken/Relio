@@ -1456,7 +1456,8 @@ every privacy checklist below, like notes; any new sensitive entity must extend 
   the deletion outcome. Backups remain an operator responsibility.
   See `docs/security/account-erasure.md`.
 - **New owned entities extend all lifecycle surfaces together**: SQL isolation inventory, export,
-  restore, account erasure, owner-to-Identity relationship, and person delete/merge when applicable.
+  restore, account erasure, owner-to-Identity relationship, the restore drill canary
+  (`RestoreDrillCanary`), and person delete/merge when applicable.
   Administrative privileges never bypass ownership. SQL tests create real synthetic Identity
   owners explicitly; never lazily recreate an owner or swallow a stale-write foreign-key failure.
   SQL tests that exercise global account counts, foreign key-ring material, corruption or backfill
@@ -1509,6 +1510,31 @@ secrets; the operator guide is `docs/operations/staging.md`.
 - Pin every GitHub Action by full commit SHA, give each job least-privilege `permissions`, and pass
   untrusted values to `run:` scripts through `env:`, never `${{ }}`.
 
+## Backups and restore
+
+Established by issue #119 (REL-005); runbook in `docs/operations/backup-restore.md`.
+
+- `docker-compose.yml` has opt-in `backup` and `restore` profiles (image built from `deploy/backup`).
+  Their settings never use the `:?` form: Compose interpolates inactive profiles too, so a required
+  variable would break `docker compose up` for everyone. The scripts validate their own settings.
+- Backups are `age` public-key archives made outside SQL Server (works on every edition): a database
+  set and a separate key-material set, each with a secret-free `manifest.json`, published only when
+  complete. Retention: database 14 days, keys 90 days, the newest 3 are never pruned. The private
+  identity and `RELIO_DP_PASSWORD` are never on the backup host and never in a backup.
+- `.github/workflows/restore-drill.yml` (driven by `deploy/restore-drill/drill.sh`) is the evidence
+  for REL-005. Any change to protected columns, migrations, the Data Protection configuration,
+  `docker-compose.yml` or the backup scripts must keep it green. Its data phases are the
+  `RestoreDrill` tests in `Relio.Data.IntegrationTests`; they are phase-gated (skipped unless
+  `RELIO_RESTORE_DRILL_PHASE` is set) and assertions must never print values.
+- A new protected column also needs a value in `RestoreDrillCanary` and a check in
+  `RestoreDrillData.VerifyCanaryAsync`, next to `SensitiveFieldBackfillService`'s lists.
+  `RestoreDrillKeyRing` mirrors `AddRelioDataProtection`; keep them in sync.
+- Shell scripts are LF-only (`.gitattributes`) and shellcheck-clean (`shellcheck -x`). Never commit
+  key material, backups, identities or passwords (`.gitignore` blocks `*.age`, `*.agekey`, `*.bak`, `*.pfx`).
+- After editing Bicep, regenerate `infra/main.json` with `az bicep build --file infra/main.bicep`.
+  The hosted retention values (7 days point-in-time, `P4W` long-term) must match the runbook and
+  `hosted-backup-check.yml`.
+
 ## Required validation
 
 Run before handing off changes:
@@ -1520,6 +1546,11 @@ dotnet test Relio.slnx --configuration Release --no-build
 dotnet list Relio.slnx package --vulnerable --include-transitive
 git diff --check
 ```
+
+On Linux or in CI, when touching backups, compose or Bicep, also run
+`shellcheck -x` on the scripts listed in `ci.yml`,
+`docker compose --profile backup --profile restore config --quiet` and
+`az bicep build --file infra/main.bicep`.
 
 Once the data layer exists, also run
 `dotnet ef migrations has-pending-model-changes --project Relio.Data --startup-project Relio.Web --no-build --configuration Release`.

@@ -229,26 +229,49 @@ Following Privacy Architecture Decision Record **ADR-0002**:
 - Store Data Protection key backups and their passwords in separate, encrypted, access-controlled storage from your database dumps.
 - Do not check key ring XML files, certificates, or passwords into version control.
 
-### Backup Schedule Recommendation
-- **Database**: Nightly full backup, retained according to your organization's retention policy (e.g. 14–30 days).
-- **Keys and Certificate**: Backed up immediately upon initial deployment or certificate rotation. Keys do not change unless rotated or new keys are minted by the runtime.
+### Automated encrypted backups
 
-### Backup Commands (Docker)
+Relio ships an opt-in backup container (`docker compose --profile backup`). It takes a verified daily
+backup of the database and a separate backup of the key material, encrypts both with
+[age](https://age-encryption.org) to a public key (so the server can write backups but never read
+them), prunes old sets, and reports failures through its health status and optional ping URLs.
 
-To take a database backup:
+1. On another machine generate a key pair and keep it offline:
+   `docker run --rm --entrypoint age-keygen ghcr.io/kasuken/relio-backup:latest`.
+2. Put the `age1...` public key in `.env` as `RELIO_BACKUP_AGE_RECIPIENTS`.
+3. Start it: `docker compose --profile backup up -d`.
+4. Check: `docker compose exec relio-backup relio-backup status`.
+
+Archives land in `./backups/database` (kept 14 days) and `./backups/keys` (kept 90 days). Restore with
+the `relio-restore` command. The full guide, the restore steps and the restore drill that proves
+them are in [Backups and restore](operations/backup-restore.md).
+
+| Variable | Default | Description |
+|---|---|---|
+| `RELIO_BACKUP_AGE_RECIPIENTS` | none | Required. Comma separated age public keys. |
+| `RELIO_KEY_BACKUP_AGE_RECIPIENTS` | the value above | Public keys for the key-material archives. |
+| `RELIO_BACKUP_DIR` / `RELIO_KEY_BACKUP_DIR` | `./backups/database` / `./backups/keys` | Host folders for the archives. |
+| `RELIO_BACKUP_SCHEDULE_UTC` | `02:30` | Daily backup time in UTC. |
+| `RELIO_BACKUP_RETENTION_DAYS` / `RELIO_KEY_BACKUP_RETENTION_DAYS` | `14` / `90` | Retention of database and key sets. |
+| `RELIO_BACKUP_KEEP_MIN` | `3` | Newest sets of each kind that are never pruned. |
+| `RELIO_BACKUP_MAX_AGE_HOURS` | `26` | The container is unhealthy when the last success is older. |
+| `RELIO_BACKUP_RUN_ON_START` | `true` | Also back up when the container starts. |
+| `RELIO_BACKUP_SUCCESS_URL` / `RELIO_BACKUP_FAILURE_URL` | none | Optional URLs called after a success or failure. |
+| `RELIO_BACKUP_FILE_OWNER` | root | Optional `uid:gid` that owns the archives. |
+
+### Manual one-off backup
+
+Take an on-demand backup before an upgrade with `docker compose exec relio-backup relio-backup once`.
+Without the backup container, an unencrypted native backup is possible but must be encrypted by you
+before it leaves the host (`INIT` overwrites the file instead of appending to it):
 
 ```bash
-docker exec -it relio-sqlserver /opt/mssql-tools18/bin/sqlcmd \
+docker exec relio-sqlserver /opt/mssql-tools18/bin/sqlcmd \
   -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C \
-  -Q "BACKUP DATABASE [Relio] TO DISK = N'/var/opt/mssql/backup_relio.bak' WITH NOFORMAT, NOINIT, SKIP, NOREWIND, NOUNLOAD, STATS = 10"
-
+  -Q "BACKUP DATABASE [Relio] TO DISK = N'/var/opt/mssql/backup_relio.bak' WITH FORMAT, INIT, CHECKSUM, STATS = 10"
 docker cp relio-sqlserver:/var/opt/mssql/backup_relio.bak ./backup_relio.bak
-```
-
-To back up the Data Protection keys:
-
-```bash
-docker run --rm -v relio_relio-data:/source -v $(pwd):/backup alpine tar czf /backup/relio_keys_backup.tar.gz -C /source .
+age -r age1... -o backup_relio.bak.age backup_relio.bak && rm backup_relio.bak
+docker exec relio-sqlserver rm /var/opt/mssql/backup_relio.bak
 ```
 
 ### Account Erasure & Historical Backups (ADR-0002 Compliance)
@@ -257,8 +280,8 @@ When a user deletes their account in Relio (**Settings → Danger Zone → Delet
 1. **Live Data Erasure**: All user-owned data (people, notes, interactions, reminders, difficult moments, and the Identity user account) is immediately and permanently deleted in the live SQL database in a single transaction.
 2. **Historical Backups**: Account erasure operates on the live database; it does **not** retroactively rewrite or delete records inside pre-existing immutable historical database backups.
 3. **Operator Responsibility**:
-   - Establish an explicit backup expiration schedule (e.g., historical backups are deleted after 30 days). Once the backup expires and is overwritten, erased data is completely gone.
-   - If you ever restore a historical backup into production, beware that deleted users may be temporarily resurrected. Re-apply any pending erasure requests or inform affected parties.
+   - Establish an explicit backup expiration schedule (the automated backups keep database sets for 14 days by default; delete any off-site copy on the same schedule). Once the backup expires and is overwritten, erased data is completely gone.
+   - If you ever restore a historical backup into production, beware that deleted users may be temporarily resurrected. Re-apply any pending erasure requests or inform affected parties (see "Erasure and backups" in [Backups and restore](operations/backup-restore.md)).
 
 ---
 
@@ -266,7 +289,7 @@ When a user deletes their account in Relio (**Settings → Danger Zone → Delet
 
 Relio reports unhandled HTTP errors, failed interactive sessions and failed background jobs as log events
 with stable ids 9001-9005, containing only the exception type and never notes, form values or other
-private content. Backup automation will report its failures as `RelioBackupFailure` (9005). Docker
+private content. Backup failures are signalled by the backup container's health and the optional ping URLs (see [Backups and restore](operations/backup-restore.md)); event `RelioBackupFailure` (9005) stays reserved. Docker
 rotates the container logs, `/health/live` and `/health/ready` are available for probes, and
 `RELIO_LOG_FORMAT=json` makes the logs easy to ship. See [operations/monitoring.md](operations/monitoring.md)
 for the event table, example commands and the privacy guarantees.
@@ -278,6 +301,9 @@ for the event table, example commands and the privacy guarantees.
 Upgrading a self-hosted Relio Docker deployment is straightforward:
 
 ```bash
+# 0. Take an on-demand backup first (needs the backup profile, see "Automated encrypted backups")
+docker compose exec relio-backup relio-backup once
+
 # 1. Pull the latest image
 docker compose pull
 

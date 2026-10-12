@@ -43,6 +43,8 @@ services:
       - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:?MSSQL_SA_PASSWORD must be set in .env}
     volumes:
       - sqlserver-data:/var/opt/mssql
+      # Where SQL Server writes native backups for the optional backup and restore profiles.
+      - sqlserver-backup-staging:/var/opt/mssql/backup
     ports:
       - "1433:1433"
     healthcheck:
@@ -54,9 +56,81 @@ services:
     networks:
       - relio-network
 
+  # Optional encrypted backups: docker compose --profile backup up -d
+  # See docs/operations/backup-restore.md. None of the backup settings below uses the ":?" form on
+  # purpose: Compose interpolates every service, including one whose profile is off, so a required
+  # variable here would break "docker compose up" for people who do not use backups. The sidecar
+  # validates its own settings when it starts.
+  relio-backup:
+    profiles: ["backup"]
+    build:
+      context: deploy/backup
+    image: ghcr.io/kasuken/relio-backup:latest
+    container_name: relio-backup
+    environment:
+      - SQLCMDPASSWORD=${MSSQL_SA_PASSWORD:?MSSQL_SA_PASSWORD must be set in .env}
+      - RELIO_BACKUP_DATABASE=${RELIO_BACKUP_DATABASE:-Relio}
+      - RELIO_BACKUP_AGE_RECIPIENTS=${RELIO_BACKUP_AGE_RECIPIENTS:-}
+      - RELIO_KEY_BACKUP_AGE_RECIPIENTS=${RELIO_KEY_BACKUP_AGE_RECIPIENTS:-}
+      - RELIO_BACKUP_SCHEDULE_UTC=${RELIO_BACKUP_SCHEDULE_UTC:-02:30}
+      - RELIO_BACKUP_RETENTION_DAYS=${RELIO_BACKUP_RETENTION_DAYS:-14}
+      - RELIO_KEY_BACKUP_RETENTION_DAYS=${RELIO_KEY_BACKUP_RETENTION_DAYS:-90}
+      - RELIO_BACKUP_KEEP_MIN=${RELIO_BACKUP_KEEP_MIN:-3}
+      - RELIO_BACKUP_MAX_AGE_HOURS=${RELIO_BACKUP_MAX_AGE_HOURS:-26}
+      - RELIO_BACKUP_RUN_ON_START=${RELIO_BACKUP_RUN_ON_START:-true}
+      - RELIO_BACKUP_SUCCESS_URL=${RELIO_BACKUP_SUCCESS_URL:-}
+      - RELIO_BACKUP_FAILURE_URL=${RELIO_BACKUP_FAILURE_URL:-}
+      - RELIO_BACKUP_FILE_OWNER=${RELIO_BACKUP_FILE_OWNER:-}
+    volumes:
+      # Read-only: the sidecar copies the key ring and certificate, it never changes them.
+      - relio-data:/var/opt/relio:ro
+      - sqlserver-backup-staging:/staging
+      - relio-backup-state:/var/lib/relio-backup
+      - ${RELIO_BACKUP_DIR:-./backups/database}:/backups/database
+      - ${RELIO_KEY_BACKUP_DIR:-./backups/keys}:/backups/keys
+    depends_on:
+      relio:
+        condition: service_healthy
+      sqlserver:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    networks:
+      - relio-network
+
+  # One-shot restore: docker compose --profile restore run --rm ... relio-restore --latest
+  # The age identity (private key) is deliberately not configured here; mount it at run time.
+  relio-restore:
+    profiles: ["restore"]
+    build:
+      context: deploy/backup
+    image: ghcr.io/kasuken/relio-backup:latest
+    entrypoint: ["relio-restore"]
+    environment:
+      - SQLCMDPASSWORD=${MSSQL_SA_PASSWORD:?MSSQL_SA_PASSWORD must be set in .env}
+      - RELIO_BACKUP_DATABASE=${RELIO_BACKUP_DATABASE:-Relio}
+    volumes:
+      - relio-data:/var/opt/relio
+      - sqlserver-backup-staging:/staging
+      - ${RELIO_BACKUP_DIR:-./backups/database}:/backups/database:ro
+      - ${RELIO_KEY_BACKUP_DIR:-./backups/keys}:/backups/keys:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    networks:
+      - relio-network
+
 volumes:
   sqlserver-data:
+  sqlserver-backup-staging:
   relio-data:
+  relio-backup-state:
 
 networks:
   relio-network:

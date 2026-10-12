@@ -84,3 +84,11 @@ _copilot_build/
 .claude/worktrees/
 
 .copilot-azure/
+
+# Backup archives and key material must never be committed (see docs/operations/backup-restore.md).
+# `docker compose --profile backup` writes encrypted archives to ./backups by default.
+backups/
+*.age
+*.agekey
+*.bak
+*.pfx
