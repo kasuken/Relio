@@ -67,19 +67,65 @@ public class ReminderSchedulerFailureTests
             ("C", Today));
         sender.FailWhen = (_, call) => call == 2 ? new InvalidOperationException("smtp down") : null;
 
-        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(1);
-
-        var ledger = await LedgerAsync(database, clock);
-        ledger.Should().ContainSingle().Which.SourceId.Should().Be(reminders[0].Id);
-        ledger[0].Status.Should().Be(ReminderDeliveryStatus.Sent);
-        (await GetReminderAsync(database, clock, reminders[1].Id)).LastDeliveredDate.Should().BeNull();
-        (await GetReminderAsync(database, clock, reminders[2].Id)).LastDeliveredDate.Should().BeNull();
-
-        sender.FailWhen = null;
+        // The failed item does not stop the ones behind it.
         (await RunOnNewContextAsync(database, clock, sender)).Should().Be(2);
 
-        sender.ImmediateEmails.Select(e => e.ReminderTitle).Should().Equal("A", "B", "C");
+        var ledger = await LedgerAsync(database, clock);
+        ledger.Select(r => r.SourceId).Should().BeEquivalentTo([reminders[0].Id, reminders[2].Id]);
+        ledger.Should().AllSatisfy(r => r.Status.Should().Be(ReminderDeliveryStatus.Sent));
+        (await GetReminderAsync(database, clock, reminders[1].Id)).LastDeliveredDate.Should().BeNull();
+
+        sender.FailWhen = null;
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(1);
+
+        sender.ImmediateEmails.Select(e => e.ReminderTitle).Should().Equal("A", "C", "B");
         (await LedgerAsync(database, clock)).Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task A_permanently_failing_item_does_not_block_newer_items_and_is_retried_each_run()
+    {
+        var (database, clock, sender, reminders) = await ArrangeAsync(
+            ReminderEmailDelivery.Immediate, ("Bad", new DateOnly(2026, 10, 5)), ("Good", Today));
+        sender.FailForTitle = title => title == "Bad" ? new InvalidOperationException("rejected") : null;
+
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(1);
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(0);
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(0);
+
+        sender.ImmediateEmails.Should().ContainSingle().Which.ReminderTitle.Should().Be("Good");
+        (await LedgerAsync(database, clock)).Should().ContainSingle().Which.SourceId.Should().Be(reminders[1].Id);
+        (await GetReminderAsync(database, clock, reminders[0].Id)).LastDeliveredDate.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_reminder_deleted_before_the_final_save_does_not_fail_the_other_outcomes()
+    {
+        var (database, clock, sender, reminders) = await ArrangeAsync(
+            ReminderEmailDelivery.Immediate,
+            ("A", new DateOnly(2026, 10, 5)),
+            ("B", new DateOnly(2026, 10, 6)),
+            ("C", Today));
+        sender.FailWhen = (_, call) =>
+        {
+            if (call != 2)
+            {
+                return null;
+            }
+
+            // The failed item's reminder disappears (another tab) before the outcomes are saved.
+            using var other = CreateDbContext(database, clock);
+            other.Reminders.Remove(other.Reminders.Single(r => r.Id == reminders[1].Id));
+            other.SaveChanges();
+            return new InvalidOperationException("smtp down");
+        };
+
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(2);
+
+        var ledger = await LedgerAsync(database, clock);
+        ledger.Select(r => r.SourceId).Should().BeEquivalentTo([reminders[0].Id, reminders[2].Id]);
+        ledger.Should().AllSatisfy(r => r.Status.Should().Be(ReminderDeliveryStatus.Sent));
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(0);
     }
 
     [Fact]

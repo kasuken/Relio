@@ -374,9 +374,10 @@ public sealed class ReminderSchedulerRunner(
             }
             catch (Exception ex)
             {
+                // Release only this claim (it is retried next run) and carry on: one item that
+                // always fails must not starve the newer ones behind it.
                 outcome.FailureType = ex.GetType().Name;
-                outcome.Released.AddRange(candidates.Skip(i));
-                break;
+                outcome.Released.Add(candidate);
             }
         }
 
@@ -433,6 +434,8 @@ public sealed class ReminderSchedulerRunner(
             return;
         }
 
+        // The ledger outcomes are saved on their own, so a reminder that was deleted or changed
+        // since the claim can never make the recorded outcomes of the others fail.
         try
         {
             var sentAtUtc = timeProvider.GetUtcNow().UtcDateTime;
@@ -446,11 +449,6 @@ public sealed class ReminderSchedulerRunner(
             foreach (var candidate in outcome.Released)
             {
                 dbContext.ReminderDeliveries.Remove(candidate.Row!);
-
-                if (candidate.TrackedReminder is { } reminder && reminder.LastDeliveredDate == userToday)
-                {
-                    reminder.LastDeliveredDate = candidate.PreviousStamp;
-                }
             }
 
             await dbContext.SaveChangesAsync(CancellationToken.None);
@@ -461,6 +459,31 @@ public sealed class ReminderSchedulerRunner(
                 "Finalizing reminder delivery for user {OwnerId} failed with {ExceptionType}; claimed notifications will not be resent.",
                 ownerId,
                 ex.GetType().Name);
+            return;
+        }
+
+        // Then each released reminder gets its previous stamp back, one save each. A failure here
+        // leaves that reminder stamped (not retried): the at-most-once side.
+        foreach (var candidate in outcome.Released)
+        {
+            if (candidate.TrackedReminder is not { } reminder || reminder.LastDeliveredDate != userToday)
+            {
+                continue;
+            }
+
+            try
+            {
+                reminder.LastDeliveredDate = candidate.PreviousStamp;
+                await dbContext.SaveChangesAsync(CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                dbContext.Entry(reminder).State = EntityState.Detached;
+                logger.LogWarning(
+                    "Restoring a reminder for user {OwnerId} after a failed send failed with {ExceptionType}; it will not be retried.",
+                    ownerId,
+                    ex.GetType().Name);
+            }
         }
     }
 

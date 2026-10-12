@@ -21,6 +21,9 @@ public sealed class FakeReminderEmailSender : IReminderEmailSender
     /// </summary>
     public Func<string, int, Exception?>? FailWhen { get; set; }
 
+    /// <summary>Returns the exception to throw for an immediate email with this title, or null (a permanently rejected item).</summary>
+    public Func<string, Exception?>? FailForTitle { get; set; }
+
     /// <summary>Runs after a send was recorded, with its 1-based call number (to cancel a token, say).</summary>
     public Action<int>? OnSend { get; set; }
 
@@ -42,6 +45,11 @@ public sealed class FakeReminderEmailSender : IReminderEmailSender
         CancellationToken cancellationToken = default)
     {
         var call = BeginSend(toEmail);
+        if (FailForTitle?.Invoke(reminderTitle) is { } titleFailure)
+        {
+            throw titleFailure;
+        }
+
         ImmediateEmails.Add(new ImmediateEmailRecord(toEmail, personName, reminderTitle, dueDate, unsubscribeToken));
         OnSend?.Invoke(call);
         return Task.CompletedTask;

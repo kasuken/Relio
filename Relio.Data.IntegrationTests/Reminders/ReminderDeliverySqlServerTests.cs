@@ -251,6 +251,43 @@ public sealed class ReminderDeliverySqlServerTests
     }
 
     [SqlServerFact]
+    public async Task A_failed_item_does_not_block_the_rest_and_a_deleted_reminder_does_not_fail_the_final_save()
+    {
+        await using var database = await ReminderDatabase.CreateAsync();
+        var clock = new FixedTimeProvider(Oct7Noon);
+        var owner = await database.AddOwnerAsync(ReminderEmailDelivery.Immediate, birthdays: false);
+        var person = await database.AddPersonAsync(owner, "Ada");
+        var first = await database.AddReminderAsync(owner, person, "A", Today.AddDays(-2));
+        var failing = await database.AddReminderAsync(owner, person, "B", Today.AddDays(-1));
+        var last = await database.AddReminderAsync(owner, person, "C", Today);
+        var sender = new RecordingReminderEmailSender
+        {
+            FailWhen = (_, call) =>
+            {
+                if (call != 2)
+                {
+                    return null;
+                }
+
+                // The failing item's reminder is deleted (another tab) before the outcomes are saved.
+                using var other = database.CreateDbContext(clock);
+                other.Reminders.Remove(other.Reminders.Single(r => r.Id == failing));
+                other.SaveChanges();
+                return new InvalidOperationException("smtp down");
+            },
+        };
+
+        (await database.RunAsync(clock, sender)).Should().Be(2);
+
+        sender.DeliveriesFor(database.EmailOf(owner)).Select(d => d.Title).Should().Equal("A", "C");
+        await using var verify = database.CreateDbContext(clock);
+        var ledger = await verify.ReminderDeliveries.AsNoTracking().Where(r => r.UserId == owner).ToListAsync();
+        ledger.Select(r => r.SourceId).Should().BeEquivalentTo([first, last]);
+        ledger.Should().AllSatisfy(r => r.Status.Should().Be(ReminderDeliveryStatus.Sent));
+        (await database.RunAsync(clock, sender)).Should().Be(0);
+    }
+
+    [SqlServerFact]
     public async Task Finalize_failure_then_restart_never_resends()
     {
         await using var database = await ReminderDatabase.CreateAsync();
