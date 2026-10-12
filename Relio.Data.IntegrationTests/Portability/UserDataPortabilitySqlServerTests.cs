@@ -94,6 +94,42 @@ public sealed class UserDataPortabilitySqlServerTests(SqlServerDatabaseFixture f
     }
 
     [SqlServerFact]
+    public async Task Export_then_restore_round_trips_person_links_on_SQL_Server()
+    {
+        var sourceOwner = TestDataFactory.NewOwnerId();
+        var destinationOwner = TestDataFactory.NewOwnerId();
+        var seeded = await SeedSourceAsync(sourceOwner);
+        await SeedRegistrationOnlyDestinationAsync(destinationOwner);
+        Guid grace;
+        Guid linkId;
+        await using (var setup = fixture.CreateDbContext())
+        {
+            grace = await TestDataFactory.CreatePersonAsync(setup, sourceOwner, "Grace", "Hopper");
+            linkId = await TestDataFactory.CreatePersonLinkAsync(
+                setup, sourceOwner, seeded.PersonId, grace, PersonLinkKind.Manager);
+        }
+
+        var document = await ExportAsync(sourceOwner);
+        await using (var restore = CreateOneStatementPerCommandContext())
+        {
+            await CreateService(restore, destinationOwner).RestoreAsync(document);
+        }
+
+        document.PersonLinks.Should().ContainSingle().Which.Id.Should().Be(linkId);
+        await using var verify = fixture.CreateDbContext();
+        var people = await verify.People.AsNoTracking().Where(item => item.OwnerId == destinationOwner).ToListAsync();
+        var restoredAda = people.Single(item => item.FirstName == "Ada");
+        var restoredGrace = people.Single(item => item.FirstName == "Grace");
+        var restoredLink = await verify.PersonLinks.AsNoTracking().SingleAsync(item => item.OwnerId == destinationOwner);
+        restoredLink.Id.Should().NotBe(linkId);
+        restoredLink.PersonId.CompareTo(restoredLink.RelatedPersonId).Should().BeNegative();
+        restoredLink.RoleOfOther(restoredAda.Id).Should().Be(PersonLinkKind.Manager);
+        restoredLink.RoleOfOther(restoredGrace.Id).Should().Be(PersonLinkKind.DirectReport);
+        (await verify.PersonLinks.AsNoTracking().CountAsync(item => item.OwnerId == sourceOwner))
+            .Should().Be(1, "the source account is untouched");
+    }
+
+    [SqlServerFact]
     public async Task Profile_only_restore_with_no_destination_relationship_types_uses_an_implicit_transaction()
     {
         var sourceOwner = TestDataFactory.NewOwnerId();

@@ -28,6 +28,17 @@ public class PersonMergeChecklistTests
         typeof(InteractionParticipant).FullName!,
         typeof(Reminder).FullName!,
         typeof(DifficultMoment).FullName!,
+        typeof(PersonLink).FullName!,
+    ];
+
+    /// <summary>
+    /// The one foreign key to <see cref="Person"/> that is deliberately not a cascade (see
+    /// <c>PersonDeleteChecklistTests</c>): <see cref="PersonLink.RelatedPersonId"/> is <c>NoAction</c>, and
+    /// <c>MoveDependentsAsync</c> loads and re-points or removes every link with the duplicate at either end.
+    /// </summary>
+    private static readonly (Type Entity, string Property)[] NoActionHandledExplicitly =
+    [
+        (typeof(PersonLink), nameof(PersonLink.RelatedPersonId)),
     ];
 
     /// <summary>
@@ -90,12 +101,21 @@ public class PersonMergeChecklistTests
     public void Every_relationship_to_a_person_cascades_so_merge_can_rely_on_the_backstop()
     {
         var references = ForeignKeysToPerson();
+        var cascading = references.Where(foreignKey => !IsAllowedNoAction(foreignKey)).ToList();
 
-        references.Should().NotBeEmpty();
-        references.Should().OnlyContain(
+        cascading.Should().NotBeEmpty();
+        cascading.Should().OnlyContain(
             foreignKey => foreignKey.DeleteBehavior == DeleteBehavior.Cascade,
             "removing the duplicate relies on the database cascade for anything MoveDependentsAsync did not load");
+
+        references.Where(IsAllowedNoAction).Should().HaveCount(NoActionHandledExplicitly.Length)
+            .And.OnlyContain(foreignKey => foreignKey.DeleteBehavior == DeleteBehavior.NoAction);
     }
+
+    private static bool IsAllowedNoAction(IForeignKey foreignKey) =>
+        NoActionHandledExplicitly.Any(allowed =>
+            allowed.Entity == foreignKey.DeclaringEntityType.ClrType
+            && foreignKey.Properties.Single().Name == allowed.Property);
 
     private static IModel Model()
     {

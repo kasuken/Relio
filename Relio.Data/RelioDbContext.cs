@@ -107,6 +107,9 @@ public sealed partial class RelioDbContext : IdentityDbContext<RelioUser>
     /// <summary>The current user's difficult moments in relationships (epic #42).</summary>
     public DbSet<DifficultMoment> DifficultMoments => Set<DifficultMoment>();
 
+    /// <summary>The current user's links between two of their people (#129).</summary>
+    public DbSet<PersonLink> PersonLinks => Set<PersonLink>();
+
     /// <summary>User profiles (currently just the user's time zone, see epic #12), one per user.</summary>
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
 

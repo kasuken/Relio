@@ -1,0 +1,290 @@
+@using Relio.Application.Interactions
+@using Relio.Application.Ownership
+@using Relio.Application.People
+@using Relio.Domain
+@using Relio.Web.Components.Interactions
+@inject IPersonLinkService PersonLinkService
+@inject IInteractionService InteractionService
+@inject ISnackbar Snackbar
+
+@* Adds a connection from the profile being viewed, or changes the kind of an existing one. Every rule
+   lives in IPersonLinkService: Save always calls it, and the codes it throws are worded next to the
+   field they belong to (PersonLinkFormMessages). The people to choose from are the active people the
+   quick-log picker already offers, minus the profile itself and the people it is already linked to.
+   Names stay in component memory: never in a log, a URL or a snackbar. *@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h3" HtmlTag="h2">@(_isEdit ? PersonLinkText.EditTitle : PersonLinkText.AddTitle)</MudText>
+    </TitleContent>
+    <DialogContent>
+        <div class="d-flex flex-column gap-4" data-testid="person-link-form">
+            @if (_isEdit)
+            {
+                <div>
+                    <MudText Typo="Typo.body1" Class="rl-entry-text" data-testid="person-link-other">@OtherDisplayName</MudText>
+                    <MudText Typo="Typo.caption" Class="rl-meta">@PersonLinkText.EditNote</MudText>
+                </div>
+            }
+            else if (_loadFailed)
+            {
+                <div role="alert" data-testid="person-link-load-error">
+                    <MudText Typo="Typo.body2">@PersonLinkText.CandidatesLoadFailed</MudText>
+                    <MudButton Variant="Variant.Text" OnClick="LoadCandidatesAsync" Disabled="_loading" data-testid="person-link-load-retry">
+                        Try again
+                    </MudButton>
+                </div>
+            }
+            else if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true"
+                                   Color="Color.Primary"
+                                   aria-label="Loading people"
+                                   data-testid="person-link-loading" />
+            }
+            else
+            {
+                <div class="rl-form-field">
+                    <MudAutocomplete T="InteractionParticipantOption"
+                                     Label="Person"
+                                     Variant="Variant.Outlined"
+                                     Value="_selected"
+                                     ValueChanged="OnPersonSelected"
+                                     SearchFunc="SearchPeopleAsync"
+                                     ToStringFunc="@(person => person?.DisplayName)"
+                                     MinCharacters="0"
+                                     OpenOnFocus="true"
+                                     SelectValueOnTab="true"
+                                     CoerceText="false"
+                                     CoerceValue="false"
+                                     Clearable="true"
+                                     Disabled="_saving"
+                                     Class="rl-serif"
+                                     data-testid="person-link-person-picker">
+                        <ItemTemplate Context="person">
+                            <span class="rl-entry-text">@person.DisplayName</span>
+                        </ItemTemplate>
+                        <NoItemsTemplate>
+                            <MudText Typo="Typo.body2" Class="mud-text-secondary">@PersonLinkText.NoCandidates</MudText>
+                        </NoItemsTemplate>
+                    </MudAutocomplete>
+                    @foreach (var message in _personMessages)
+                    {
+                        <MudText Color="Color.Error" Typo="Typo.caption" data-testid="person-link-person-error">@message</MudText>
+                    }
+                </div>
+            }
+
+            @if (_isEdit || (!_loading && !_loadFailed))
+            {
+                <div class="rl-form-field">
+                    <MudSelect T="PersonLinkKind?"
+                               @bind-Value="_kind"
+                               Label="@PersonLinkText.KindLabel(PersonFirstName)"
+                               Variant="Variant.Outlined"
+                               Disabled="_saving"
+                               data-testid="person-link-kind">
+                        @foreach (var kind in PersonLinkKinds.All)
+                        {
+                            <MudSelectItem T="PersonLinkKind?" Value="@((PersonLinkKind?)kind)">@PersonLinkText.Role(kind)</MudSelectItem>
+                        }
+                    </MudSelect>
+                    @foreach (var message in _kindMessages)
+                    {
+                        <MudText Color="Color.Error" Typo="Typo.caption" data-testid="person-link-kind-error">@message</MudText>
+                    }
+                </div>
+                <MudText Typo="Typo.caption" Class="rl-meta">@PersonLinkText.BothProfilesNote</MudText>
+            }
+
+            @if (_errorMessage is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" data-testid="person-link-error">@_errorMessage</MudAlert>
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" data-testid="person-link-cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   ButtonType="ButtonType.Button"
+                   Disabled="@(_saving || (!_isEdit && (_loading || _loadFailed)))"
+                   OnClick="SaveAsync"
+                   data-testid="person-link-save">
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private IReadOnlyList<InteractionParticipantOption> _candidates = [];
+    private InteractionParticipantOption? _selected;
+    private PersonLinkKind? _kind;
+    private bool _loading;
+    private bool _loadFailed;
+    private bool _saving;
+    private string? _errorMessage;
+    private IReadOnlyList<string> _personMessages = [];
+    private IReadOnlyList<string> _kindMessages = [];
+
+    private bool _isEdit => LinkId.HasValue;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    /// <summary>The profile being viewed; the connection is added from, or expressed as seen from, this person.</summary>
+    [Parameter, EditorRequired]
+    public Guid PersonId { get; set; }
+
+    /// <summary>The first name of the profile being viewed, for the question "What are they to Anna?".</summary>
+    [Parameter, EditorRequired]
+    public string PersonFirstName { get; set; } = string.Empty;
+
+    /// <summary>The connection being edited; null when adding.</summary>
+    [Parameter]
+    public Guid? LinkId { get; set; }
+
+    /// <summary>When editing, the name of the other person (shown as text: the two people cannot change).</summary>
+    [Parameter]
+    public string? OtherDisplayName { get; set; }
+
+    /// <summary>When editing, the current kind (what the other person is to the viewed one).</summary>
+    [Parameter]
+    public PersonLinkKind? InitialKind { get; set; }
+
+    /// <summary>When adding, the people already connected to the viewed person (not offered again).</summary>
+    [Parameter]
+    public IReadOnlyCollection<Guid> ExcludedPersonIds { get; set; } = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (_isEdit)
+        {
+            _kind = InitialKind;
+            return;
+        }
+
+        await LoadCandidatesAsync();
+    }
+
+    private async Task LoadCandidatesAsync()
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        _loading = true;
+        _loadFailed = false;
+        try
+        {
+            var candidates = await InteractionService.ListParticipantCandidatesAsync(Guid.Empty);
+            _candidates = candidates
+                .Where(person => !person.IsArchived
+                    && person.PersonId != PersonId
+                    && !ExcludedPersonIds.Contains(person.PersonId))
+                .ToArray();
+            _selected = null;
+        }
+        catch (Exception)
+        {
+            // Nothing from the failure is shown or logged: it could carry a name.
+            _candidates = [];
+            _loadFailed = true;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private Task<IEnumerable<InteractionParticipantOption>> SearchPeopleAsync(
+        string? text,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<IEnumerable<InteractionParticipantOption>>(
+            QuickLogPersonSearch.Filter(_candidates, text));
+    }
+
+    private void OnPersonSelected(InteractionParticipantOption? person)
+    {
+        _selected = person is null
+            ? null
+            : _candidates.FirstOrDefault(candidate => candidate.PersonId == person.PersonId);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _saving = true;
+        _errorMessage = null;
+        _personMessages = [];
+        _kindMessages = [];
+        try
+        {
+            if (_isEdit)
+            {
+                var updated = await PersonLinkService.UpdateAsync(
+                    LinkId!.Value,
+                    new UpdatePersonLinkRequest { PersonId = PersonId, Kind = _kind });
+                if (!updated)
+                {
+                    Snackbar.Info(PersonLinkText.Gone);
+                    MudDialog.Close(DialogResult.Ok(false));
+                    return;
+                }
+            }
+            else
+            {
+                await PersonLinkService.CreateAsync(new CreatePersonLinkRequest
+                {
+                    PersonId = PersonId,
+                    RelatedPersonId = _selected?.PersonId ?? Guid.Empty,
+                    Kind = _kind,
+                });
+            }
+
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (PersonLinkValidationException exception)
+        {
+            _personMessages = exception.Errors
+                .Where(PersonLinkFormMessages.BelongsToPerson)
+                .Select(PersonLinkFormMessages.Message)
+                .ToArray();
+            _kindMessages = exception.Errors
+                .Where(PersonLinkFormMessages.BelongsToKind)
+                .Select(PersonLinkFormMessages.Message)
+                .Distinct()
+                .ToArray();
+            _errorMessage = exception.Errors
+                .Where(error => !PersonLinkFormMessages.BelongsToPerson(error) && !PersonLinkFormMessages.BelongsToKind(error))
+                .Select(PersonLinkFormMessages.Message)
+                .FirstOrDefault();
+        }
+        catch (ForeignEntityNotOwnedException)
+        {
+            // Removed or never theirs: the same words either way, and the list is refreshed.
+            _errorMessage = PersonLinkText.PersonGone;
+            if (!_isEdit)
+            {
+                await LoadCandidatesAsync();
+            }
+        }
+        catch (Exception)
+        {
+            // Never logged here: whatever failed could carry a name.
+            _errorMessage = PersonLinkText.SaveFailed;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

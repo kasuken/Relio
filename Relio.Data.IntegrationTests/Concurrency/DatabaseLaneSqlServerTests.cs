@@ -234,9 +234,16 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
         var interactions = scope.ServiceProvider.GetRequiredService<IInteractionService>();
         var notes = scope.ServiceProvider.GetRequiredService<INoteService>();
         var timeline = scope.ServiceProvider.GetRequiredService<IPersonTimelineService>();
+        var links = scope.ServiceProvider.GetRequiredService<IPersonLinkService>();
         var person = await people.CreateAsync(new CreatePersonRequest { FirstName = "Ada" });
         var other = await people.CreateAsync(new CreatePersonRequest { FirstName = "Grace" });
         await notes.CreateAsync(new CreateNoteRequest(person.Id, "A note for the lane test.", true));
+        await links.CreateAsync(new CreatePersonLinkRequest
+        {
+            PersonId = person.Id,
+            RelatedPersonId = other.Id,
+            Kind = PersonLinkKind.Colleague,
+        });
         var today = await scope.ServiceProvider.GetRequiredService<IUserTimeZoneService>().GetTodayAsync();
         var interactionId = await interactions.CreateAsync(new CreateInteractionRequest
         {
@@ -251,13 +258,15 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
         Task<InteractionDetails?>? details = null;
         Task<IReadOnlyList<InteractionParticipantOption>>? candidates = null;
         Task<IReadOnlyList<Relio.Domain.Note>>? pinnedNotes = null;
+        Task<IReadOnlyList<PersonConnection>>? connections = null;
         var act = async () =>
         {
             page = timeline.GetPageAsync(person.Id);
             details = interactions.GetAsync(interactionId);
             candidates = interactions.ListParticipantCandidatesAsync(person.Id);
             pinnedNotes = notes.ListPinnedAsync(person.Id);
-            await Task.WhenAll(page, details, candidates, pinnedNotes);
+            connections = links.ListForPersonAsync(person.Id);
+            await Task.WhenAll(page, details, candidates, pinnedNotes, connections);
         };
 
         await act.Should().NotThrowAsync();
@@ -271,6 +280,7 @@ public sealed class DatabaseLaneSqlServerTests(SqlServerDatabaseFixture fixture)
         (await candidates!).Select(candidate => candidate.PersonId)
             .Should().BeEquivalentTo(new[] { person.Id, other.Id });
         (await pinnedNotes!).Should().ContainSingle(note => note.Text == "A note for the lane test.");
+        (await connections!).Should().ContainSingle(c => c.OtherPersonId == other.Id && c.Role == PersonLinkKind.Colleague);
     }
 
     [SqlServerFact]

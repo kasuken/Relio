@@ -82,6 +82,48 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
     }
 
     [SqlServerFact]
+    public async Task MergeAsync_moves_links_drops_the_pair_link_and_dedupes_on_SQL_Server()
+    {
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
+        var seeded = await SeedAsync(owner);
+        Guid moved, shared, pairLink, primaryKept, relatedEnd;
+        await using (var setup = fixture.CreateDbContext())
+        {
+            var parent = await TestDataFactory.CreatePersonAsync(setup, owner, "Parent");
+            var sharedPerson = await TestDataFactory.CreatePersonAsync(setup, owner, "Shared");
+            // "Parent" is the duplicate's parent; both profiles know "Shared" (the primary as a friend,
+            // the duplicate as a colleague); the two profiles are siblings; and the duplicate is
+            // somebody's child from the other side of the row.
+            moved = await TestDataFactory.CreatePersonLinkAsync(setup, owner, seeded.DuplicateId, parent, PersonLinkKind.Parent);
+            primaryKept = await TestDataFactory.CreatePersonLinkAsync(setup, owner, seeded.PrimaryId, sharedPerson, PersonLinkKind.Friend);
+            shared = await TestDataFactory.CreatePersonLinkAsync(setup, owner, seeded.DuplicateId, sharedPerson, PersonLinkKind.Colleague);
+            pairLink = await TestDataFactory.CreatePersonLinkAsync(setup, owner, seeded.PrimaryId, seeded.DuplicateId, PersonLinkKind.Sibling);
+            relatedEnd = await TestDataFactory.CreatePersonLinkAsync(setup, owner, seeded.OtherId, seeded.DuplicateId, PersonLinkKind.Child);
+        }
+
+        var counter = new CountSavesInterceptor();
+        await using var dbContext = fixture.CreateDbContext(counter);
+
+        var outcome = await TestDataFactory.CreatePersonMergeService(dbContext, owner)
+            .MergeAsync(new MergePeopleRequest { PrimaryId = seeded.PrimaryId, DuplicateId = seeded.DuplicateId });
+
+        outcome.Should().Be(MergeOutcome.Merged);
+        counter.Saved.Should().Be(1, "the merge, including the links, is one save");
+        await using var verify = fixture.CreateDbContext();
+        var links = await verify.PersonLinks.Where(link => link.OwnerId == owner).ToListAsync();
+        links.Select(link => link.Id).Should().BeEquivalentTo([moved, primaryKept, relatedEnd]);
+        links.Should().OnlyContain(link => link.Involves(seeded.PrimaryId) && !link.Involves(seeded.DuplicateId));
+        links.Should().OnlyContain(link => link.PersonId.CompareTo(link.RelatedPersonId) < 0, "ends stay normalized in .NET order");
+        links.Single(link => link.Id == moved).RoleOfOther(seeded.PrimaryId).Should().Be(PersonLinkKind.Parent);
+        links.Single(link => link.Id == primaryKept).RoleOfOther(seeded.PrimaryId).Should().Be(PersonLinkKind.Friend, "the primary's kind wins");
+        var related = links.Single(link => link.Id == relatedEnd);
+        related.OtherPersonId(seeded.PrimaryId).Should().Be(seeded.OtherId);
+        related.RoleOfOther(seeded.PrimaryId).Should().Be(PersonLinkKind.Parent, "the other person is the duplicate's parent");
+        links.Select(link => link.Id).Should().NotContain([shared, pairLink]);
+        (await verify.People.AnyAsync(p => p.Id == seeded.DuplicateId)).Should().BeFalse();
+    }
+
+    [SqlServerFact]
     public async Task MergeAsync_applies_field_choices_and_the_later_last_contacted_date_on_SQL_Server()
     {
         var owner = await TestDataFactory.CreateOwnerAsync(fixture);
@@ -201,6 +243,8 @@ public sealed class PersonMergeSqlServerTests(SqlServerDatabaseFixture fixture)
                 "FK_Notes_People_PersonId",
                 "FK_Reminders_People_PersonId",
                 "FK_DifficultMoments_People_PersonId",
+                "FK_PersonLinks_People_PersonId",
+                "FK_PersonLinks_People_RelatedPersonId",
             ],
             "a new foreign key to People needs a line in PersonMergeService.MoveDependentsAsync (and in "
             + "PeopleService.RemoveDependentsAsync), and an entry here and in PersonMergeChecklistTests");

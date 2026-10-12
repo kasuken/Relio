@@ -27,6 +27,7 @@ public sealed class OwnedEntityErasureCoverageTests
             typeof(Note),
             typeof(Reminder),
             typeof(DifficultMoment),
+            typeof(PersonLink),
             typeof(UserProfile),
             typeof(ProductActivity),
         };

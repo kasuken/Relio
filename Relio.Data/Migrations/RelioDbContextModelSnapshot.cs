@@ -789,6 +789,53 @@ namespace Relio.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Relio.Domain.PersonLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("RelatedPersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PersonId");
+
+                    b.HasIndex("RelatedPersonId");
+
+                    b.HasIndex("OwnerId", "RelatedPersonId");
+
+                    b.HasIndex("OwnerId", "PersonId", "RelatedPersonId")
+                        .IsUnique();
+
+                    b.ToTable("PersonLinks", t =>
+                        {
+                            t.HasCheckConstraint("CK_PersonLinks_DistinctPeople", "[PersonId] <> [RelatedPersonId]");
+
+                            t.HasCheckConstraint("CK_PersonLinks_Kind", "[Kind] IN (N'Partner', N'FormerPartner', N'Parent', N'Child', N'Sibling', N'Grandparent', N'Grandchild', N'Relative', N'Friend', N'Colleague', N'Manager', N'DirectReport', N'Neighbour', N'Other')");
+                        });
+                });
+
             modelBuilder.Entity("Relio.Domain.ProductActivity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1228,6 +1275,28 @@ namespace Relio.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("RelationshipType");
+                });
+
+            modelBuilder.Entity("Relio.Domain.PersonLink", b =>
+                {
+                    b.HasOne("Relio.Data.Identity.RelioUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_PersonLinks_AspNetUsers_OwnerId");
+
+                    b.HasOne("Relio.Domain.Person", null)
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Relio.Domain.Person", null)
+                        .WithMany()
+                        .HasForeignKey("RelatedPersonId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Relio.Domain.ProductActivity", b =>

@@ -61,6 +61,39 @@ public class PeopleServiceArchiveDeleteTests
     }
 
     [Fact]
+    public async Task DeleteAsync_removes_the_persons_links_in_both_directions_and_keeps_the_other_people()
+    {
+        var database = NewDatabase();
+        await using var dbContext = CreateDbContext(database);
+        var seeded = await SeedAsync(dbContext);
+        // Fixed ids: the deleted person is above one end and below the other, so it is the related end
+        // of one stored row and the first end of the other.
+        var subject = new Person { Id = Guid.Parse("80000000-0000-0000-0000-000000000000"), OwnerId = Owner, FirstName = "Subject" };
+        var below = new Person { Id = Guid.Parse("00000000-0000-0000-0000-000000000001"), OwnerId = Owner, FirstName = "Below" };
+        var above = new Person { Id = Guid.Parse("ffffffff-0000-0000-0000-000000000000"), OwnerId = Owner, FirstName = "Above" };
+        dbContext.People.AddRange(subject, below, above);
+        var linkToBelow = new PersonLink { OwnerId = Owner };
+        linkToBelow.SetEnds(subject.Id, below.Id, PersonLinkKind.Friend);
+        var linkToAbove = new PersonLink { OwnerId = Owner };
+        linkToAbove.SetEnds(subject.Id, above.Id, PersonLinkKind.Colleague);
+        var unrelated = new PersonLink { OwnerId = Owner };
+        unrelated.SetEnds(below.Id, above.Id, PersonLinkKind.Sibling);
+        dbContext.PersonLinks.AddRange(linkToBelow, linkToAbove, unrelated);
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+        linkToBelow.RelatedPersonId.Should().Be(subject.Id, "the subject is the related end of this row");
+        linkToAbove.PersonId.Should().Be(subject.Id, "and the first end of this one");
+
+        (await CreateService(dbContext).DeleteAsync(subject.Id)).Should().BeTrue();
+
+        await using var fresh = CreateDbContext(database);
+        (await fresh.PersonLinks.AsNoTracking().Select(link => link.Id).ToListAsync())
+            .Should().Equal(unrelated.Id);
+        (await fresh.People.AsNoTracking().Select(p => p.Id).ToListAsync())
+            .Should().Contain([below.Id, above.Id, seeded.AdaId, seeded.GraceId]).And.NotContain(subject.Id);
+    }
+
+    [Fact]
     public async Task DeleteAsync_removes_only_the_deleted_person_from_shared_interactions_and_deletes_orphans()
     {
         var database = NewDatabase();

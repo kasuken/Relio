@@ -50,6 +50,9 @@ public sealed class UserDataPortabilityCoverageTests
                     "Resolution", "LessonsLearned", "Status", "ResolvedOn", "RecurrenceOfId"],
                 ["OwnerId"],
                 [FieldProtectionSchema.VersionPropertyName]),
+            [typeof(PersonLink)] = Classify(
+                ["Id", "CreatedAtUtc", "UpdatedAtUtc", "PersonId", "RelatedPersonId", "Kind"],
+                ["OwnerId"]),
             [typeof(UserProfile)] = Classify(
                 ["Id", "CreatedAtUtc", "UpdatedAtUtc", "TimeZoneId", "DisplayName", "OnboardingDismissed",
                     "BirthdayRemindersEnabled", "DefaultBirthdayLeadDays", "ReminderEmailDelivery"],
@@ -78,6 +81,7 @@ public sealed class UserDataPortabilityCoverageTests
         [typeof(Note)] = typeof(NoteSnapshot),
         [typeof(Reminder)] = typeof(ReminderSnapshot),
         [typeof(DifficultMoment)] = typeof(DifficultMomentSnapshot),
+        [typeof(PersonLink)] = typeof(PersonLinkSnapshot),
         [typeof(UserProfile)] = typeof(UserProfileSnapshot),
         [typeof(ProductActivity)] = typeof(ProductActivitySnapshot),
     };

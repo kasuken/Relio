@@ -53,7 +53,8 @@ public static class UserDataPortabilityRules
             || document.Interactions is null
             || document.Notes is null
             || document.Reminders is null
-            || document.DifficultMoments is null)
+            || document.DifficultMoments is null
+            || document.PersonLinks is null)
         {
             errors.Add(UserDataPortabilityError.InvalidDocument);
             return errors.ToArray();
@@ -119,7 +120,8 @@ public static class UserDataPortabilityRules
             || interaction.Participants.Any(participant => participant is null))
         || document.Notes.Any(note => note is null)
         || document.Reminders.Any(reminder => reminder is null)
-        || document.DifficultMoments.Any(moment => moment is null);
+        || document.DifficultMoments.Any(moment => moment is null)
+        || document.PersonLinks.Any(link => link is null);
 
     private static void ValidateUniqueIds(
         UserDataExportDocument document,
@@ -135,6 +137,7 @@ public static class UserDataPortabilityRules
         AddIds("notes", document.Notes.Select(x => x.Id));
         AddIds("reminders", document.Reminders.Select(x => x.Id));
         AddIds("difficultMoments", document.DifficultMoments.Select(x => x.Id));
+        AddIds("personLinks", document.PersonLinks.Select(x => x.Id));
 
         void AddIds(string kind, IEnumerable<Guid> source)
         {
@@ -229,6 +232,11 @@ public static class UserDataPortabilityRules
         foreach (var moment in document.DifficultMoments)
         {
             ValidateAudit(moment.CreatedAtUtc, moment.UpdatedAtUtc, document.ExportedAtUtc, errors);
+        }
+
+        foreach (var link in document.PersonLinks)
+        {
+            ValidateAudit(link.CreatedAtUtc, link.UpdatedAtUtc, document.ExportedAtUtc, errors);
         }
     }
 
@@ -382,6 +390,31 @@ public static class UserDataPortabilityRules
                 errors.Add(UserDataPortabilityError.InvalidValue);
             }
         }
+
+        var linkedPairs = new HashSet<(Guid, Guid)>();
+        foreach (var link in document.PersonLinks)
+        {
+            if (!people.ContainsKey(link.PersonId)
+                || !people.ContainsKey(link.RelatedPersonId)
+                || link.PersonId == link.RelatedPersonId)
+            {
+                errors.Add(UserDataPortabilityError.InvalidReference);
+            }
+
+            if (!Enum.IsDefined(link.Kind))
+            {
+                errors.Add(UserDataPortabilityError.InvalidValue);
+            }
+
+            // One link per pair, whichever way round the two ends are written.
+            var pair = link.PersonId.CompareTo(link.RelatedPersonId) < 0
+                ? (link.PersonId, link.RelatedPersonId)
+                : (link.RelatedPersonId, link.PersonId);
+            if (!linkedPairs.Add(pair))
+            {
+                errors.Add(UserDataPortabilityError.InvalidValue);
+            }
+        }
     }
 
     private static void ValidateProductActivity(
@@ -473,5 +506,6 @@ public static class UserDataPortabilityRules
         + document.Notes.Count
         + document.Reminders.Count
         + document.DifficultMoments.Count
+        + document.PersonLinks.Count
         + (document.ProductActivity is null ? 0 : 1);
 }

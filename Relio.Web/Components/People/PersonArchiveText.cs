@@ -20,7 +20,7 @@ public static class PersonArchiveText
 
     /// <summary>The body of the delete confirmation. States what goes and that it is final.</summary>
     public const string DeleteMessage =
-        "This removes their profile, interactions, notes, reminders and difficult moments. It can't be undone.";
+        "This removes their profile, interactions, notes, reminders, difficult moments and connections. It can't be undone.";
 
     /// <summary>The confirm button of the delete confirmation: the same verb as the menu item, with the weight spelled out.</summary>
     public const string DeleteConfirmLabel = "Delete permanently";

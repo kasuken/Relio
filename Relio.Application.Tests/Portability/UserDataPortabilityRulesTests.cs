@@ -207,6 +207,104 @@ public sealed class UserDataPortabilityRulesTests
             .Should().ContainSingle().Which.Should().Be(UserDataPortabilityError.TooManyRows);
     }
 
+    [Fact]
+    public void Validate_accepts_person_links_whichever_way_round_the_ends_are_written()
+    {
+        var (document, first, second) = DocumentWithTwoPeople();
+
+        UserDataPortabilityRules.Validate(document with { PersonLinks = [Link(first, second)] }, Now)
+            .Should().BeEmpty();
+        UserDataPortabilityRules.Validate(document with { PersonLinks = [Link(second, first)] }, Now)
+            .Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Validate_rejects_a_person_link_to_an_unknown_person()
+    {
+        var (document, first, _) = DocumentWithTwoPeople();
+
+        UserDataPortabilityRules.Validate(document with { PersonLinks = [Link(first, Guid.NewGuid())] }, Now)
+            .Should().Contain(UserDataPortabilityError.InvalidReference);
+    }
+
+    [Fact]
+    public void Validate_rejects_a_person_link_from_a_person_to_themselves()
+    {
+        var (document, first, _) = DocumentWithTwoPeople();
+
+        UserDataPortabilityRules.Validate(document with { PersonLinks = [Link(first, first)] }, Now)
+            .Should().Contain(UserDataPortabilityError.InvalidReference);
+    }
+
+    [Fact]
+    public void Validate_rejects_an_undefined_person_link_kind()
+    {
+        var (document, first, second) = DocumentWithTwoPeople();
+
+        UserDataPortabilityRules.Validate(
+                document with { PersonLinks = [Link(first, second) with { Kind = (PersonLinkKind)999 }] }, Now)
+            .Should().Contain(UserDataPortabilityError.InvalidValue);
+    }
+
+    [Fact]
+    public void Validate_rejects_the_same_pair_linked_twice_in_either_order()
+    {
+        var (document, first, second) = DocumentWithTwoPeople();
+
+        UserDataPortabilityRules.Validate(
+                document with { PersonLinks = [Link(first, second), Link(second, first)] }, Now)
+            .Should().Contain(UserDataPortabilityError.InvalidValue);
+    }
+
+    [Fact]
+    public void Validate_rejects_reused_person_link_ids()
+    {
+        var (document, first, second) = DocumentWithTwoPeople();
+        var link = Link(first, second);
+
+        UserDataPortabilityRules.Validate(
+                document with { PersonLinks = [link, link with { PersonId = second, RelatedPersonId = first }] }, Now)
+            .Should().Contain(UserDataPortabilityError.DuplicateId);
+    }
+
+    [Fact]
+    public void Validate_rejects_a_null_person_link_collection_or_item()
+    {
+        var (document, _, _) = DocumentWithTwoPeople();
+
+        UserDataPortabilityRules.Validate(document with { PersonLinks = null! }, Now)
+            .Should().Contain(UserDataPortabilityError.InvalidDocument);
+        UserDataPortabilityRules.Validate(document with { PersonLinks = [null!] }, Now)
+            .Should().Contain(UserDataPortabilityError.InvalidDocument);
+    }
+
+    [Fact]
+    public void Validate_rejects_a_person_link_with_a_bad_audit_date()
+    {
+        var (document, first, second) = DocumentWithTwoPeople();
+        var link = Link(first, second) with { CreatedAtUtc = Now.UtcDateTime.AddDays(1) };
+
+        UserDataPortabilityRules.Validate(document with { PersonLinks = [link] }, Now)
+            .Should().Contain(UserDataPortabilityError.InvalidAuditDate);
+    }
+
+    private static (UserDataExportDocument Document, Guid First, Guid Second) DocumentWithTwoPeople()
+    {
+        var first = ValidPerson();
+        var second = ValidPerson();
+        return (ValidDocument() with { People = [first, second] }, first.Id, second.Id);
+    }
+
+    private static PersonLinkSnapshot Link(Guid personId, Guid relatedPersonId) => new()
+    {
+        Id = Guid.NewGuid(),
+        PersonId = personId,
+        RelatedPersonId = relatedPersonId,
+        Kind = PersonLinkKind.Parent,
+        CreatedAtUtc = Now.UtcDateTime.AddDays(-1),
+        UpdatedAtUtc = Now.UtcDateTime,
+    };
+
     private static UserDataExportDocument ValidDocument(string timeZoneId = "UTC") => new()
     {
         FormatVersion = UserDataExportDocument.CurrentFormatVersion,

@@ -181,6 +181,47 @@ public sealed class UserDataPortabilityServiceTests
     }
 
     [Fact]
+    public async Task Export_and_restore_round_trips_person_links_with_remapped_normalized_ends()
+    {
+        var clock = new FakeTimeProvider(Start);
+        await using var dbContext = CreateDbContext(clock);
+        var source = await SeedGraphAsync(dbContext, clock, SourceOwner);
+        var other = await SeedGraphAsync(dbContext, clock, OtherOwner);
+        await SeedRegistrationOnlyAccountAsync(dbContext, DestinationOwner);
+
+        // The active person is Ada's parent (written from Ada's side, whichever Guid is lower).
+        var sourceLink = new PersonLink { OwnerId = SourceOwner };
+        sourceLink.SetEnds(source.ArchivedPersonId, source.ActivePersonId, PersonLinkKind.Parent);
+        var otherLink = new PersonLink { OwnerId = OtherOwner };
+        otherLink.SetEnds(other.ArchivedPersonId, other.ActivePersonId, PersonLinkKind.Friend);
+        dbContext.PersonLinks.AddRange(sourceLink, otherLink);
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+
+        var export = await CreateService(dbContext, SourceOwner, clock).ExportAsync();
+        await CreateService(dbContext, DestinationOwner, clock).RestoreAsync(export);
+
+        export.PersonLinks.Should().ContainSingle().Which.Id.Should().Be(sourceLink.Id);
+        dbContext.ChangeTracker.Clear();
+        var restoredPeople = await dbContext.People.AsNoTracking()
+            .Where(person => person.OwnerId == DestinationOwner)
+            .ToListAsync();
+        var restoredArchived = restoredPeople.Single(person => person.IsArchived);
+        var restoredActive = restoredPeople.Single(person => !person.IsArchived);
+        var restoredLink = await dbContext.PersonLinks.AsNoTracking()
+            .SingleAsync(link => link.OwnerId == DestinationOwner);
+
+        restoredLink.Id.Should().NotBe(sourceLink.Id);
+        restoredLink.PersonId.CompareTo(restoredLink.RelatedPersonId).Should().BeNegative("the ends are normalized again");
+        restoredLink.Involves(restoredArchived.Id).Should().BeTrue();
+        restoredLink.Involves(restoredActive.Id).Should().BeTrue();
+        restoredLink.RoleOfOther(restoredArchived.Id).Should().Be(PersonLinkKind.Parent);
+        restoredLink.RoleOfOther(restoredActive.Id).Should().Be(PersonLinkKind.Child);
+        restoredLink.CreatedAtUtc.Should().Be(export.PersonLinks.Single().CreatedAtUtc);
+        restoredLink.UpdatedAtUtc.Should().Be(export.PersonLinks.Single().UpdatedAtUtc);
+    }
+
+    [Fact]
     public async Task Invalid_graph_restore_leaves_registration_defaults_and_profile_unchanged()
     {
         var clock = new FakeTimeProvider(Start);

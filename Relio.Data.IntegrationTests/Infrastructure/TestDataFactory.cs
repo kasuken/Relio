@@ -88,6 +88,40 @@ internal static class TestDataFactory
     public static TagService CreateTagService(RelioDbContext dbContext, string? ownerId) =>
         new(dbContext, new FakeCurrentUser(ownerId));
 
+    /// <summary>
+    /// A new random <see cref="Guid"/> whose first four bytes are fixed, so its <see cref="Guid.CompareTo(Guid)"/>
+    /// order against another one is known (the random rest keeps it unique in a shared database).
+    /// </summary>
+    public static Guid GuidStartingWith(uint first)
+    {
+        var bytes = Guid.NewGuid().ToByteArray();
+        BitConverter.GetBytes(first).CopyTo(bytes, 0);
+        return new Guid(bytes);
+    }
+
+    public static PersonLinkService CreatePersonLinkService(RelioDbContext dbContext, string? ownerId) =>
+        new(dbContext, new FakeCurrentUser(ownerId));
+
+    /// <summary>
+    /// Inserts a link straight into the table (so an archived person can be an end, which the service
+    /// refuses for new links): <paramref name="otherId"/> is <paramref name="roleOfOther"/> to
+    /// <paramref name="viewedId"/>.
+    /// </summary>
+    public static async Task<Guid> CreatePersonLinkAsync(
+        RelioDbContext dbContext,
+        string ownerId,
+        Guid viewedId,
+        Guid otherId,
+        PersonLinkKind roleOfOther)
+    {
+        var link = new PersonLink { OwnerId = ownerId };
+        link.SetEnds(viewedId, otherId, roleOfOther);
+        dbContext.PersonLinks.Add(link);
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+        return link.Id;
+    }
+
     public static Relio.Data.DifficultMoments.DifficultMomentService CreateDifficultMomentService(RelioDbContext dbContext, string? ownerId, TimeProvider? timeProvider = null) =>
         new(dbContext, new FakeCurrentUser(ownerId), timeProvider ?? TimeProvider.System);
 
@@ -106,10 +140,12 @@ internal static class TestDataFactory
         bool isArchived = false,
         DateTime? createdAtUtc = null,
         Guid? relationshipTypeId = null,
-        IReadOnlyList<Guid>? tagIds = null)
+        IReadOnlyList<Guid>? tagIds = null,
+        Guid? id = null)
     {
         var person = new Person
         {
+            Id = id ?? Guid.NewGuid(),
             OwnerId = ownerId,
             FirstName = firstName,
             LastName = lastName,

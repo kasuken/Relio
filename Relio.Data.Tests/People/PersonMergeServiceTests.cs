@@ -214,6 +214,117 @@ public class PersonMergeServiceTests
             ("An unpinned note on the duplicate.", false));
     }
 
+    // Fixed ids make the normalization order deterministic (Guid.CompareTo): the duplicate (Jon, 0x40)
+    // is below Alice (0x60) and the primary (John, 0x80) is above her, so Alice's link flips its stored
+    // orientation when it moves; Bea (0x20) is below both, so her link keeps its orientation.
+    private static readonly Guid FixedJohn = Guid.Parse("80000000-0000-0000-0000-000000000000");
+    private static readonly Guid FixedJon = Guid.Parse("40000000-0000-0000-0000-000000000000");
+    private static readonly Guid FixedAlice = Guid.Parse("60000000-0000-0000-0000-000000000000");
+    private static readonly Guid FixedBea = Guid.Parse("20000000-0000-0000-0000-000000000000");
+
+    [Fact]
+    public async Task MergeAsync_moves_the_duplicates_links_to_the_primary_with_the_right_reciprocal()
+    {
+        var database = NewDatabase();
+        await using var dbContext = CreateDbContext(database);
+        var seeded = await SeedAsync(dbContext, john => john.Id = FixedJohn, jon => jon.Id = FixedJon);
+        var parentLink = await AddLinkAsync(dbContext, FixedJon, FixedAlice, PersonLinkKind.Parent, "Alice");
+        var friendLink = await AddLinkAsync(dbContext, FixedJon, FixedBea, PersonLinkKind.Friend, "Bea");
+        // Written from Grace's side ("Jon is Grace's child"), so Grace is the duplicate's parent.
+        var childLink = await AddLinkAsync(dbContext, seeded.GraceId, seeded.JonId, PersonLinkKind.Child);
+
+        (await CreateService(dbContext).MergeAsync(Request(seeded))).Should().Be(MergeOutcome.Merged);
+
+        await using var fresh = CreateDbContext(database);
+        var links = await fresh.PersonLinks.AsNoTracking().ToListAsync();
+        links.Should().HaveCount(3);
+        links.Select(link => link.Id).Should().BeEquivalentTo([parentLink, friendLink, childLink], "the rows are kept");
+        links.Should().OnlyContain(link => link.Involves(FixedJohn) && !link.Involves(FixedJon));
+        links.Should().OnlyContain(link => link.PersonId.CompareTo(link.RelatedPersonId) < 0, "ends stay normalized");
+        links.Single(link => link.Id == parentLink).RoleOfOther(FixedJohn).Should().Be(PersonLinkKind.Parent);
+        links.Single(link => link.Id == friendLink).RoleOfOther(FixedJohn).Should().Be(PersonLinkKind.Friend);
+        links.Single(link => link.Id == childLink).RoleOfOther(FixedJohn).Should().Be(PersonLinkKind.Parent);
+        links.Single(link => link.Id == childLink).OtherPersonId(FixedJohn).Should().Be(seeded.GraceId);
+    }
+
+    [Fact]
+    public async Task MergeAsync_removes_a_link_between_the_primary_and_the_duplicate()
+    {
+        var database = NewDatabase();
+        await using var dbContext = CreateDbContext(database);
+        var seeded = await SeedAsync(dbContext);
+        await AddLinkAsync(dbContext, seeded.JohnId, seeded.JonId, PersonLinkKind.Sibling);
+
+        (await CreateService(dbContext).MergeAsync(Request(seeded))).Should().Be(MergeOutcome.Merged);
+
+        await using var fresh = CreateDbContext(database);
+        (await fresh.PersonLinks.AsNoTracking().CountAsync()).Should().Be(0, "a profile cannot be linked to itself");
+        (await fresh.People.AsNoTracking().AnyAsync(p => p.Id == seeded.JohnId)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task MergeAsync_keeps_the_primarys_link_when_both_were_linked_to_the_same_person()
+    {
+        var database = NewDatabase();
+        await using var dbContext = CreateDbContext(database);
+        var seeded = await SeedAsync(dbContext);
+        var primaryLink = await AddLinkAsync(dbContext, seeded.JohnId, seeded.GraceId, PersonLinkKind.Friend);
+        await AddLinkAsync(dbContext, seeded.JonId, seeded.GraceId, PersonLinkKind.Colleague);
+
+        (await CreateService(dbContext).MergeAsync(Request(seeded))).Should().Be(MergeOutcome.Merged);
+
+        await using var fresh = CreateDbContext(database);
+        var link = await fresh.PersonLinks.AsNoTracking().SingleAsync();
+        link.Id.Should().Be(primaryLink);
+        link.RoleOfOther(seeded.JohnId).Should().Be(PersonLinkKind.Friend);
+    }
+
+    [Fact]
+    public async Task MergeAsync_moves_a_link_to_an_archived_person()
+    {
+        var database = NewDatabase();
+        await using var dbContext = CreateDbContext(database);
+        var seeded = await SeedAsync(dbContext);
+        var archived = new Person { OwnerId = Owner, FirstName = "Old", IsArchived = true, ArchivedAtUtc = Now.UtcDateTime };
+        dbContext.People.Add(archived);
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+        var linkId = await AddLinkAsync(dbContext, seeded.JonId, archived.Id, PersonLinkKind.Manager);
+
+        (await CreateService(dbContext).MergeAsync(Request(seeded))).Should().Be(MergeOutcome.Merged);
+
+        await using var fresh = CreateDbContext(database);
+        var link = await fresh.PersonLinks.AsNoTracking().SingleAsync();
+        link.Id.Should().Be(linkId);
+        link.OtherPersonId(seeded.JohnId).Should().Be(archived.Id);
+        link.RoleOfOther(seeded.JohnId).Should().Be(PersonLinkKind.Manager);
+    }
+
+    /// <summary>
+    /// Adds a link where <paramref name="otherId"/> is <paramref name="roleOfOther"/> to
+    /// <paramref name="viewedId"/>, and (with a name) creates the other person first.
+    /// </summary>
+    private static async Task<Guid> AddLinkAsync(
+        RelioDbContext dbContext,
+        Guid viewedId,
+        Guid otherId,
+        PersonLinkKind roleOfOther,
+        string? createOtherNamed = null)
+    {
+        if (createOtherNamed is not null)
+        {
+            dbContext.People.Add(new Person { Id = otherId, OwnerId = Owner, FirstName = createOtherNamed });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var link = new PersonLink { OwnerId = Owner };
+        link.SetEnds(viewedId, otherId, roleOfOther);
+        dbContext.PersonLinks.Add(link);
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+        return link.Id;
+    }
+
     [Fact]
     public async Task Merging_an_active_duplicate_into_an_archived_primary_is_active_by_default()
     {

@@ -614,6 +614,45 @@ internal static class ServiceCoverageCatalog
                     nameof(DifficultMomentSqlServerTests.Difficult_moment_creation_and_reads_round_trip_with_sql_server),
                     SqlIsolationEvidence.OwnerOperation))),
 
+        CurrentUserWithForeignIdsAndArchiveRules<IPersonLinkService>(
+            Method(nameof(IPersonLinkService.ListForPersonAsync),
+                Scenario<PersonLinkSqlServerTests>(
+                    nameof(PersonLinkSqlServerTests.Person_links_are_isolated_by_owner_for_all_reads_and_mutations),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.MissingPrimary),
+                Scenario<PersonLinkSqlServerTests>(
+                    nameof(PersonLinkSqlServerTests.Person_link_creation_reads_updates_and_deletes_round_trip_on_SQL_Server),
+                    SqlIsolationEvidence.OwnerOperation),
+                Scenario<PersonLinkSqlServerTests>(
+                    nameof(PersonLinkSqlServerTests.Linking_archived_people_is_refused_but_existing_links_stay_listed),
+                    SqlIsolationEvidence.ArchiveRule)),
+            Method(nameof(IPersonLinkService.CreateAsync),
+                Scenario<PersonLinkSqlServerTests>(
+                    nameof(PersonLinkSqlServerTests.Person_links_are_isolated_by_owner_for_all_reads_and_mutations),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.ForeignIdRejected),
+                Scenario<PersonLinkSqlServerTests>(
+                    nameof(PersonLinkSqlServerTests.Person_link_creation_reads_updates_and_deletes_round_trip_on_SQL_Server),
+                    SqlIsolationEvidence.OwnerOperation),
+                Scenario<PersonLinkSqlServerTests>(
+                    nameof(PersonLinkSqlServerTests.Linking_archived_people_is_refused_but_existing_links_stay_listed),
+                    SqlIsolationEvidence.ArchiveRule)),
+            Method(nameof(IPersonLinkService.UpdateAsync),
+                Scenario<PersonLinkSqlServerTests>(
+                    nameof(PersonLinkSqlServerTests.Person_links_are_isolated_by_owner_for_all_reads_and_mutations),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.MissingPrimary),
+                Scenario<PersonLinkSqlServerTests>(
+                    nameof(PersonLinkSqlServerTests.Person_link_creation_reads_updates_and_deletes_round_trip_on_SQL_Server),
+                    SqlIsolationEvidence.OwnerOperation),
+                Scenario<PersonLinkSqlServerTests>(
+                    nameof(PersonLinkSqlServerTests.Linking_archived_people_is_refused_but_existing_links_stay_listed),
+                    SqlIsolationEvidence.ArchiveRule)),
+            Method(nameof(IPersonLinkService.DeleteAsync),
+                Scenario<PersonLinkSqlServerTests>(
+                    nameof(PersonLinkSqlServerTests.Person_links_are_isolated_by_owner_for_all_reads_and_mutations),
+                    SqlIsolationEvidence.CrossOwner | SqlIsolationEvidence.MissingPrimary),
+                Scenario<PersonLinkSqlServerTests>(
+                    nameof(PersonLinkSqlServerTests.Person_link_creation_reads_updates_and_deletes_round_trip_on_SQL_Server),
+                    SqlIsolationEvidence.OwnerOperation))),
+
         CurrentUser<INotificationPreferencesService>(
             Method(nameof(INotificationPreferencesService.GetPreferencesAsync),
                 Scenario<CurrentUserSqlIsolationTests>(
@@ -933,7 +972,8 @@ internal static class ServiceCoverageCatalog
         new("Relio.Application.Reminders.BirthdayReminderCalculator", "Pure birthday-date calculation; user time-zone reads are proved by IReminderService and IUserTimeZoneService."),
         new("Relio.Application.Reminders.ReachOutCalculator", "Pure cadence-date calculation; owner scoping is proved by IReminderService."),
         new("Relio.Application.Reminders.ReminderRecurrence", "Pure recurrence-date calculation; persistence and owner scoping are proved by IReminderService."),
-        new("Relio.Application.DifficultMoments.DifficultMomentRules", "Pure difficult moment input validation; persistence and owner scoping are proved by IDifficultMomentService."),
+        new("Relio.Application.People.PersonLinkRules", "Pure link input validation; persistence, ownership of both people and the pair rules are proved by IPersonLinkService."),
+        new("Relio.Application.DifficultMoments.DifficultMomentRules","Pure difficult moment input validation; persistence and owner scoping are proved by IDifficultMomentService."),
         new("Relio.Application.Portability.UserDataPortabilityRules", "Pure portable-document validation; real restore ownership and fresh-destination behavior are proved by IUserDataPortabilityService."),
         new("Relio.Application.Metrics.ProductActivityCohortRules", "Pure cohort-date calculation; persisted owner attribution is proved by IProductActivityService."),
     ];

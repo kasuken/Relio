@@ -43,6 +43,12 @@ public sealed record UserDataExportDocument
     public IReadOnlyList<DifficultMomentSnapshot> DifficultMoments { get; init; } = [];
 
     /// <summary>
+    /// Links between two of the account's people (#129). Optional, so a version 1 document written
+    /// before links existed still reads as "no links"; an explicit <c>null</c> is invalid.
+    /// </summary>
+    public IReadOnlyList<PersonLinkSnapshot> PersonLinks { get; init; } = [];
+
+    /// <summary>
     /// The source account's optional product-activity contribution. This is included for access and
     /// erasure portability only and is deliberately never restored into the destination instance.
     /// </summary>
@@ -278,6 +284,27 @@ public sealed record DifficultMomentSnapshot
     public required DateOnly? ResolvedOn { get; init; }
     /// <summary>Referenced earlier moment ID, if this is a recurrence.</summary>
     public required Guid? RecurrenceOfId { get; init; }
+    /// <summary>UTC creation audit instant.</summary>
+    public required DateTime CreatedAtUtc { get; init; }
+    /// <summary>UTC update audit instant.</summary>
+    public required DateTime UpdatedAtUtc { get; init; }
+}
+
+/// <summary>
+/// A link between two people for portability: <see cref="RelatedPersonId"/> is
+/// <see cref="PersonId"/>'s <see cref="Kind"/>. The ends need not be in the normalized order a
+/// stored row uses; restore re-normalizes them after remapping the ids.
+/// </summary>
+public sealed record PersonLinkSnapshot
+{
+    /// <summary>Source-local link ID.</summary>
+    public required Guid Id { get; init; }
+    /// <summary>Source-local ID of the first person.</summary>
+    public required Guid PersonId { get; init; }
+    /// <summary>Source-local ID of the second person.</summary>
+    public required Guid RelatedPersonId { get; init; }
+    /// <summary>What the second person is to the first.</summary>
+    public required PersonLinkKind Kind { get; init; }
     /// <summary>UTC creation audit instant.</summary>
     public required DateTime CreatedAtUtc { get; init; }
     /// <summary>UTC update audit instant.</summary>

@@ -100,6 +100,13 @@ public class PersonMergeTests(RelioAppFixture fixture)
             jon,
             reminderTitle,
             DateOnly.FromDateTime(TimeProvider.System.GetUtcNow().UtcDateTime).AddDays(3));
+        // Links (#129): Jon's friend Ada (archived afterwards, so the list and the merge suggestion are
+        // unchanged) must follow the merge, and the link between John and Jon must not survive it.
+        var ada = await PeopleTestHelpers.CreatePersonAsync(
+            fixture.App, ownerId, new CreatePersonRequest { FirstName = "Ada", LastName = "Lovelace" });
+        await PeopleTestHelpers.CreatePersonLinkAsync(fixture.App, ownerId, jon, ada, PersonLinkKind.Friend);
+        await PeopleTestHelpers.CreatePersonLinkAsync(fixture.App, ownerId, john, jon, PersonLinkKind.Sibling);
+        await PeopleTestHelpers.ArchivePersonAsync(fixture.App, ownerId, ada);
 
         await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, $"/people/{john}");
         await page.Locator("[data-testid='person-actions']").GetByRole(AriaRole.Button, new() { Name = "More", Exact = true }).ClickAsync();
@@ -161,6 +168,10 @@ public class PersonMergeTests(RelioAppFixture fixture)
             ]);
         await Expect(page.GetByTestId("pinned-note-text")).ToHaveTextAsync("Remember John's observatory story.");
         await Expect(page.GetByTestId($"person-reminder-{reminderId}")).ToContainTextAsync(reminderTitle);
+        await Expect(page.GetByTestId("person-connection")).ToHaveCountAsync(1);
+        await Expect(page.GetByTestId("person-connection-role")).ToHaveTextAsync("Friend");
+        await Expect(page.GetByTestId("person-connection-link")).ToHaveTextAsync("Ada Lovelace");
+        await Expect(page.GetByTestId("person-connection-archived")).ToBeVisibleAsync();
 
         // One Smith in the list.
         await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, "/people");
@@ -189,6 +200,12 @@ public class PersonMergeTests(RelioAppFixture fixture)
             .ToListAsync();
         mergedReminders.Should().ContainSingle();
         (mergedReminders[0].PersonId, mergedReminders[0].Title).Should().Be((john, reminderTitle));
+        var mergedLinks = await PeopleTestHelpers.ListPersonLinksAsync(fixture.App, ownerId);
+        var mergedLink = mergedLinks.Should().ContainSingle("the pair link was dropped and the friend link moved").Subject;
+        mergedLink.Involves(john).Should().BeTrue();
+        mergedLink.OtherPersonId(john).Should().Be(ada);
+        mergedLink.RoleOfOther(john).Should().Be(PersonLinkKind.Friend);
+        mergedLinks.Should().OnlyContain(link => !link.Involves(jon));
         var sharedParticipants = await interactionDb.InteractionParticipants.AsNoTracking()
             .Where(participant => participant.InteractionId == sharedInteractionId)
             .Select(participant => participant.PersonId)
