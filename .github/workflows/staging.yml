@@ -1,0 +1,230 @@
+# Staging deployment of the hosted Relio app (issue #120). It mirrors the build, deploy and smoke
+# steps of the shared production workflow (kasuken/.github release-azure-webapp.yml, used by
+# release.yml) against its own Azure resources and `staging` GitHub environment. The shared
+# workflow cannot be used here: it is hard-wired to the `production` environment and always
+# tags and publishes a GitHub release.
+#
+#   run "Staging" (workflow_dispatch) on main  -> what-if + deploy infra/staging.bicep, deploy, verify
+#   push to main with vars.STAGING_AUTO_DEPLOY == 'true' -> the same for every green main commit
+#
+# Operator guide (one-time setup, secrets, evidence): docs/operations/staging.md
+name: Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      infrastructure:
+        description: Run what-if and deploy infra/staging.bicep before the code
+        type: boolean
+        default: true
+      restart-check:
+        description: Restart the app afterwards and verify readiness again (startup migrations are then a no-op)
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+
+concurrency:
+  group: staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Must match infra/staging.bicepparam (namingSuffix).
+  RESOURCE_GROUP: rg-relio-staging
+  WEBAPP_NAME: app-relio-stg-edff
+  BASE_URL: https://app-relio-stg-edff.azurewebsites.net
+
+jobs:
+  build:
+    name: Build
+    # Push runs stay off until the owner sets the repository variable STAGING_AUTO_DEPLOY=true.
+    if: >-
+      github.repository == 'kasuken/Relio' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || vars.STAGING_AUTO_DEPLOY == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Same gate as the production release: the commit must have passed CI.
+      - name: Wait for CI to pass on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          CI_WORKFLOW: ci.yml
+        run: |
+          for attempt in $(seq 1 120); do
+            runs=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$CI_WORKFLOW" --commit "$SHA" \
+              --json status,conclusion,url --jq '[.[] | select(.status != "cancelled")]')
+            if jq -e 'any(.[]; .conclusion == "success")' <<<"$runs" >/dev/null; then
+              echo "CI passed: $(jq -r 'map(select(.conclusion == "success"))[0].url' <<<"$runs")"; exit 0
+            fi
+            if jq -e 'length > 0 and all(.[]; .status == "completed")' <<<"$runs" >/dev/null; then
+              echo "::error::CI ($CI_WORKFLOW) failed on $SHA: $(jq -r '.[0].url' <<<"$runs")"; exit 1
+            fi
+            echo "Waiting for $CI_WORKFLOW on $SHA (attempt $attempt)..."
+            sleep 20
+          done
+          echo "::error::No passing $CI_WORKFLOW run for $SHA after 40 minutes. Push the commit to main or re-run CI."
+          exit 1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      # Directory.Build.props supplies VersionPrefix; the suffix marks this as a staging build.
+      - name: Publish
+        run: >
+          dotnet publish Relio.Web/Relio.Web.csproj --configuration Release --output ./publish
+          -p:VersionSuffix="staging.${GITHUB_RUN_NUMBER}" -p:SourceRevisionId="$GITHUB_SHA"
+          -p:ContinuousIntegrationBuild=true
+
+      - name: Upload package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: webapp-staging-${{ github.run_id }}
+          path: ./publish
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Deploy to staging
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: staging
+      url: ${{ env.BASE_URL }}
+    steps:
+      # infra/ and the verification script come from the same commit that was built.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: webapp-staging-${{ github.run_id }}
+          path: ./publish
+
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Secrets reach the Azure CLI only through these environment variables, which
+      # infra/staging.bicepparam reads. Never through arguments, so they stay out of the log.
+      - name: Infrastructure what-if
+        if: github.event_name == 'push' || inputs.infrastructure
+        env:
+          RELIO_SQL_ADMIN_PASSWORD: ${{ secrets.SQL_ADMIN_PASSWORD }}
+          RELIO_DP_CERT_PASSWORD: ${{ secrets.DP_CERT_PASSWORD }}
+          RELIO_DEPLOYER_OBJECT_ID: ${{ vars.DEPLOYER_OBJECT_ID }}
+        run: |
+          az deployment group what-if --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/staging.bicep --parameters infra/staging.bicepparam \
+            --no-pretty-print --output json > whatif.json
+          {
+            echo "### Infrastructure what-if"
+            jq -r '.changes | group_by(.changeType) | map("- \(.[0].changeType): \(length)") | .[]' whatif.json
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          # Staging is created and updated by this template only; a Delete means the template
+          # drifted from what exists, so stop and let a person look.
+          jq -e '[.changes[] | select(.changeType == "Delete")] | length == 0' whatif.json >/dev/null \
+            || { echo "::error::The what-if would delete resources. Nothing was deployed."; exit 1; }
+
+      - name: Deploy infrastructure
+        if: github.event_name == 'push' || inputs.infrastructure
+        env:
+          RELIO_SQL_ADMIN_PASSWORD: ${{ secrets.SQL_ADMIN_PASSWORD }}
+          RELIO_DP_CERT_PASSWORD: ${{ secrets.DP_CERT_PASSWORD }}
+          RELIO_DEPLOYER_OBJECT_ID: ${{ vars.DEPLOYER_OBJECT_ID }}
+        run: |
+          name="relio-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          state=$(az deployment group create --resource-group "$RESOURCE_GROUP" --name "$name" \
+            --template-file infra/staging.bicep --parameters infra/staging.bicepparam \
+            --query properties.provisioningState --output tsv)
+          echo "Infrastructure deployment: $state"
+          [[ "$state" == Succeeded ]] || { echo "::error::Infrastructure deployment ended in $state."; exit 1; }
+          # Guards against the workflow env drifting from the bicepparam naming suffix.
+          deployed=$(az deployment group show --resource-group "$RESOURCE_GROUP" --name "$name" \
+            --query properties.outputs.webAppName.value --output tsv)
+          [[ "$deployed" == "$WEBAPP_NAME" ]] \
+            || { echo "::error::The template deployed $deployed but this workflow deploys to $WEBAPP_NAME."; exit 1; }
+
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3.0.8
+        with:
+          app-name: ${{ env.WEBAPP_NAME }}
+          package: ./publish
+
+      # Read-only checks of what Azure itself reports, next to what the script sees from outside.
+      - name: Assert platform configuration
+        run: |
+          fail=0
+          check() { # check <label> <expected> <actual>
+            if [[ "${2,,}" == "${3,,}" ]]; then echo "PASS: $1 = $3"; else echo "::error::$1 is '$3', expected '$2'"; fail=1; fi
+          }
+          check "httpsOnly" true "$(az webapp show -g "$RESOURCE_GROUP" -n "$WEBAPP_NAME" --query httpsOnly -o tsv)"
+          config=$(az webapp config show -g "$RESOURCE_GROUP" -n "$WEBAPP_NAME" --query '{tls:minTlsVersion,ftps:ftpsState}' -o json)
+          check "minTlsVersion" 1.2 "$(jq -r .tls <<<"$config")"
+          check "ftpsState" Disabled "$(jq -r .ftps <<<"$config")"
+          # Only these named, non-secret settings are read; never the whole list.
+          settings=$(az webapp config appsettings list -g "$RESOURCE_GROUP" -n "$WEBAPP_NAME" \
+            --query "[?name=='ASPNETCORE_ENVIRONMENT'||name=='Billing__Provider'||name=='HostedFeatures__ProductMetrics__Enabled'||name=='Database__ApplyMigrationsOnStartup'||name=='SCM_DO_BUILD_DURING_DEPLOYMENT'].{n:name,v:value}" -o json)
+          setting() { jq -r --arg n "$1" '.[] | select(.n == $n) | .v' <<<"$settings"; }
+          check "ASPNETCORE_ENVIRONMENT" Staging "$(setting ASPNETCORE_ENVIRONMENT)"
+          check "Billing__Provider" None "$(setting Billing__Provider)"
+          metrics=$(setting HostedFeatures__ProductMetrics__Enabled)
+          check "HostedFeatures__ProductMetrics__Enabled" false "${metrics:-false}"
+          check "Database__ApplyMigrationsOnStartup" true "$(setting Database__ApplyMigrationsOnStartup)"
+          check "SCM_DO_BUILD_DURING_DEPLOYMENT" false "$(setting SCM_DO_BUILD_DURING_DEPLOYMENT)"
+          exit "$fail"
+
+      - name: Verify deployment
+        env:
+          EXPECT_NOINDEX: "true"
+        run: bash .github/scripts/verify-deployment.sh
+
+      # A second start runs MigrateAsync with nothing pending: it must come up ready again.
+      - name: Restart and verify readiness
+        if: github.event_name == 'push' || inputs.restart-check
+        env:
+          READY_ONLY: "true"
+        run: |
+          az webapp restart -g "$RESOURCE_GROUP" -n "$WEBAPP_NAME"
+          sleep 30
+          bash .github/scripts/verify-deployment.sh
+
+      # The likeliest failure of a first run is Key Vault role propagation: the app starts before
+      # its references resolve. Names and statuses only; running the workflow again is the fix.
+      - name: Key Vault reference status
+        if: failure()
+        run: |
+          id=$(az webapp show -g "$RESOURCE_GROUP" -n "$WEBAPP_NAME" --query id -o tsv)
+          az rest --method get \
+            --uri "https://management.azure.com${id}/config/configreferences/appsettings?api-version=2023-12-01" \
+            --query "value[].{name:name,status:properties.status}" -o table
+
+      - name: Summary
+        if: success()
+        env:
+          VERSION_SUFFIX: staging.${{ github.run_number }}
+        run: |
+          {
+            echo "### Staging deployed"
+            echo "- Commit: \`$GITHUB_SHA\` (version suffix \`$VERSION_SUFFIX\`)"
+            echo "- URL: $BASE_URL"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1473,6 +1473,24 @@ implementation must extend every privacy checklist rather than treating an absen
   enabling them. The source-code link remains available on hosted and self-hosted instances.
   See `docs/security/policy-hosting.md`.
 
+## Hosted deployments
+
+Production goes through `.github/workflows/release.yml` (the shared release workflow; the app migrates
+on startup; infrastructure is applied by hand from `infra/main.bicep`). Staging goes through
+`.github/workflows/staging.yml` and `infra/staging.bicep`, in its own resource group with its own
+secrets; the operator guide is `docs/operations/staging.md`.
+
+- A new parameter in `infra/main.bicep` or a shared module needs a decision in `infra/staging.bicep`
+  (module parameters keep today's production values as their defaults).
+- Regenerate the committed ARM JSON (`infra/main.json`, `infra/modules/*.json`) with the same Bicep
+  version that wrote it, not a newer one; production what-if must stay a no-op.
+- Never commit a secret, key material or a filled parameters file. Staging secrets live in the GitHub
+  `staging` environment; `infra/staging.bicepparam` reads them from environment variables.
+- Hosted features (billing, analytics) stay off in staging unless the pull request says why.
+- `/health/ready` means "database reachable and no pending migrations" (`PendingMigrationsHealthCheck`).
+- Pin every GitHub Action by full commit SHA, give each job least-privilege `permissions`, and pass
+  untrusted values to `run:` scripts through `env:`, never `${{ }}`.
+
 ## Required validation
 
 Run before handing off changes:

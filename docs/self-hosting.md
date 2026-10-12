@@ -249,4 +249,6 @@ With `Database__ApplyMigrationsOnStartup=true` enabled in your `docker-compose.y
 - The updated Relio container connects to SQL Server.
 - Any new database migrations are executed automatically and safely before traffic is accepted.
 - Relio starts serving requests once migrations complete and the `/health/ready` check succeeds.
+  `/health/ready` reports unhealthy while the database is unreachable **or** any migration is still
+  pending, so a load balancer or deployment script that waits for it waits for a current schema.
 - Persistent data in `sqlserver-data` and keys in `relio-data` remain intact.
