@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Relio.Application.Metrics;
+using Relio.Web.Diagnostics;
 
 namespace Relio.Web.Metrics;
 
@@ -90,9 +91,9 @@ public sealed class ProductMetricsRetentionBackgroundService(
         }
         catch (Exception exception)
         {
-            _logger.LogError(
-                "Product metrics retention failed with exception type {ExceptionType}.",
-                exception.GetType().Name);
+            RelioOperationalEvents.ProductMetricsRetentionFailure(
+                _logger,
+                RelioOperationalEvents.ExceptionTypeOf(exception));
 
             if (failStartupOnError)
             {

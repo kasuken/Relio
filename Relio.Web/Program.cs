@@ -16,6 +16,7 @@ using Relio.Web.Background;
 using Relio.Web.Components;
 using Relio.Web.Components.Account;
 using Relio.Web.Configuration;
+using Relio.Web.Diagnostics;
 using Relio.Web.Endpoints;
 using Relio.Web.Email;
 using Relio.Web.Encryption;
@@ -31,6 +32,8 @@ using IdentityServiceCollectionExtensions = Relio.Web.Identity.ServiceCollection
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddRelioPrivacyLoggingFilters();
+// Sanitized circuit-failure signal; see docs/operations/monitoring.md.
+builder.Logging.AddRelioCircuitFailureSignal();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -123,9 +126,9 @@ if (!app.Environment.IsDevelopment())
         CreateScopeForErrors = true,
         SuppressDiagnosticsCallback = exceptionContext =>
         {
-            app.Logger.LogError(
-                "HTTP request failed with exception type {ExceptionType}.",
-                exceptionContext.Exception.GetType().Name);
+            RelioOperationalEvents.UnhandledHttpFailure(
+                app.Logger,
+                RelioOperationalEvents.ExceptionTypeOf(exceptionContext.Exception));
             return true;
         },
     });

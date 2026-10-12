@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Relio.Application.Reminders;
 using Relio.Web.Background;
+using Relio.Web.Diagnostics;
 
 namespace Relio.Web.Tests.Background;
 
@@ -192,6 +193,49 @@ public class ReminderSchedulerBackgroundServiceTests
         await startTask;
     }
 
+    [Fact]
+    public async Task Reminder_job_failure_emits_stable_event_without_note_or_difficult_moment_values()
+    {
+        const string noteSentinel = "private-note-text-sentinel-123";
+        const string difficultMomentSentinel = "private-difficult-moment-sentinel-456";
+        var runner = new FakeRunner
+        {
+            ShouldThrowOnFirstRun = true,
+            ExceptionMessage = $"{noteSentinel} {difficultMomentSentinel}",
+        };
+        var services = new ServiceCollection();
+        services.AddScoped<IReminderSchedulerRunner>(_ => runner);
+        using var provider = services.BuildServiceProvider();
+        var logger = new RecordingLogger<ReminderSchedulerBackgroundService>();
+        var service = new ReminderSchedulerBackgroundService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            new FakeTimeProvider(),
+            Options.Create(new ReminderSchedulerOptions
+            {
+                Enabled = true,
+                CheckInterval = TimeSpan.FromHours(1),
+            }),
+            logger);
+
+        using var cts = new CancellationTokenSource();
+        var startTask = service.StartAsync(cts.Token);
+
+        await runner.WaitUntilRunCountAsync(1);
+        await logger.WaitUntilCountAsync(2);
+
+        var failure = logger.Entries.Single(entry => entry.Level == LogLevel.Error);
+        failure.EventId.Id.Should().Be(RelioOperationalEvents.ReminderJobFailureId);
+        failure.EventId.Name.Should().Be("RelioReminderJobFailure");
+        failure.Message.Should().Contain(nameof(InvalidOperationException));
+        failure.Exception.Should().BeNull();
+        logger.Entries.Select(entry => entry.Message).Should().OnlyContain(message =>
+            !message.Contains(noteSentinel) && !message.Contains(difficultMomentSentinel));
+
+        await cts.CancelAsync();
+        await service.StopAsync(CancellationToken.None);
+        await startTask;
+    }
+
     private sealed class FakeRunner : IReminderSchedulerRunner
     {
         private readonly TaskCompletionSource _tcs = new();
@@ -243,7 +287,7 @@ public class ReminderSchedulerBackgroundServiceTests
         {
             lock (Entries)
             {
-                Entries.Add(new LogEntry(logLevel, formatter(state, exception), exception));
+                Entries.Add(new LogEntry(logLevel, eventId, formatter(state, exception), exception));
             }
 
             _signal.Release();
@@ -267,5 +311,5 @@ public class ReminderSchedulerBackgroundServiceTests
         }
     }
 
-    private sealed record LogEntry(LogLevel Level, string Message, Exception? Exception);
+    private sealed record LogEntry(LogLevel Level, EventId EventId, string Message, Exception? Exception);
 }

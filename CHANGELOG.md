@@ -15,6 +15,14 @@ All notable changes to this project are documented in this file.
   analytics. Setup, secrets and evidence are in `docs/operations/staging.md`; CI now compiles the
   Bicep templates and the verification script.
 
+- Operational monitoring and structured logging (#123). Unhandled HTTP errors, unhandled interactive
+  circuit failures, reminder job and metrics retention failures are logged as events with stable ids
+  9001-9005 that carry only the exception type, never notes, difficult moments or form values. A
+  sanitized signal now covers Blazor circuit failures while the framework's own log categories stay
+  suppressed. Hosted deployments use JSON console logging and can opt in to an Azure alert rule and email
+  action group (`alertEmailAddress`); self-hosted Compose gains log rotation and `RELIO_LOG_FORMAT=json`.
+  See `docs/operations/monitoring.md`.
+
 - Hosted billing with Stripe, following the LearnStack implementation. Off by default
   (`Billing:Provider=None`): a self-hosted instance has no plans and no limits. With
   `Billing:Provider=Stripe`, accounts are on a Free plan for up to 25 active people (archived people

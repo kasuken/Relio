@@ -136,6 +136,12 @@ Relio encrypts sensitive user content (`HowWeMet`, `Details`, `Note.Text`, `Inte
 | `Seo:PublicOrigin` | `Seo__PublicOrigin` | `https://localhost` | Canonical HTTPS public origin for SEO tags and sitemap (e.g. `https://relio.example.com`). |
 | `Seo:IndexingEnabled` | `Seo__IndexingEnabled` | `false` | Explicit opt-in for search engine crawlers. Off by default. |
 
+### Logging
+
+| Setting | Environment Variable | Default | Description |
+|---|---|---|---|
+| `Logging:Console:FormatterName` | `Logging__Console__FormatterName` | `simple` | `simple` for readable lines, `json` for one JSON object per line (log shippers). In `docker-compose.yml` set it with `RELIO_LOG_FORMAT` in `.env`. |
+
 ---
 
 ## Reverse Proxy & HTTPS Setup
@@ -230,6 +236,17 @@ When a user deletes their account in Relio (**Settings → Danger Zone → Delet
 3. **Operator Responsibility**:
    - Establish an explicit backup expiration schedule (e.g., historical backups are deleted after 30 days). Once the backup expires and is overwritten, erased data is completely gone.
    - If you ever restore a historical backup into production, beware that deleted users may be temporarily resurrected. Re-apply any pending erasure requests or inform affected parties.
+
+---
+
+## Monitoring & Logs
+
+Relio reports unhandled HTTP errors, failed interactive sessions and failed background jobs as log events
+with stable ids 9001-9005, containing only the exception type and never notes, form values or other
+private content. Backup automation will report its failures as `RelioBackupFailure` (9005). Docker
+rotates the container logs, `/health/live` and `/health/ready` are available for probes, and
+`RELIO_LOG_FORMAT=json` makes the logs easy to ship. See [operations/monitoring.md](operations/monitoring.md)
+for the event table, example commands and the privacy guarantees.
 
 ---
 

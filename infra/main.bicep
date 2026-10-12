@@ -40,6 +40,9 @@ param stripeProMonthlyPriceId string = ''
 @description('Stripe price id of Relio Pro billed yearly. Required when billingProvider is Stripe.')
 param stripeProYearlyPriceId string = ''
 
+@description('Operator email for failure alerts (docs/operations/monitoring.md). Empty disables alerting.')
+param alertEmailAddress string = ''
+
 var resourceGroupName = 'rg-relio-prod'
 var appServicePlanName = 'asp-relio-prod-edff'
 var webAppName = 'app-relio-prod-edff'
@@ -126,7 +129,18 @@ module appService './modules/app-service.bicep' = {
   }
 }
 
-module appServiceCustomDomain './modules/app-service-custom-domain.bicep' = {
+module monitoring './modules/monitoring.bicep' = {
+  name: 'monitoring'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    logAnalyticsWorkspaceId: logAnalytics.outputs.workspaceId
+    alertEmailAddress: alertEmailAddress
+  }
+}
+
+module appServiceCustomDomain'./modules/app-service-custom-domain.bicep' = {
   name: 'appServiceCustomDomain'
   scope: rg
   params: {

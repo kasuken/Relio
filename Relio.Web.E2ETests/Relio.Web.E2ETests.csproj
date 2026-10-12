@@ -38,6 +38,7 @@
     <Compile Include="..\Relio.Data.IntegrationTests\Infrastructure\SqlServerTestEnvironment.cs" Link="Infrastructure\SqlServerTestEnvironment.cs" />
     <Compile Include="..\Relio.Web.Tests\Infrastructure\DataProtectionTestHarness.cs" Link="Infrastructure\DataProtectionTestHarness.cs" />
     <Compile Include="..\Relio.Web.Tests\Infrastructure\RelioWebAppFactory.cs" Link="Infrastructure\RelioWebAppFactory.cs" />
+    <Compile Include="..\Relio.Web.Tests\Infrastructure\CapturingLoggerProvider.cs" Link="Infrastructure\CapturingLoggerProvider.cs" />
   </ItemGroup>
 
 </Project>

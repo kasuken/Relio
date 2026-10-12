@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "17640510409677971222"
+      "templateHash": "10613729163076427114"
     }
   },
   "parameters": {
@@ -67,6 +67,13 @@
       "defaultValue": "",
       "metadata": {
         "description": "Stripe price id of Relio Pro billed yearly. Required when billingProvider is Stripe."
+      }
+    },
+    "alertEmailAddress": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Operator email for failure alerts (docs/operations/monitoring.md). Empty disables alerting."
       }
     }
   },
@@ -562,7 +569,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.40.2.10011",
-              "templateHash": "8373346878039967594"
+              "templateHash": "10819366875292763567"
             }
           },
           "parameters": {
@@ -687,7 +694,7 @@
                   "ftpsState": "Disabled",
                   "http20Enabled": true,
                   "appCommandLine": "[if(parameters('buildDuringDeployment'), null(), 'dotnet Relio.Web.dll')]",
-                  "appSettings": "[concat(createArray(createObject('name', 'ConnectionStrings__Relio', 'value', variables('sqlConnectionStringReference')), createObject('name', 'Database__ApplyMigrationsOnStartup', 'value', 'true'), createObject('name', 'DataProtection__ApplicationName', 'value', parameters('dataProtectionApplicationName')), createObject('name', 'DataProtection__KeyRingPath', 'value', '/home/relio/keys'), createObject('name', 'DataProtection__ProtectionMode', 'value', 'Certificate'), createObject('name', 'DataProtection__Certificate__Path', 'value', '/home/relio/certificate.pfx'), createObject('name', 'DataProtection__Certificate__Password', 'value', variables('dataProtectionCertificatePasswordReference')), createObject('name', 'DataProtection__AutoGenerateIfMissing', 'value', 'true'), createObject('name', 'Registration__Mode', 'value', parameters('registrationMode')), createObject('name', 'Email__Provider', 'value', 'None'), createObject('name', 'Billing__Provider', 'value', parameters('billingProvider')), createObject('name', 'DemoData__Enabled', 'value', 'false'), createObject('name', 'ASPNETCORE_ENVIRONMENT', 'value', parameters('aspnetcoreEnvironment'))), variables('buildAppSettings'), createArray(createObject('name', 'WEBSITES_CONTAINER_START_TIME_LIMIT', 'value', '1800'), createObject('name', 'Seo__PublicOrigin', 'value', parameters('publicOrigin'))), variables('billingAppSettings'))]"
+                  "appSettings": "[concat(createArray(createObject('name', 'ConnectionStrings__Relio', 'value', variables('sqlConnectionStringReference')), createObject('name', 'Database__ApplyMigrationsOnStartup', 'value', 'true'), createObject('name', 'DataProtection__ApplicationName', 'value', parameters('dataProtectionApplicationName')), createObject('name', 'DataProtection__KeyRingPath', 'value', '/home/relio/keys'), createObject('name', 'DataProtection__ProtectionMode', 'value', 'Certificate'), createObject('name', 'DataProtection__Certificate__Path', 'value', '/home/relio/certificate.pfx'), createObject('name', 'DataProtection__Certificate__Password', 'value', variables('dataProtectionCertificatePasswordReference')), createObject('name', 'DataProtection__AutoGenerateIfMissing', 'value', 'true'), createObject('name', 'Registration__Mode', 'value', parameters('registrationMode')), createObject('name', 'Email__Provider', 'value', 'None'), createObject('name', 'Billing__Provider', 'value', parameters('billingProvider')), createObject('name', 'DemoData__Enabled', 'value', 'false'), createObject('name', 'Logging__Console__FormatterName', 'value', 'json'), createObject('name', 'ASPNETCORE_ENVIRONMENT', 'value', parameters('aspnetcoreEnvironment'))), variables('buildAppSettings'), createArray(createObject('name', 'WEBSITES_CONTAINER_START_TIME_LIMIT', 'value', '1800'), createObject('name', 'Seo__PublicOrigin', 'value', parameters('publicOrigin'))), variables('billingAppSettings'))]"
                 }
               }
             },
@@ -761,6 +768,148 @@
       "dependsOn": [
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resourceGroupName')), 'Microsoft.Resources/deployments', 'appServicePlan')]",
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resourceGroupName')), 'Microsoft.Resources/deployments', 'keyVault')]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resourceGroupName')), 'Microsoft.Resources/deployments', 'logAnalytics')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', variables('resourceGroupName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "monitoring",
+      "resourceGroup": "[variables('resourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          },
+          "logAnalyticsWorkspaceId": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resourceGroupName')), 'Microsoft.Resources/deployments', 'logAnalytics'), '2025-04-01').outputs.workspaceId.value]"
+          },
+          "alertEmailAddress": {
+            "value": "[parameters('alertEmailAddress')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.40.2.10011",
+              "templateHash": "17884103130659051181"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string"
+            },
+            "tags": {
+              "type": "object"
+            },
+            "logAnalyticsWorkspaceId": {
+              "type": "string"
+            },
+            "alertEmailAddress": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Operator email for Relio failure alerts. Empty (default) deploys no action group and no alert rule."
+              }
+            }
+          },
+          "variables": {
+            "alertsEnabled": "[not(empty(parameters('alertEmailAddress')))]",
+            "failureQuery": "let relioEvents = datatable(EventId:int, EventName:string) [\r\n    9001, 'RelioUnhandledHttpFailure',\r\n    9002, 'RelioCircuitFailure',\r\n    9003, 'RelioReminderJobFailure',\r\n    9004, 'RelioProductMetricsRetentionFailure',\r\n    9005, 'RelioBackupFailure'\r\n];\r\nAppServiceConsoleLogs\r\n| where ResultDescription contains '\"EventId\":90'\r\n| extend entry = parse_json(ResultDescription)\r\n| extend EventId = toint(entry.EventId), ExceptionType = tostring(entry.State.ExceptionType)\r\n| join kind=inner relioEvents on EventId\r\n| project TimeGenerated, EventName, ExceptionType\r\n"
+          },
+          "resources": [
+            {
+              "condition": "[variables('alertsEnabled')]",
+              "type": "Microsoft.Insights/actionGroups",
+              "apiVersion": "2023-01-01",
+              "name": "ag-relio-operations",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "groupShortName": "relio-ops",
+                "enabled": true,
+                "emailReceivers": [
+                  {
+                    "name": "operator",
+                    "emailAddress": "[parameters('alertEmailAddress')]",
+                    "useCommonAlertSchema": true
+                  }
+                ]
+              }
+            },
+            {
+              "condition": "[variables('alertsEnabled')]",
+              "type": "Microsoft.Insights/scheduledQueryRules",
+              "apiVersion": "2023-12-01",
+              "name": "alert-relio-operational-failures",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "LogAlert",
+              "properties": {
+                "displayName": "Relio operational failures",
+                "description": "Unhandled HTTP errors, interactive circuit failures, background job and backup failures (event ids 9001-9005). See docs/operations/monitoring.md.",
+                "severity": 2,
+                "enabled": true,
+                "scopes": [
+                  "[parameters('logAnalyticsWorkspaceId')]"
+                ],
+                "evaluationFrequency": "PT5M",
+                "windowSize": "PT15M",
+                "autoMitigate": true,
+                "criteria": {
+                  "allOf": [
+                    {
+                      "query": "[variables('failureQuery')]",
+                      "timeAggregation": "Count",
+                      "operator": "GreaterThan",
+                      "threshold": 0,
+                      "dimensions": [
+                        {
+                          "name": "EventName",
+                          "operator": "Include",
+                          "values": [
+                            "*"
+                          ]
+                        }
+                      ],
+                      "failingPeriods": {
+                        "numberOfEvaluationPeriods": 1,
+                        "minFailingPeriodsToAlert": 1
+                      }
+                    }
+                  ]
+                },
+                "actions": {
+                  "actionGroups": [
+                    "[resourceId('Microsoft.Insights/actionGroups', 'ag-relio-operations')]"
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/actionGroups', 'ag-relio-operations')]"
+              ]
+            }
+          ],
+          "outputs": {
+            "actionGroupId": {
+              "type": "string",
+              "value": "[if(variables('alertsEnabled'), resourceId('Microsoft.Insights/actionGroups', 'ag-relio-operations'), '')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resourceGroupName')), 'Microsoft.Resources/deployments', 'logAnalytics')]",
         "[subscriptionResourceId('Microsoft.Resources/resourceGroups', variables('resourceGroupName'))]"
       ]
