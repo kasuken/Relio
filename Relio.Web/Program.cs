@@ -10,6 +10,7 @@ using Relio.Application.Security;
 using Relio.Data;
 using Relio.Data.Administration;
 using Relio.Data.DependencyInjection;
+using Relio.Data.Health;
 using Relio.Data.Seeding;
 using Relio.Web.Background;
 using Relio.Web.Components;
@@ -104,9 +105,11 @@ builder.Services.AddRelioBilling(builder.Configuration);
 
 // "live" answers whether the process is up; "ready" also covers the database so load
 // balancers and the shared release workflow (which smoke-tests /health/ready) know when
-// Relio can actually serve requests.
+// Relio can actually serve requests: the database is reachable and every migration is applied
+// (startup migrations run before the app listens, so a pending one means a failed upgrade).
 builder.Services.AddHealthChecks()
-    .AddDbContextCheck<RelioDbContext>("database", tags: ["ready"]);
+    .AddDbContextCheck<RelioDbContext>("database", tags: ["ready"])
+    .AddCheck<PendingMigrationsHealthCheck>("migrations", tags: ["ready"]);
 
 var app = builder.Build();
 

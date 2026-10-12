@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "18086972890998083138"
+      "templateHash": "17640510409677971222"
     }
   },
   "parameters": {
@@ -562,7 +562,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.40.2.10011",
-              "templateHash": "10101854586285793716"
+              "templateHash": "8373346878039967594"
             }
           },
           "parameters": {
@@ -615,6 +615,43 @@
               "metadata": {
                 "description": "Public origin of the site, used for canonical URLs and the Stripe return URLs."
               }
+            },
+            "aspnetcoreEnvironment": {
+              "type": "string",
+              "defaultValue": "Production",
+              "allowedValues": [
+                "Production",
+                "Staging"
+              ],
+              "metadata": {
+                "description": "ASPNETCORE_ENVIRONMENT. Staging turns on noindex headers and robots.txt (the app gates indexing on Production)."
+              }
+            },
+            "registrationMode": {
+              "type": "string",
+              "defaultValue": "Open",
+              "allowedValues": [
+                "Open",
+                "InviteOnly",
+                "Closed"
+              ],
+              "metadata": {
+                "description": "Registration:Mode. The first account is always allowed and becomes the administrator, whatever the mode."
+              }
+            },
+            "dataProtectionApplicationName": {
+              "type": "string",
+              "defaultValue": "Relio",
+              "metadata": {
+                "description": "Data Protection application name, so one environment never shares a key purpose with another."
+              }
+            },
+            "buildDuringDeployment": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "true: Kudu/Oryx builds Relio.Web from source on deploy (how production was first deployed). false: the deployed zip is already `dotnet publish` output (the release and staging workflows) and the app starts with `dotnet Relio.Web.dll`."
+              }
             }
           },
           "variables": {
@@ -623,6 +660,7 @@
             "stripeApiKeyReference": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=stripe-api-key)', parameters('keyVaultName'))]",
             "stripeWebhookSigningSecretReference": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=stripe-webhook-signing-secret)', parameters('keyVaultName'))]",
             "planPageUrl": "[format('{0}/Account/Manage/Plan', parameters('publicOrigin'))]",
+            "buildAppSettings": "[if(parameters('buildDuringDeployment'), createArray(createObject('name', 'SCM_DO_BUILD_DURING_DEPLOYMENT', 'value', 'true'), createObject('name', 'ENABLE_ORYX_BUILD', 'value', 'true'), createObject('name', 'ORYX_DISABLE_COMPRESSION', 'value', 'true'), createObject('name', 'PROJECT', 'value', 'Relio.Web/Relio.Web.csproj')), createArray(createObject('name', 'SCM_DO_BUILD_DURING_DEPLOYMENT', 'value', 'false')))]",
             "billingAppSettings": "[if(equals(parameters('billingProvider'), 'Stripe'), createArray(createObject('name', 'Billing__ApiKey', 'value', variables('stripeApiKeyReference')), createObject('name', 'Billing__WebhookSigningSecret', 'value', variables('stripeWebhookSigningSecretReference')), createObject('name', 'Billing__ProMonthlyPriceId', 'value', parameters('stripeProMonthlyPriceId')), createObject('name', 'Billing__ProYearlyPriceId', 'value', parameters('stripeProYearlyPriceId')), createObject('name', 'Billing__CheckoutSuccessUrl', 'value', variables('planPageUrl')), createObject('name', 'Billing__CheckoutCancelUrl', 'value', variables('planPageUrl')), createObject('name', 'Billing__PortalReturnUrl', 'value', variables('planPageUrl'))), createArray())]"
           },
           "resources": [
@@ -648,7 +686,8 @@
                   "minTlsVersion": "1.2",
                   "ftpsState": "Disabled",
                   "http20Enabled": true,
-                  "appSettings": "[concat(createArray(createObject('name', 'ConnectionStrings__Relio', 'value', variables('sqlConnectionStringReference')), createObject('name', 'Database__ApplyMigrationsOnStartup', 'value', 'true'), createObject('name', 'DataProtection__ApplicationName', 'value', 'Relio'), createObject('name', 'DataProtection__KeyRingPath', 'value', '/home/relio/keys'), createObject('name', 'DataProtection__ProtectionMode', 'value', 'Certificate'), createObject('name', 'DataProtection__Certificate__Path', 'value', '/home/relio/certificate.pfx'), createObject('name', 'DataProtection__Certificate__Password', 'value', variables('dataProtectionCertificatePasswordReference')), createObject('name', 'DataProtection__AutoGenerateIfMissing', 'value', 'true'), createObject('name', 'Registration__Mode', 'value', 'Open'), createObject('name', 'Email__Provider', 'value', 'None'), createObject('name', 'Billing__Provider', 'value', parameters('billingProvider')), createObject('name', 'DemoData__Enabled', 'value', 'false'), createObject('name', 'ASPNETCORE_ENVIRONMENT', 'value', 'Production'), createObject('name', 'SCM_DO_BUILD_DURING_DEPLOYMENT', 'value', 'true'), createObject('name', 'ENABLE_ORYX_BUILD', 'value', 'true'), createObject('name', 'ORYX_DISABLE_COMPRESSION', 'value', 'true'), createObject('name', 'PROJECT', 'value', 'Relio.Web/Relio.Web.csproj'), createObject('name', 'WEBSITES_CONTAINER_START_TIME_LIMIT', 'value', '1800'), createObject('name', 'Seo__PublicOrigin', 'value', parameters('publicOrigin'))), variables('billingAppSettings'))]"
+                  "appCommandLine": "[if(parameters('buildDuringDeployment'), null(), 'dotnet Relio.Web.dll')]",
+                  "appSettings": "[concat(createArray(createObject('name', 'ConnectionStrings__Relio', 'value', variables('sqlConnectionStringReference')), createObject('name', 'Database__ApplyMigrationsOnStartup', 'value', 'true'), createObject('name', 'DataProtection__ApplicationName', 'value', parameters('dataProtectionApplicationName')), createObject('name', 'DataProtection__KeyRingPath', 'value', '/home/relio/keys'), createObject('name', 'DataProtection__ProtectionMode', 'value', 'Certificate'), createObject('name', 'DataProtection__Certificate__Path', 'value', '/home/relio/certificate.pfx'), createObject('name', 'DataProtection__Certificate__Password', 'value', variables('dataProtectionCertificatePasswordReference')), createObject('name', 'DataProtection__AutoGenerateIfMissing', 'value', 'true'), createObject('name', 'Registration__Mode', 'value', parameters('registrationMode')), createObject('name', 'Email__Provider', 'value', 'None'), createObject('name', 'Billing__Provider', 'value', parameters('billingProvider')), createObject('name', 'DemoData__Enabled', 'value', 'false'), createObject('name', 'ASPNETCORE_ENVIRONMENT', 'value', parameters('aspnetcoreEnvironment'))), variables('buildAppSettings'), createArray(createObject('name', 'WEBSITES_CONTAINER_START_TIME_LIMIT', 'value', '1800'), createObject('name', 'Seo__PublicOrigin', 'value', parameters('publicOrigin'))), variables('billingAppSettings'))]"
                 }
               }
             },
@@ -711,6 +750,10 @@
             "principalId": {
               "type": "string",
               "value": "[reference(resourceId('Microsoft.Web/sites', parameters('appServiceName')), '2026-08-01', 'full').identity.principalId]"
+            },
+            "defaultHostName": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Web/sites', parameters('appServiceName')), '2026-08-01').defaultHostName]"
             }
           }
         }
@@ -801,7 +844,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.40.2.10011",
-              "templateHash": "11077442722079934038"
+              "templateHash": "18109025059202569512"
             }
           },
           "parameters": {
@@ -809,7 +852,10 @@
               "type": "string"
             },
             "deployerObjectId": {
-              "type": "string"
+              "type": "string",
+              "metadata": {
+                "description": "Object id of a person who may manage Key Vault secrets. Leave empty to grant nobody (staging does when no operator id is configured)."
+              }
             },
             "appPrincipalId": {
               "type": "string"
@@ -821,6 +867,7 @@
           },
           "resources": [
             {
+              "condition": "[not(empty(parameters('deployerObjectId')))]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
               "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",

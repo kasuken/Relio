@@ -21,11 +21,60 @@ param stripeProYearlyPriceId string = ''
 @description('Public origin of the site, used for canonical URLs and the Stripe return URLs.')
 param publicOrigin string = 'https://www.relio.club'
 
+@description('ASPNETCORE_ENVIRONMENT. Staging turns on noindex headers and robots.txt (the app gates indexing on Production).')
+@allowed([
+  'Production'
+  'Staging'
+])
+param aspnetcoreEnvironment string = 'Production'
+
+@description('Registration:Mode. The first account is always allowed and becomes the administrator, whatever the mode.')
+@allowed([
+  'Open'
+  'InviteOnly'
+  'Closed'
+])
+param registrationMode string = 'Open'
+
+@description('Data Protection application name, so one environment never shares a key purpose with another.')
+param dataProtectionApplicationName string = 'Relio'
+
+@description('true: Kudu/Oryx builds Relio.Web from source on deploy (how production was first deployed). false: the deployed zip is already `dotnet publish` output (the release and staging workflows) and the app starts with `dotnet Relio.Web.dll`.')
+param buildDuringDeployment bool = true
+
 var sqlConnectionStringReference = '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=sql-connection-string)'
 var dataProtectionCertificatePasswordReference = '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=dp-cert-password)'
 var stripeApiKeyReference = '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=stripe-api-key)'
 var stripeWebhookSigningSecretReference = '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=stripe-webhook-signing-secret)'
 var planPageUrl = '${publicOrigin}/Account/Manage/Plan'
+
+// Production was first deployed from source through Oryx. A package deployment (the workflows)
+// ships `dotnet publish` output, which has no project file to build.
+var buildAppSettings = buildDuringDeployment
+  ? [
+      {
+        name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+        value: 'true'
+      }
+      {
+        name: 'ENABLE_ORYX_BUILD'
+        value: 'true'
+      }
+      {
+        name: 'ORYX_DISABLE_COMPRESSION'
+        value: 'true'
+      }
+      {
+        name: 'PROJECT'
+        value: 'Relio.Web/Relio.Web.csproj'
+      }
+    ]
+  : [
+      {
+        name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+        value: 'false'
+      }
+    ]
 
 // Only with Stripe: the app validates these at startup and refuses to start if one is missing.
 var billingAppSettings = billingProvider == 'Stripe'
@@ -81,6 +130,7 @@ resource appService 'Microsoft.Web/sites@2026-08-01' = {
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
       http20Enabled: true
+      appCommandLine: buildDuringDeployment ? null : 'dotnet Relio.Web.dll'
       appSettings: concat([
         {
           name: 'ConnectionStrings__Relio'
@@ -92,7 +142,7 @@ resource appService 'Microsoft.Web/sites@2026-08-01' = {
         }
         {
           name: 'DataProtection__ApplicationName'
-          value: 'Relio'
+          value: dataProtectionApplicationName
         }
         {
           name: 'DataProtection__KeyRingPath'
@@ -116,7 +166,7 @@ resource appService 'Microsoft.Web/sites@2026-08-01' = {
         }
         {
           name: 'Registration__Mode'
-          value: 'Open'
+          value: registrationMode
         }
         {
           name: 'Email__Provider'
@@ -132,24 +182,9 @@ resource appService 'Microsoft.Web/sites@2026-08-01' = {
         }
         {
           name: 'ASPNETCORE_ENVIRONMENT'
-          value: 'Production'
+          value: aspnetcoreEnvironment
         }
-        {
-          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
-          value: 'true'
-        }
-        {
-          name: 'ENABLE_ORYX_BUILD'
-          value: 'true'
-        }
-        {
-          name: 'ORYX_DISABLE_COMPRESSION'
-          value: 'true'
-        }
-        {
-          name: 'PROJECT'
-          value: 'Relio.Web/Relio.Web.csproj'
-        }
+      ], buildAppSettings, [
         {
           name: 'WEBSITES_CONTAINER_START_TIME_LIMIT'
           value: '1800'
@@ -207,3 +242,4 @@ resource diagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' 
 
 output appServiceId string = appService.id
 output principalId string = appService.identity.principalId
+output defaultHostName string = appService.properties.defaultHostName

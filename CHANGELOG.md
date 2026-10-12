@@ -6,6 +6,15 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Staging deployment for the hosted service (issue #120): an isolated Azure resource group with its
+  own web app, SQL database, Key Vault and Log Analytics workspace (`infra/staging.bicep`), an OIDC
+  deployment identity limited to that resource group, and a `staging.yml` workflow that waits for CI,
+  previews and deploys the infrastructure, deploys the app, and verifies readiness, TLS, the HTTPS
+  redirect, HSTS, security headers and noindex. A second start proves repeatable migrations. The
+  staging app runs with `Staging` settings, invitation-only registration, billing off and no
+  analytics. Setup, secrets and evidence are in `docs/operations/staging.md`; CI now compiles the
+  Bicep templates and the verification script.
+
 - Hosted billing with Stripe, following the LearnStack implementation. Off by default
   (`Billing:Provider=None`): a self-hosted instance has no plans and no limits. With
   `Billing:Provider=Stripe`, accounts are on a Free plan for up to 25 active people (archived people
@@ -412,6 +421,11 @@ All notable changes to this project are documented in this file.
 - CI: SQL Server service container, a `dotnet ef migrations has-pending-model-changes` gate and a `dotnet ef database update` proof step.
 - Relio design system: MudBlazor light and dark theme that follows the system setting, self-hosted Alegreya and Hanken Grotesk fonts, CSS tokens and the timeline thread styles.
 - Initial .NET 10 Blazor solution with MudBlazor, health checks, CI, CodeQL and CLA workflows.
+
+### Changed
+
+- `/health/ready` also reports unhealthy while EF Core migrations are pending, so a ready instance is
+  connected and its schema is current.
 
 ### Fixed
 

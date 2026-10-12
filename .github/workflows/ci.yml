@@ -111,3 +111,35 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t relio:ci-test .
+
+  # Compiles the infrastructure templates and the staging deployment script so a broken change
+  # fails here rather than on the first staging run. No Azure login, no deployment.
+  infra:
+    name: Validate infrastructure
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Build Bicep templates
+        run: |
+          for file in infra/main.bicep infra/staging.bicep infra/github-deployment-identity.bicep; do
+            az bicep build --file "$file" --stdout > /dev/null
+          done
+
+      - name: Lint Bicep templates
+        run: |
+          for file in infra/main.bicep infra/staging.bicep infra/github-deployment-identity.bicep; do
+            az bicep lint --file "$file"
+          done
+
+      # The parameters file reads its secrets from the environment; these are placeholders.
+      - name: Build staging parameters
+        env:
+          RELIO_SQL_ADMIN_PASSWORD: ci-placeholder
+          RELIO_DP_CERT_PASSWORD: ci-placeholder
+        run: az bicep build-params --file infra/staging.bicepparam --stdout > /dev/null
+
+      - name: Check deployment script syntax
+        run: bash -n .github/scripts/verify-deployment.sh
