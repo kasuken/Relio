@@ -7,7 +7,7 @@ public interface IReminderSchedulerRunner
 {
     /// <summary>
     /// Executes a single pass of the due reminders delivery job across all active users.
-    /// Returns the number of reminders delivered.
+    /// Returns the number of reminder and birthday notifications delivered in this pass.
     /// </summary>
     Task<int> RunDueRemindersJobAsync(CancellationToken cancellationToken = default);
 }

@@ -174,6 +174,20 @@ public sealed class ReminderCapabilitySqlIsolationTests(SqlServerDatabaseFixture
                 .LastDeliveredDate.Should().BeNull();
         }
 
+        await using (var ledger = fixture.CreateDbContext())
+        {
+            // Claim-before-send leaves one Sent ledger row per delivered reminder (issue #121).
+            var rows = await ledger.ReminderDeliveries.AsNoTracking()
+                .Where(row => row.SourceId == reminderA || row.SourceId == reminderB)
+                .ToListAsync();
+            rows.Should().HaveCount(2);
+            rows.Should().OnlyContain(row => row.Status == ReminderDeliveryStatus.Sent
+                && row.Kind == ReminderDeliveryKind.Reminder
+                && row.OccurrenceDate == today);
+            rows.Select(row => row.UserId).Should()
+                .BeEquivalentTo([harness.OwnerA.Id, harness.OwnerB.Id]);
+        }
+
         var deliveryCount = sender.DeliveryCount;
         (await runner.RunDueRemindersJobAsync()).Should().Be(0);
         sender.DeliveryCount.Should().Be(deliveryCount);

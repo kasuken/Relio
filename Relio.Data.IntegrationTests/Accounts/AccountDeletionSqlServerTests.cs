@@ -15,6 +15,7 @@ using Relio.Data.Administration;
 using Relio.Data.Encryption;
 using Relio.Data.Identity;
 using Relio.Data.IntegrationTests.Infrastructure;
+using Relio.Data.Reminders;
 using Relio.Domain;
 
 namespace Relio.Data.IntegrationTests.Accounts;
@@ -231,6 +232,52 @@ public sealed class AccountDeletionSqlServerTests : IAsyncLifetime
     }
 
     [SqlServerFact]
+    public async Task A_late_delivery_claim_forces_the_erasure_to_roll_back_for_retry()
+    {
+        string ownerId;
+        await using (var seed = CreateDbContext())
+        {
+            ownerId = (await AddAccountAsync(seed, administrator: false)).Id;
+            seed.ReminderDeliveries.Add(NewDelivery(ownerId, ReminderDeliveryKind.Reminder));
+            await seed.SaveChangesAsync();
+        }
+
+        // A reminder worker claims a delivery for this user between erasure's read and its save.
+        var lateClaim = new RunOnFirstSaveInterceptor(async cancellationToken =>
+        {
+            await using var writer = CreateDbContext();
+            writer.ReminderDeliveries.Add(NewDelivery(ownerId, ReminderDeliveryKind.Birthday));
+            await writer.SaveChangesAsync(cancellationToken);
+        });
+        await using (var deleting = CreateDbContext(lateClaim))
+        {
+            var result = await CreateService(deleting, ownerId).DeleteAsync(
+                new AccountDeletionRequest(Password, Confirmed: true));
+
+            result.Status.Should().Be(AccountDeletionStatus.ConcurrentChange);
+        }
+
+        lateClaim.Fired.Should().BeTrue();
+        await using (var verify = CreateDbContext())
+        {
+            (await verify.Users.AsNoTracking().AnyAsync(user => user.Id == ownerId)).Should().BeTrue();
+            (await verify.ReminderDeliveries.AsNoTracking().CountAsync(item => item.UserId == ownerId)).Should().Be(2);
+        }
+
+        await using (var retry = CreateDbContext())
+        {
+            var result = await CreateService(retry, ownerId).DeleteAsync(
+                new AccountDeletionRequest(Password, Confirmed: true));
+
+            result.Status.Should().Be(AccountDeletionStatus.Deleted);
+        }
+
+        await using var final = CreateDbContext();
+        (await final.Users.AsNoTracking().AnyAsync(user => user.Id == ownerId)).Should().BeFalse();
+        (await final.ReminderDeliveries.AsNoTracking().AnyAsync(item => item.UserId == ownerId)).Should().BeFalse();
+    }
+
+    [SqlServerFact]
     public async Task The_owner_foreign_key_rejects_a_stale_session_write_after_erasure()
     {
         string ownerId;
@@ -352,6 +399,10 @@ public sealed class AccountDeletionSqlServerTests : IAsyncLifetime
                 LastActiveOnUtc = new DateOnly(2026, 10, 2),
                 RetentionExpiresAtUtc = new DateTime(2026, 12, 30, 0, 0, 0, DateTimeKind.Utc),
             });
+            seed.ReminderDeliveries.AddRange(
+                NewDelivery(erasedOwnerId, ReminderDeliveryKind.Reminder),
+                NewDelivery(erasedOwnerId, ReminderDeliveryKind.Birthday),
+                NewDelivery(survivingOwnerId, ReminderDeliveryKind.Reminder));
             seed.RegistrationInvitations.AddRange(
                 NewInvitation(erasedOwnerId, erasedEmail),
                 NewInvitation(survivingOwnerId, survivingInvitationEmail));
@@ -381,6 +432,8 @@ public sealed class AccountDeletionSqlServerTests : IAsyncLifetime
         (await verify.UserProfiles.AsNoTracking().AnyAsync(item => item.OwnerId == erasedOwnerId)).Should().BeFalse();
         (await verify.Set<ProductActivity>().AsNoTracking().AnyAsync(item => item.OwnerId == erasedOwnerId)).Should().BeFalse();
         (await verify.Set<Dictionary<string, object>>("PersonTag").AsNoTracking().CountAsync()).Should().Be(1);
+        (await verify.ReminderDeliveries.AsNoTracking().AnyAsync(item => item.UserId == erasedOwnerId)).Should().BeFalse();
+        (await verify.ReminderDeliveries.AsNoTracking().AnyAsync(item => item.UserId == survivingOwnerId)).Should().BeTrue();
         (await verify.RegistrationInvitations.AsNoTracking()
             .AnyAsync(item => item.CreatedByUserId == erasedOwnerId
                 || item.NormalizedEmail == erasedEmail.ToUpperInvariant())).Should().BeFalse();
@@ -604,6 +657,17 @@ public sealed class AccountDeletionSqlServerTests : IAsyncLifetime
         await dbContext.SaveChangesAsync();
         return user;
     }
+
+    private static ReminderDelivery NewDelivery(string userId, ReminderDeliveryKind kind) => new()
+    {
+        UserId = userId,
+        Kind = kind,
+        SourceId = Guid.NewGuid(),
+        OccurrenceDate = new DateOnly(2026, 10, 7),
+        DeliveryDate = new DateOnly(2026, 10, 7),
+        Status = ReminderDeliveryStatus.Sent,
+        ClaimedAtUtc = new DateTime(2026, 10, 7, 10, 0, 0, DateTimeKind.Utc),
+    };
 
     private static RegistrationInvitation NewInvitation(string createdByUserId, string email) => new()
     {

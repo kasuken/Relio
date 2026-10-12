@@ -104,6 +104,29 @@ Relio is configured through environment variables (hierarchical keys use double 
 | `Email:Smtp:From` | `Email__Smtp__From` | None | Sender address (e.g. `relio@example.com`). |
 | `Email:Smtp:EnableSsl` | `Email__Smtp__EnableSsl` | `true` | Whether to use SSL/TLS for SMTP connection. |
 
+#### Reminder emails
+
+Reminder and birthday emails (immediate or daily digest, chosen per user) are **claimed in the
+database before they are sent**, in the `ReminderDeliveries` table, so running several Relio
+instances against one database is safe: only one worker sends each occurrence.
+
+- One email per occurrence. A reminder is emailed once for its due date (or its snooze date); an
+  overdue reminder is not emailed again every day, and snoozing it to a new date or completing a
+  recurring reminder creates a new occurrence. A birthday is emailed once per year, on the first
+  scheduler run inside its lead-days window.
+- Delivery is **at most once**. If the process dies or the database becomes unreachable after a
+  claim but before the send is recorded, that email may be skipped rather than repeated. A send
+  that fails with an error (for example the SMTP server is down) is released and retried on the
+  next run; in the rare case the server accepted the message before reporting the error, that
+  retry can deliver one duplicate. Merging two profiles that share a birthday already emailed this
+  window can also send the primary's birthday email once more.
+- With `Email:Provider=None` the sender does nothing, but occurrences are still marked delivered,
+  so switching on SMTP later does not flood users with a backlog of old reminders.
+- Emails contain only the person's name, the reminder title (`Birthday` for birthdays) and the
+  date. They never contain notes, interactions, difficult moments, ages or birth years.
+- Ledger rows hold ids and dates only, are not exported, and are removed after 14 days (and by
+  account erasure).
+
 ### Registration & User Administration
 
 | Setting | Environment Variable | Default | Description |

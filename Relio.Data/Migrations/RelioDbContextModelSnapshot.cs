@@ -380,6 +380,59 @@ namespace Relio.Data.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("Relio.Data.Reminders.ReminderDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ClaimedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateOnly>("DeliveryDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateOnly>("OccurrenceDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClaimedAtUtc")
+                        .HasDatabaseName("IX_ReminderDeliveries_ClaimedAtUtc");
+
+                    b.HasIndex("UserId", "Kind", "SourceId", "OccurrenceDate")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ReminderDeliveries_DeliveryKey");
+
+                    b.ToTable("ReminderDeliveries", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ReminderDeliveries_Kind", "[Kind] IN (N'Reminder', N'Birthday')");
+
+                            t.HasCheckConstraint("CK_ReminderDeliveries_Status", "[Status] IN (N'Pending', N'Sent')");
+                        });
+                });
+
             modelBuilder.Entity("Relio.Domain.ContactMethod", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1053,6 +1106,16 @@ namespace Relio.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Relio.Data.Reminders.ReminderDelivery", b =>
+                {
+                    b.HasOne("Relio.Data.Identity.RelioUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_ReminderDeliveries_AspNetUsers_UserId");
                 });
 
             modelBuilder.Entity("Relio.Domain.ContactMethod", b =>

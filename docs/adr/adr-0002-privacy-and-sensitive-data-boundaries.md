@@ -77,6 +77,8 @@ TLS are additional layers, not substitutes for these application-level protectio
 
 Reminder emails may contain only the already-established person name, reminder title, and due date;
 never include notes, interaction descriptions, difficult moments, or other private narratives.
+Birthday emails carry only the person's name, the fixed title "Birthday" and the date, never an age
+or a birth year.
 Authentication emails carry only the credential necessary for their specific flow. Never log an
 email body, address, confirmation/reset/change link, unsubscribe link, or token. Application and
 platform/EF logs may contain internal IDs, event metadata, counts, error codes, and exception types

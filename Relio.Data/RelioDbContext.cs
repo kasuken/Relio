@@ -128,6 +128,9 @@ public sealed partial class RelioDbContext : IdentityDbContext<RelioUser>
     /// <summary>The billing webhook idempotency ledger: see <see cref="Billing.ProcessedBillingEvent"/>.</summary>
     public DbSet<Billing.ProcessedBillingEvent> ProcessedBillingEvents => Set<Billing.ProcessedBillingEvent>();
 
+    /// <summary>The reminder email claim ledger (issue #121): see <see cref="Reminders.ReminderDelivery"/>.</summary>
+    public DbSet<Reminders.ReminderDelivery> ReminderDeliveries => Set<Reminders.ReminderDelivery>();
+
     /// <inheritdoc />
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
