@@ -18,6 +18,10 @@ running Relio: a self-hosted instance (Docker Compose) and the hosted service (A
 | RPO / RTO target | 24 hours / under 1 hour for a small instance | About 10 minutes / a few hours |
 | Evidence | The `restore-drill` workflow (section 7) | The same drill, plus the manual hosted drill (section 5) |
 
+The failure signals are not application log events: the shell sidecar does not emit the reserved
+`RelioBackupFailure` event (9005) described in [monitoring.md](monitoring.md). Wire the container
+health, the ping URLs and the `hosted-backup-check.yml` run into the same alert channel.
+
 Why `age` and not SQL Server backup encryption: encrypted and compressed native backups need an
 edition that the Express and Web editions do not have. Encrypting outside SQL Server works on every
 edition, uses a public key (so the private key never has to sit on the server) and authenticates the

@@ -266,7 +266,7 @@ When a user deletes their account in Relio (**Settings → Danger Zone → Delet
 
 Relio reports unhandled HTTP errors, failed interactive sessions and failed background jobs as log events
 with stable ids 9001-9005, containing only the exception type and never notes, form values or other
-private content. Backup automation will report its failures as `RelioBackupFailure` (9005). Docker
+private content. Backup failures are signalled by the backup container's health and the optional ping URLs (see [Backups and restore](operations/backup-restore.md)); event `RelioBackupFailure` (9005) stays reserved. Docker
 rotates the container logs, `/health/live` and `/health/ready` are available for probes, and
 `RELIO_LOG_FORMAT=json` makes the logs easy to ship. See [operations/monitoring.md](operations/monitoring.md)
 for the event table, example commands and the privacy guarantees.
