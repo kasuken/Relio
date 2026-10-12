@@ -1182,6 +1182,8 @@ a {
 .rl-connections {
     max-width: var(--measure);
     margin-block: var(--space-6);
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .rl-connection-row {
@@ -1189,6 +1191,7 @@ a {
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
+    min-width: 0;
 }
 
 .rl-connection-actions {
