@@ -64,7 +64,8 @@ docker compose up -d
 ```
 
 Open `http://localhost:8080`. The first account you register becomes the instance Administrator.
-See the complete [Self-Hosting Guide](docs/self-hosting.md) for reverse proxy setup, configuration reference, backup procedures, and upgrade instructions. Operators of the hosted service: see
+See the complete [Self-Hosting Guide](docs/self-hosting.md) for reverse proxy setup, configuration reference, backup procedures, and upgrade instructions. Automated encrypted backups and the tested restore
+procedure are in [Backups and restore](docs/operations/backup-restore.md). Operators of the hosted service: see
 [staging deployment](docs/operations/staging.md).
 
 ### Manual Setup

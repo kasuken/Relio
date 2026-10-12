@@ -6,6 +6,15 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Backups and a restore drill (issue #119). Self-hosted instances get an opt-in `backup` compose
+  profile: a verified daily database backup and a separate key-material backup, both encrypted with
+  `age` to a public key, with retention, a health status and optional ping URLs as the failure signal,
+  and a `restore` profile that restores them. A `restore-drill` workflow rebuilds a throwaway instance
+  from the encrypted archives alone and checks readiness, exact decryption and a key-material negative
+  control. Azure SQL point-in-time and weekly long-term retention and transparent data encryption are
+  now declared in Bicep, Key Vault purge protection is an opt-in parameter, and an optional read-only
+  `hosted-backup-check` workflow monitors them. See `docs/operations/backup-restore.md`.
+
 - Staging deployment for the hosted service (issue #120): an isolated Azure resource group with its
   own web app, SQL database, Key Vault and Log Analytics workspace (`infra/staging.bicep`), an OIDC
   deployment identity limited to that resource group, and a `staging.yml` workflow that waits for CI,

@@ -13,6 +13,8 @@ The protected fields are:
 - `Note.Text`
 - `Interaction.Description`
 - `Reminder.Title`
+- `DifficultMoment.Description`, `DifficultMoment.Trigger`, `DifficultMoment.Resolution` and
+  `DifficultMoment.LessonsLearned`
 - every `AspNetUserTokens.Value` value, including authenticator keys and recovery codes
 - `UserProfile.UnsubscribeToken`
 
@@ -171,6 +173,14 @@ encrypted, access-controlled backup system. For certificate mode, keep recoverab
 backups and their passwords in separate approved secret-management controls. For DPAPI mode, follow
 the host's machine-level key recovery procedure. Test restoration to a controlled environment
 before relying on it.
+
+[Backups and restore](../operations/backup-restore.md) is the runbook: the self-hosted backup
+container encrypts the database and the key material as two separate archives, and the restore drill
+(`.github/workflows/restore-drill.yml`) restores them into a fresh environment from the archives
+alone and checks that the application reaches readiness, every protected column reads back exactly,
+and that a new key ring cannot read the restored data. Note that the startup verification in
+`SensitiveFieldBackfillService` does not yet cover `DifficultMoment` columns; the drill checks them
+explicitly.
 
 ASP.NET Core Data Protection can rotate its key material while retaining older keys for decrypting
 existing values. Do not delete old key-ring entries or old certificate private keys just because a
