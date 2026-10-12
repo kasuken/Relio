@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "10613729163076427114"
+      "templateHash": "14618415858566772696"
     }
   },
   "parameters": {
@@ -74,6 +74,29 @@
       "defaultValue": "",
       "metadata": {
         "description": "Operator email for failure alerts (docs/operations/monitoring.md). Empty disables alerting."
+      }
+    },
+    "sqlBackupRetentionDays": {
+      "type": "int",
+      "defaultValue": 7,
+      "minValue": 1,
+      "maxValue": 7,
+      "metadata": {
+        "description": "Azure SQL point-in-time restore window in days (Basic tier maximum is 7)."
+      }
+    },
+    "sqlLongTermWeeklyRetention": {
+      "type": "string",
+      "defaultValue": "P4W",
+      "metadata": {
+        "description": "Azure SQL weekly long-term retention as an ISO 8601 duration (PT0S = none)."
+      }
+    },
+    "keyVaultEnablePurgeProtection": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Irreversible once true: protect the Key Vault (and the data protection certificate password in it) from purge. Off by default."
       }
     }
   },
@@ -275,6 +298,12 @@
           },
           "sqlAdminPassword": {
             "value": "[parameters('sqlAdminPassword')]"
+          },
+          "backupRetentionDays": {
+            "value": "[parameters('sqlBackupRetentionDays')]"
+          },
+          "longTermWeeklyRetention": {
+            "value": "[parameters('sqlLongTermWeeklyRetention')]"
           }
         },
         "template": {
@@ -284,7 +313,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.40.2.10011",
-              "templateHash": "7230701194358239936"
+              "templateHash": "18300354231653814499"
             }
           },
           "parameters": {
@@ -305,6 +334,36 @@
             },
             "sqlAdminPassword": {
               "type": "securestring"
+            },
+            "backupRetentionDays": {
+              "type": "int",
+              "defaultValue": 7,
+              "minValue": 1,
+              "maxValue": 7,
+              "metadata": {
+                "description": "Point-in-time restore window in days. The Basic tier allows 1 to 7, and 7 is the maximum."
+              }
+            },
+            "longTermWeeklyRetention": {
+              "type": "string",
+              "defaultValue": "P4W",
+              "metadata": {
+                "description": "How long weekly long-term retention copies are kept, as an ISO 8601 duration (P4W = 4 weeks, PT0S = none)."
+              }
+            },
+            "longTermMonthlyRetention": {
+              "type": "string",
+              "defaultValue": "PT0S",
+              "metadata": {
+                "description": "How long monthly long-term retention copies are kept (PT0S = none)."
+              }
+            },
+            "longTermYearlyRetention": {
+              "type": "string",
+              "defaultValue": "PT0S",
+              "metadata": {
+                "description": "How long yearly long-term retention copies are kept (PT0S = none)."
+              }
             }
           },
           "resources": [
@@ -349,6 +408,42 @@
               "dependsOn": [
                 "[resourceId('Microsoft.Sql/servers', parameters('sqlServerName'))]"
               ]
+            },
+            {
+              "type": "Microsoft.Sql/servers/databases/backupShortTermRetentionPolicies",
+              "apiVersion": "2025-01-01",
+              "name": "[format('{0}/{1}/{2}', parameters('sqlServerName'), parameters('sqlDatabaseName'), 'default')]",
+              "properties": {
+                "retentionDays": "[parameters('backupRetentionDays')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers/databases', parameters('sqlServerName'), parameters('sqlDatabaseName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Sql/servers/databases/backupLongTermRetentionPolicies",
+              "apiVersion": "2025-01-01",
+              "name": "[format('{0}/{1}/{2}', parameters('sqlServerName'), parameters('sqlDatabaseName'), 'default')]",
+              "properties": {
+                "weeklyRetention": "[parameters('longTermWeeklyRetention')]",
+                "monthlyRetention": "[parameters('longTermMonthlyRetention')]",
+                "yearlyRetention": "[parameters('longTermYearlyRetention')]",
+                "weekOfYear": 1
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers/databases', parameters('sqlServerName'), parameters('sqlDatabaseName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Sql/servers/databases/transparentDataEncryption",
+              "apiVersion": "2025-01-01",
+              "name": "[format('{0}/{1}/{2}', parameters('sqlServerName'), parameters('sqlDatabaseName'), 'current')]",
+              "properties": {
+                "state": "Enabled"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers/databases', parameters('sqlServerName'), parameters('sqlDatabaseName'))]"
+              ]
             }
           ],
           "outputs": {
@@ -367,6 +462,14 @@
             "databaseId": {
               "type": "string",
               "value": "[resourceId('Microsoft.Sql/servers/databases', parameters('sqlServerName'), parameters('sqlDatabaseName'))]"
+            },
+            "backupRetentionDays": {
+              "type": "int",
+              "value": "[reference(resourceId('Microsoft.Sql/servers/databases/backupShortTermRetentionPolicies', parameters('sqlServerName'), parameters('sqlDatabaseName'), 'default'), '2025-01-01').retentionDays]"
+            },
+            "longTermWeeklyRetention": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Sql/servers/databases/backupLongTermRetentionPolicies', parameters('sqlServerName'), parameters('sqlDatabaseName'), 'default'), '2025-01-01').weeklyRetention]"
             }
           }
         }
@@ -409,6 +512,9 @@
           },
           "dpCertPassword": {
             "value": "[parameters('dpCertPassword')]"
+          },
+          "enablePurgeProtection": {
+            "value": "[parameters('keyVaultEnablePurgeProtection')]"
           }
         },
         "template": {
@@ -418,7 +524,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.40.2.10011",
-              "templateHash": "7052389928266087744"
+              "templateHash": "9138499599338510859"
             }
           },
           "parameters": {
@@ -445,6 +551,13 @@
             },
             "dpCertPassword": {
               "type": "securestring"
+            },
+            "enablePurgeProtection": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Irreversible once true. Protects dp-cert-password (the data protection certificate password) from being purged during the soft-delete window. Recommended for production; off by default so nothing changes until the owner decides."
+              }
             }
           },
           "variables": {
@@ -466,6 +579,7 @@
                 "enableRbacAuthorization": true,
                 "enableSoftDelete": true,
                 "softDeleteRetentionInDays": 7,
+                "enablePurgeProtection": "[if(parameters('enablePurgeProtection'), true(), null())]",
                 "networkAcls": {
                   "defaultAction": "Allow",
                   "bypass": "AzureServices"
@@ -1068,6 +1182,14 @@
     "sqlDatabaseName": {
       "type": "string",
       "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resourceGroupName')), 'Microsoft.Resources/deployments', 'sql'), '2025-04-01').outputs.databaseName.value]"
+    },
+    "sqlBackupRetentionDays": {
+      "type": "int",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resourceGroupName')), 'Microsoft.Resources/deployments', 'sql'), '2025-04-01').outputs.backupRetentionDays.value]"
+    },
+    "sqlLongTermWeeklyRetention": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resourceGroupName')), 'Microsoft.Resources/deployments', 'sql'), '2025-04-01').outputs.longTermWeeklyRetention.value]"
     },
     "keyVaultName": {
       "type": "string",

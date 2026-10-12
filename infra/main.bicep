@@ -43,6 +43,17 @@ param stripeProYearlyPriceId string = ''
 @description('Operator email for failure alerts (docs/operations/monitoring.md). Empty disables alerting.')
 param alertEmailAddress string = ''
 
+@description('Azure SQL point-in-time restore window in days (Basic tier maximum is 7).')
+@minValue(1)
+@maxValue(7)
+param sqlBackupRetentionDays int = 7
+
+@description('Azure SQL weekly long-term retention as an ISO 8601 duration (PT0S = none).')
+param sqlLongTermWeeklyRetention string = 'P4W'
+
+@description('Irreversible once true: protect the Key Vault (and the data protection certificate password in it) from purge. Off by default.')
+param keyVaultEnablePurgeProtection bool = false
+
 var resourceGroupName = 'rg-relio-prod'
 var appServicePlanName = 'asp-relio-prod-edff'
 var webAppName = 'app-relio-prod-edff'
@@ -95,6 +106,8 @@ module sql './modules/sql.bicep' = {
     sqlDatabaseName: sqlDatabaseName
     sqlAdminLogin: sqlAdminLogin
     sqlAdminPassword: sqlAdminPassword
+    backupRetentionDays: sqlBackupRetentionDays
+    longTermWeeklyRetention: sqlLongTermWeeklyRetention
   }
 }
 
@@ -110,6 +123,7 @@ module keyVault './modules/key-vault.bicep' = {
     sqlAdminLogin: sqlAdminLogin
     sqlAdminPassword: sqlAdminPassword
     dpCertPassword: dpCertPassword
+    enablePurgeProtection: keyVaultEnablePurgeProtection
   }
 }
 
@@ -166,5 +180,7 @@ output appServicePlanName string = appServicePlanName
 output webAppName string = webAppName
 output sqlServerName string = sql.outputs.serverName
 output sqlDatabaseName string = sql.outputs.databaseName
+output sqlBackupRetentionDays int = sql.outputs.backupRetentionDays
+output sqlLongTermWeeklyRetention string = sql.outputs.longTermWeeklyRetention
 output keyVaultName string = keyVault.outputs.vaultName
 output logAnalyticsWorkspaceId string = logAnalytics.outputs.workspaceId
