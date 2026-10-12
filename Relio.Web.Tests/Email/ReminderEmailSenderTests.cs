@@ -123,6 +123,36 @@ public class ReminderEmailSenderTests
     }
 
     [Fact]
+    public async Task SendImmediateReminderAsync_for_a_birthday_contains_only_name_birthday_and_date()
+    {
+        MailMessage? capturedMessage = null;
+        var sender = new SmtpReminderEmailSender(
+            Options.Create(_options),
+            NullLogger<SmtpReminderEmailSender>.Instance,
+            (msg, _) =>
+            {
+                capturedMessage = msg;
+                return Task.CompletedTask;
+            });
+
+        await sender.SendImmediateReminderAsync(
+            "user@example.com",
+            "Marta Rossi",
+            ReminderEmailContent.BirthdayTitle,
+            new DateOnly(2027, 2, 28),
+            "tok_abc123");
+
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.Subject.Should().Be("Reminder: Birthday - Marta Rossi");
+        capturedMessage.Body.Should().Be(
+            "Reminder: Birthday" + Environment.NewLine
+            + "Person: Marta Rossi" + Environment.NewLine
+            + "Due date: 2027-02-28" + Environment.NewLine
+            + Environment.NewLine
+            + "Unsubscribe: /unsubscribe?token=tok_abc123" + Environment.NewLine);
+    }
+
+    [Fact]
     public async Task NullReminderEmailSender_does_not_throw()
     {
         var sender = new NullReminderEmailSender(NullLogger<NullReminderEmailSender>.Instance);

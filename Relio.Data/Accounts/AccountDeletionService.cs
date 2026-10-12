@@ -12,6 +12,7 @@ using Relio.Data.Administration;
 using Relio.Data.Billing;
 using Relio.Data.Encryption;
 using Relio.Data.Identity;
+using Relio.Data.Reminders;
 using Relio.Domain;
 
 namespace Relio.Data.Accounts;
@@ -170,6 +171,19 @@ public sealed class AccountDeletionService(
             {
                 // The user id is the foreign key EF needs to order this delete before the user's.
                 MarkDeleted(new UserSubscription { Id = subscription.Id, UserId = ownerId });
+            }
+
+            // The reminder delivery ledger is not an owned entity (ids and dates only), so erasure
+            // removes it explicitly; a claim that races this is rejected by the NO ACTION user key.
+            var deliveryIds = await dbContext.ReminderDeliveries
+                .AsNoTracking()
+                .Where(row => row.UserId == ownerId)
+                .Select(row => row.Id)
+                .ToListAsync(cancellationToken);
+            foreach (var deliveryId in deliveryIds)
+            {
+                // The user id is the foreign key EF needs to order this delete before the user's.
+                MarkDeleted(new ReminderDelivery { Id = deliveryId, UserId = ownerId });
             }
 
             await RemoveInvitationsAsync(ownerId, account.NormalizedEmail, cancellationToken);

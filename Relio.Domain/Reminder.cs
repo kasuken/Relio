@@ -36,8 +36,8 @@ public sealed class Reminder : OwnedEntity
     public DateTime? CompletedAtUtc { get; set; }
 
     /// <summary>
-    /// The user-calendar date when this reminder was last delivered to the user (e.g. by email),
-    /// guaranteeing idempotent delivery (issue #39).
+    /// The user-calendar day the current occurrence was claimed for delivery (e.g. by email). A
+    /// reminder is delivered again only when its effective due date moves past this date (#121).
     /// </summary>
     public DateOnly? LastDeliveredDate { get; set; }
 

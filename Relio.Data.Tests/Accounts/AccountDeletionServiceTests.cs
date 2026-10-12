@@ -9,6 +9,7 @@ using Relio.Data.Accounts;
 using Relio.Data.Administration;
 using Relio.Data.Encryption;
 using Relio.Data.Identity;
+using Relio.Data.Reminders;
 using Relio.Data.Tests.Administration;
 using Relio.Data.Tests.Infrastructure;
 using Relio.Data.Tests.People;
@@ -272,6 +273,11 @@ public sealed class AccountDeletionServiceTests
             RetentionExpiresAtUtc = new DateTime(2026, 12, 30, 0, 0, 0, DateTimeKind.Utc),
         });
 
+        dbContext.ReminderDeliveries.AddRange(
+            NewDelivery(owner.Id, ReminderDeliveryKind.Reminder),
+            NewDelivery(owner.Id, ReminderDeliveryKind.Birthday),
+            NewDelivery(other.Id, ReminderDeliveryKind.Reminder));
+
         dbContext.People.Add(new Person { OwnerId = other.Id, FirstName = "Other user's person" });
         dbContext.Tags.Add(new Tag { OwnerId = other.Id, Name = "Other user's tag" });
         dbContext.UserProfiles.Add(new UserProfile { OwnerId = other.Id, TimeZoneId = "UTC" });
@@ -335,6 +341,8 @@ public sealed class AccountDeletionServiceTests
         (await verify.UserProfiles.AsNoTracking().AnyAsync(item => item.OwnerId == owner.Id)).Should().BeFalse();
         (await verify.Set<ProductActivity>().AsNoTracking().AnyAsync(item => item.OwnerId == owner.Id)).Should().BeFalse();
         (await verify.Set<Dictionary<string, object>>("PersonTag").AsNoTracking().CountAsync()).Should().Be(0);
+        (await verify.ReminderDeliveries.AsNoTracking().AnyAsync(item => item.UserId == owner.Id)).Should().BeFalse();
+        (await verify.ReminderDeliveries.AsNoTracking().CountAsync(item => item.UserId == other.Id)).Should().Be(1);
 
         (await verify.People.AsNoTracking().CountAsync(item => item.OwnerId == other.Id)).Should().Be(1);
         (await verify.Tags.AsNoTracking().CountAsync(item => item.OwnerId == other.Id)).Should().Be(1);
@@ -403,6 +411,17 @@ public sealed class AccountDeletionServiceTests
         await using var verify = CreateDbContext(database);
         (await CountActiveAdministratorsAsync(verify)).Should().Be(1);
     }
+
+    private static ReminderDelivery NewDelivery(string userId, ReminderDeliveryKind kind) => new()
+    {
+        UserId = userId,
+        Kind = kind,
+        SourceId = Guid.NewGuid(),
+        OccurrenceDate = new DateOnly(2026, 10, 7),
+        DeliveryDate = new DateOnly(2026, 10, 7),
+        Status = ReminderDeliveryStatus.Sent,
+        ClaimedAtUtc = new DateTime(2026, 10, 7, 10, 0, 0, DateTimeKind.Utc),
+    };
 
     private static RelioDbContext CreateInterceptedContext(
         DbContextOptions<RelioDbContext> database,

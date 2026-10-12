@@ -31,6 +31,11 @@ then deleted in the same save as the account (its foreign key to the account is 
 every owner reference). With billing off there is no provider to call, and the operator cancels any
 leftover subscription in the Stripe Dashboard. See [billing.md](billing.md).
 
+The reminder delivery ledger (`ReminderDeliveries`: ids and dates of reminder and birthday emails
+already claimed) is not user-owned content but is deleted in the same save, selected by user id.
+Its foreign key to the account is `NO ACTION` as well, so a scheduler claim that races the erasure
+rolls the erasure back for a retry instead of leaving an orphan.
+
 The confirmation email is sent only after the database commit. It contains no names or Relio
 content and says that backups are handled under the instance operator's retention policy. Deleting
 the live account does not delete backups; backup retention and disposal are operated separately.

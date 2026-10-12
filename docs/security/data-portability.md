@@ -37,6 +37,10 @@ credentials. Other portable profile and calendar settings and the reminder
 history are restored. Email delivery must be configured again by the account
 holder.
 
+The reminder email delivery ledger (`ReminderDeliveries`, issue #121) is operational metadata
+(ids and dates only, retention-purged after 14 days): it is not exported and a restore never
+creates rows for it.
+
 The optional product-activity contribution is present in a JSON export for
 access and erasure portability, but is not restored. It is instance-local
 analytics and must not alter the destination instance's cohort measurements.

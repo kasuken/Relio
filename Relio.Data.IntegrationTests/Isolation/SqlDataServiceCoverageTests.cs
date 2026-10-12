@@ -30,6 +30,7 @@ using Relio.Data.IntegrationTests.Notes;
 using Relio.Data.IntegrationTests.Onboarding;
 using Relio.Data.IntegrationTests.People;
 using Relio.Data.IntegrationTests.Profile;
+using Relio.Data.IntegrationTests.Reminders;
 using Relio.Data.IntegrationTests.Time;
 
 namespace Relio.Data.IntegrationTests.Isolation;
@@ -633,6 +634,12 @@ internal static class ServiceCoverageCatalog
             Method(nameof(IReminderSchedulerRunner.RunDueRemindersJobAsync),
                 Scenario<ReminderCapabilitySqlIsolationTests>(
                     nameof(ReminderCapabilitySqlIsolationTests.Trusted_scheduler_delivers_per_owner_and_stamps_due_reminders_once),
+                    SqlIsolationEvidence.TrustedMultiOwner),
+                Scenario<ReminderDeliverySqlServerTests>(
+                    nameof(ReminderDeliverySqlServerTests.A_competing_worker_that_claims_first_wins_and_the_loser_sends_nothing),
+                    SqlIsolationEvidence.TrustedMultiOwner),
+                Scenario<ReminderDeliverySqlServerTests>(
+                    nameof(ReminderDeliverySqlServerTests.Parallel_workers_deliver_each_occurrence_exactly_once),
                     SqlIsolationEvidence.TrustedMultiOwner))),
 
         CurrentUser<IUserTimeZoneService>(

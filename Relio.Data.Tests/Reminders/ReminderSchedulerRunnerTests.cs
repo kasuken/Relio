@@ -5,7 +5,10 @@ using Relio.Application.Reminders;
 using Relio.Application.Time;
 using Relio.Data.Identity;
 using Relio.Data.Reminders;
+using Relio.Data.Tests.People;
+using Relio.Data.Time;
 using Relio.Domain;
+using static Relio.Data.Tests.Reminders.ReminderSchedulerTestData;
 
 namespace Relio.Data.Tests.Reminders;
 
@@ -14,7 +17,7 @@ public class ReminderSchedulerRunnerTests
     [Fact]
     public async Task Exact_once_delivery_for_immediate_mode()
     {
-        var dbName = Guid.NewGuid().ToString();
+        var dbName = NewDatabase();
         var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
         var emailSender = new FakeReminderEmailSender();
 
@@ -88,13 +91,26 @@ public class ReminderSchedulerRunnerTests
             var secondRunCount = await runner.RunDueRemindersJobAsync();
             secondRunCount.Should().Be(0);
             emailSender.ImmediateEmails.Should().HaveCount(2);
+
+            var ledger = await dbContext.ReminderDeliveries.AsNoTracking().ToListAsync();
+            ledger.Should().HaveCount(2);
+            ledger.Should().AllSatisfy(row =>
+            {
+                row.Status.Should().Be(ReminderDeliveryStatus.Sent);
+                row.Kind.Should().Be(ReminderDeliveryKind.Reminder);
+                row.UserId.Should().Be("user-1");
+                row.DeliveryDate.Should().Be(new DateOnly(2026, 10, 7));
+                row.SentAtUtc.Should().NotBeNull();
+            });
+            ledger.Select(row => row.OccurrenceDate).Should()
+                .BeEquivalentTo([new DateOnly(2026, 10, 7), new DateOnly(2026, 10, 6)]);
         }
     }
 
     [Fact]
     public async Task Exact_once_delivery_for_daily_digest_mode()
     {
-        var dbName = Guid.NewGuid().ToString();
+        var dbName = NewDatabase();
         var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
         var emailSender = new FakeReminderEmailSender();
 
@@ -172,7 +188,7 @@ public class ReminderSchedulerRunnerTests
     [Fact]
     public async Task Restarting_the_app_does_not_resend_reminders_on_the_same_day()
     {
-        var dbName = Guid.NewGuid().ToString();
+        var dbName = NewDatabase();
         var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 10, 7, 8, 0, 0, TimeSpan.Zero));
         var emailSender = new FakeReminderEmailSender();
 
@@ -230,7 +246,7 @@ public class ReminderSchedulerRunnerTests
     [Fact]
     public async Task Different_user_time_zones_evaluate_due_date_correctly()
     {
-        var dbName = Guid.NewGuid().ToString();
+        var dbName = NewDatabase();
         // Base instant: 2026-10-07 10:30:00 UTC
         // Pacific/Kiritimati (UTC+14): local time is 2026-10-08 00:30:00 -> date is 2026-10-08
         // Pacific/Pago_Pago  (UTC-11): local time is 2026-10-06 23:30:00 -> date is 2026-10-06
@@ -334,7 +350,7 @@ public class ReminderSchedulerRunnerTests
     [Fact]
     public async Task Skips_unconfirmed_disabled_or_empty_email_users()
     {
-        var dbName = Guid.NewGuid().ToString();
+        var dbName = NewDatabase();
         var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
         var emailSender = new FakeReminderEmailSender();
 
@@ -374,13 +390,14 @@ public class ReminderSchedulerRunnerTests
 
             var reminders = await dbContext.Reminders.ToListAsync();
             reminders.Should().AllSatisfy(r => r.LastDeliveredDate.Should().BeNull());
+            (await dbContext.ReminderDeliveries.AnyAsync()).Should().BeFalse();
         }
     }
 
     [Fact]
     public async Task Skips_completed_and_future_snoozed_reminders()
     {
-        var dbName = Guid.NewGuid().ToString();
+        var dbName = NewDatabase();
         var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
         var emailSender = new FakeReminderEmailSender();
 
@@ -450,7 +467,7 @@ public class ReminderSchedulerRunnerTests
     [Fact]
     public async Task Skips_reminders_for_archived_person()
     {
-        var dbName = Guid.NewGuid().ToString();
+        var dbName = NewDatabase();
         var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
         var emailSender = new FakeReminderEmailSender();
 
@@ -483,13 +500,14 @@ public class ReminderSchedulerRunnerTests
             var delivered = await runner.RunDueRemindersJobAsync();
             delivered.Should().Be(0);
             emailSender.ImmediateEmails.Should().BeEmpty();
+            (await dbContext.ReminderDeliveries.AnyAsync()).Should().BeFalse();
         }
     }
 
     [Fact]
     public async Task Skips_users_with_delivery_None()
     {
-        var dbName = Guid.NewGuid().ToString();
+        var dbName = NewDatabase();
         var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
         var emailSender = new FakeReminderEmailSender();
 
@@ -528,7 +546,7 @@ public class ReminderSchedulerRunnerTests
     [Fact]
     public async Task Responds_to_cancellation()
     {
-        var dbName = Guid.NewGuid().ToString();
+        var dbName = NewDatabase();
         var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
         var emailSender = new FakeReminderEmailSender();
 
@@ -546,22 +564,143 @@ public class ReminderSchedulerRunnerTests
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
-    private static RelioDbContext CreateDbContext(string dbName, TimeProvider timeProvider)
+    [Fact]
+    public async Task Overdue_reminder_is_delivered_once_not_again_on_later_days()
     {
-        var options = new DbContextOptionsBuilder<RelioDbContext>()
-            .UseInMemoryDatabase(dbName)
-            .Options;
-        return new RelioDbContext(options, timeProvider, FieldProtector);
+        var database = NewDatabase();
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
+        var sender = new FakeReminderEmailSender();
+        await SeedOwnerAsync(database, clock, "owner", ReminderEmailDelivery.Immediate);
+        var person = await AddPersonAsync(database, clock, "owner", "Ada");
+        await AddReminderAsync(database, clock, "owner", person.Id, "Overdue", new DateOnly(2026, 10, 3));
+
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(1);
+
+        clock.Advance(TimeSpan.FromDays(1));
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(0);
+        clock.Advance(TimeSpan.FromDays(5));
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(0);
+
+        sender.ImmediateEmails.Should().ContainSingle();
     }
 
-    private static RelioUser CreateUser(string id, string email, bool emailConfirmed = true, bool isDisabled = false) =>
-        new()
+    [Fact]
+    public async Task Snoozed_reminder_is_delivered_again_on_its_new_date()
+    {
+        var database = NewDatabase();
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
+        var sender = new FakeReminderEmailSender();
+        await SeedOwnerAsync(database, clock, "owner", ReminderEmailDelivery.Immediate);
+        var person = await AddPersonAsync(database, clock, "owner", "Ada");
+        var reminder = await AddReminderAsync(database, clock, "owner", person.Id, "Call", new DateOnly(2026, 10, 7));
+
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(1);
+
+        await UpdateReminderAsync(database, clock, reminder.Id, r => r.SnoozedUntilDate = new DateOnly(2026, 10, 10));
+
+        clock.Advance(TimeSpan.FromDays(1));
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(0);
+
+        clock.Advance(TimeSpan.FromDays(2));
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(1);
+
+        sender.ImmediateEmails.Should().HaveCount(2);
+        sender.ImmediateEmails[1].DueDate.Should().Be(new DateOnly(2026, 10, 10));
+
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Completing_a_recurring_reminder_delivers_the_next_occurrence_once()
+    {
+        var database = NewDatabase();
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
+        var sender = new FakeReminderEmailSender();
+        await SeedOwnerAsync(database, clock, "owner", ReminderEmailDelivery.Immediate);
+        var person = await AddPersonAsync(database, clock, "owner", "Ada");
+        var reminder = await AddReminderAsync(
+            database, clock, "owner", person.Id, "Monthly catch-up", new DateOnly(2026, 10, 7),
+            r => r.Frequency = ReminderFrequency.Monthly);
+
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(1);
+
+        // The user completes it: the real service advances the due date and clears the stamp.
+        await using (var dbContext = CreateDbContext(database, clock))
         {
-            Id = id,
-            UserName = email,
-            Email = email,
-            NormalizedEmail = email.ToUpperInvariant(),
-            EmailConfirmed = emailConfirmed,
-            IsDisabled = isDisabled,
-        };
+            var currentUser = new FakeCurrentUser("owner");
+            var service = new ReminderService(
+                dbContext, currentUser, new UserTimeZoneService(dbContext, currentUser, clock), clock);
+            (await service.CompleteAsync(reminder.Id)).Should().BeTrue();
+        }
+
+        var advanced = await GetReminderAsync(database, clock, reminder.Id);
+        advanced.DueDate.Should().BeAfter(new DateOnly(2026, 10, 7));
+        advanced.LastDeliveredDate.Should().BeNull();
+
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(0);
+
+        clock.SetUtcNow(new DateTimeOffset(advanced.DueDate.ToDateTime(new TimeOnly(10, 0)), TimeSpan.Zero));
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(1);
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(0);
+
+        sender.ImmediateEmails.Should().HaveCount(2);
+        sender.ImmediateEmails[1].DueDate.Should().Be(advanced.DueDate);
+    }
+
+    [Fact]
+    public async Task Reminder_stamped_by_the_previous_scheduler_is_not_resent()
+    {
+        var database = NewDatabase();
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
+        var sender = new FakeReminderEmailSender();
+        await SeedOwnerAsync(database, clock, "owner", ReminderEmailDelivery.Immediate);
+        var person = await AddPersonAsync(database, clock, "owner", "Ada");
+        await AddReminderAsync(
+            database, clock, "owner", person.Id, "Already sent", new DateOnly(2026, 10, 3),
+            r => r.LastDeliveredDate = new DateOnly(2026, 10, 6));
+
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(0);
+
+        sender.CallCount.Should().Be(0);
+        (await LedgerAsync(database, clock)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Switching_from_immediate_to_digest_after_delivery_does_not_resend()
+    {
+        var database = NewDatabase();
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
+        var sender = new FakeReminderEmailSender();
+        await SeedOwnerAsync(database, clock, "owner", ReminderEmailDelivery.Immediate);
+        var person = await AddPersonAsync(database, clock, "owner", "Ada");
+        await AddReminderAsync(database, clock, "owner", person.Id, "Call", new DateOnly(2026, 10, 7));
+
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(1);
+
+        await UpdateProfileAsync(database, clock, "owner", p => p.ReminderEmailDelivery = ReminderEmailDelivery.DailyDigest);
+
+        (await RunOnNewContextAsync(database, clock, sender)).Should().Be(0);
+        sender.DigestEmails.Should().BeEmpty();
+        sender.ImmediateEmails.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Sequential_runner_on_another_context_sends_nothing()
+    {
+        var database = NewDatabase();
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
+        var sender = new FakeReminderEmailSender();
+        await SeedOwnerAsync(database, clock, "owner", ReminderEmailDelivery.DailyDigest);
+        var person = await AddPersonAsync(database, clock, "owner", "Ada");
+        await AddReminderAsync(database, clock, "owner", person.Id, "Call", new DateOnly(2026, 10, 7));
+
+        await using var first = CreateDbContext(database, clock);
+        await using var second = CreateDbContext(database, clock);
+
+        (await CreateRunner(first, sender, clock).RunDueRemindersJobAsync()).Should().Be(1);
+        (await CreateRunner(second, sender, clock).RunDueRemindersJobAsync()).Should().Be(0);
+
+        sender.DigestEmails.Should().ContainSingle();
+    }
+
 }
