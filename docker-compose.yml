@@ -20,11 +20,17 @@ services:
       - Registration__Mode=${REGISTRATION_MODE:-Open}
       - Email__Provider=${EMAIL_PROVIDER:-None}
       - Billing__Provider=None
+      - Logging__Console__FormatterName=${RELIO_LOG_FORMAT:-simple}
     depends_on:
       sqlserver:
         condition: service_healthy
     volumes:
       - relio-data:/var/opt/relio
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     restart: unless-stopped
     networks:
       - relio-network

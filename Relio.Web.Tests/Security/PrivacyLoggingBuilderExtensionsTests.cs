@@ -45,6 +45,7 @@ public sealed class PrivacyLoggingBuilderExtensionsTests
                      "Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMiddleware",
                      "Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware",
                      "Microsoft.AspNetCore.Components.Server.Circuits.CircuitHost",
+                     "Microsoft.AspNetCore.Components.Web.ErrorBoundary",
                      "Microsoft.AspNetCore.SignalR.HubConnectionHandler",
                      "Microsoft.AspNetCore.Http.Connections.Internal.HttpConnectionDispatcher",
                      "Microsoft.AspNetCore.HttpLogging.HttpLoggingMiddleware",

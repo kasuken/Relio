@@ -2,6 +2,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Relio.Application.Reminders;
+using Relio.Web.Diagnostics;
 
 namespace Relio.Web.Background;
 
@@ -43,9 +44,7 @@ public sealed class ReminderSchedulerBackgroundService(
             }
             catch (Exception ex)
             {
-                logger.LogError(
-                    "Reminder scheduler job failed with exception type {ExceptionType}.",
-                    ex.GetType().Name);
+                RelioOperationalEvents.ReminderJobFailure(logger, RelioOperationalEvents.ExceptionTypeOf(ex));
             }
 
             try

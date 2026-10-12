@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "8373346878039967594"
+      "templateHash": "10819366875292763567"
     }
   },
   "parameters": {
@@ -130,7 +130,7 @@
           "ftpsState": "Disabled",
           "http20Enabled": true,
           "appCommandLine": "[if(parameters('buildDuringDeployment'), null(), 'dotnet Relio.Web.dll')]",
-          "appSettings": "[concat(createArray(createObject('name', 'ConnectionStrings__Relio', 'value', variables('sqlConnectionStringReference')), createObject('name', 'Database__ApplyMigrationsOnStartup', 'value', 'true'), createObject('name', 'DataProtection__ApplicationName', 'value', parameters('dataProtectionApplicationName')), createObject('name', 'DataProtection__KeyRingPath', 'value', '/home/relio/keys'), createObject('name', 'DataProtection__ProtectionMode', 'value', 'Certificate'), createObject('name', 'DataProtection__Certificate__Path', 'value', '/home/relio/certificate.pfx'), createObject('name', 'DataProtection__Certificate__Password', 'value', variables('dataProtectionCertificatePasswordReference')), createObject('name', 'DataProtection__AutoGenerateIfMissing', 'value', 'true'), createObject('name', 'Registration__Mode', 'value', parameters('registrationMode')), createObject('name', 'Email__Provider', 'value', 'None'), createObject('name', 'Billing__Provider', 'value', parameters('billingProvider')), createObject('name', 'DemoData__Enabled', 'value', 'false'), createObject('name', 'ASPNETCORE_ENVIRONMENT', 'value', parameters('aspnetcoreEnvironment'))), variables('buildAppSettings'), createArray(createObject('name', 'WEBSITES_CONTAINER_START_TIME_LIMIT', 'value', '1800'), createObject('name', 'Seo__PublicOrigin', 'value', parameters('publicOrigin'))), variables('billingAppSettings'))]"
+          "appSettings": "[concat(createArray(createObject('name', 'ConnectionStrings__Relio', 'value', variables('sqlConnectionStringReference')), createObject('name', 'Database__ApplyMigrationsOnStartup', 'value', 'true'), createObject('name', 'DataProtection__ApplicationName', 'value', parameters('dataProtectionApplicationName')), createObject('name', 'DataProtection__KeyRingPath', 'value', '/home/relio/keys'), createObject('name', 'DataProtection__ProtectionMode', 'value', 'Certificate'), createObject('name', 'DataProtection__Certificate__Path', 'value', '/home/relio/certificate.pfx'), createObject('name', 'DataProtection__Certificate__Password', 'value', variables('dataProtectionCertificatePasswordReference')), createObject('name', 'DataProtection__AutoGenerateIfMissing', 'value', 'true'), createObject('name', 'Registration__Mode', 'value', parameters('registrationMode')), createObject('name', 'Email__Provider', 'value', 'None'), createObject('name', 'Billing__Provider', 'value', parameters('billingProvider')), createObject('name', 'DemoData__Enabled', 'value', 'false'), createObject('name', 'Logging__Console__FormatterName', 'value', 'json'), createObject('name', 'ASPNETCORE_ENVIRONMENT', 'value', parameters('aspnetcoreEnvironment'))), variables('buildAppSettings'), createArray(createObject('name', 'WEBSITES_CONTAINER_START_TIME_LIMIT', 'value', '1800'), createObject('name', 'Seo__PublicOrigin', 'value', parameters('publicOrigin'))), variables('billingAppSettings'))]"
         }
       }
     },

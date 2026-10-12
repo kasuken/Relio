@@ -181,6 +181,11 @@ resource appService 'Microsoft.Web/sites@2026-08-01' = {
           value: 'false'
         }
         {
+          // One JSON object per console line, queryable in Log Analytics (docs/operations/monitoring.md).
+          name: 'Logging__Console__FormatterName'
+          value: 'json'
+        }
+        {
           name: 'ASPNETCORE_ENVIRONMENT'
           value: aspnetcoreEnvironment
         }

@@ -1418,8 +1418,8 @@ or an actual SignalR circuit.
 ## Privacy and trust
 
 Epic #54 follows `docs/adr/adr-0002-privacy-and-sensitive-data-boundaries.md`. It defines
-engineering boundaries, not legal approval. Difficult moments are not modeled yet: their future
-implementation must extend every privacy checklist rather than treating an absent entity as covered.
+engineering boundaries, not legal approval. Difficult moments are modeled (epic #42) and are covered by
+every privacy checklist below, like notes; any new sensitive entity must extend them all.
 
 - **Encryption is at the EF boundary.** `Person.HowWeMet`, `Person.Details`, `Note.Text`,
   `Interaction.Description`, `Reminder.Title`, Identity token values and `UserProfile.UnsubscribeToken`
@@ -1463,6 +1463,16 @@ implementation must extend every privacy checklist rather than treating an absen
   Activity collection uses the database lane and a collection/purge gate; retention expires after
   90 days. Administrator reports are aggregates, not per-user drill-downs. Export includes the
   owner's summary; restore excludes it. See `docs/security/product-metrics.md`.
+- **Operational signals use stable EventIds** (`Relio.Web.Diagnostics.RelioOperationalEvents`, 9001-9099,
+  never renumbered): unhandled HTTP 9001, circuit 9002, reminder job 9003, metrics retention 9004, backup
+  9005 (reserved, #119). A new job or boundary failure adds an event there and logs only
+  `ExceptionTypeOf(exception)`, never the exception object or its message. Blazor Server framework
+  categories stay suppressed; `CircuitFailureSignalLoggerProvider` is the only provider allowed to observe
+  them (Error and above, through one provider-specific rule in `PrivacyLoggingBuilderExtensions`) and it
+  re-emits the exception type name, the framework event name and a circuit hash only - never call the
+  formatter or read exception text there. Alerts: `infra/modules/monitoring.bicep`, deployed only when
+  `alertEmailAddress` is set. Everything works with hosted product metrics off. See
+  `docs/operations/monitoring.md`.
 - **Framework logging also carries private data.** Keep the code-enforced privacy filters,
   named account-endpoint rate limits, nonce-based script CSP and no-store responses intact.
   Never log raw database or parser exceptions containing submitted values. Rate-limit partitions

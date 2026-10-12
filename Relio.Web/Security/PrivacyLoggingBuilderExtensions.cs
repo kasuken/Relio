@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Relio.Web.Diagnostics;
 
 namespace Relio.Web.Security;
 
@@ -12,6 +13,7 @@ public static class PrivacyLoggingBuilderExtensions
         "Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMiddleware",
         "Microsoft.AspNetCore.Diagnostics.DeveloperExceptionPageMiddleware",
         "Microsoft.AspNetCore.Components.Server",
+        "Microsoft.AspNetCore.Components.Web.ErrorBoundary",
         "Microsoft.AspNetCore.SignalR",
         "Microsoft.AspNetCore.Http.Connections",
         "Microsoft.AspNetCore.HttpLogging",
@@ -30,6 +32,8 @@ public static class PrivacyLoggingBuilderExtensions
     /// Add this after creating the host builder. Its post-configuration is reapplied when logging
     /// configuration reloads. Failures should be reported by application boundaries using generic
     /// event metadata and exception type only, never by attaching the exception object.
+    /// The one exception is <see cref="CircuitFailureSignalLoggerProvider"/>, which alone may observe
+    /// Error and above from the Blazor Server categories and re-emits a sanitized signal.
     /// </remarks>
     /// <param name="loggingBuilder">The host logging builder.</param>
     /// <returns>The same logging builder.</returns>
@@ -70,6 +74,15 @@ public static class PrivacyLoggingBuilderExtensions
                         filter: null));
                 }
             }
+
+            // The sanitized circuit-failure translator is the only provider that may observe Blazor Server
+            // errors; it never formats state or forwards the exception. A provider-specific rule wins over
+            // the provider-less and operator-configured rules above, and is added last so it also wins a tie.
+            options.Rules.Add(new LoggerFilterRule(
+                typeof(CircuitFailureSignalLoggerProvider).FullName,
+                CircuitFailureSignalLoggerProvider.WatchedCategoryPrefix,
+                LogLevel.Error,
+                filter: null));
         });
 
         return loggingBuilder;
