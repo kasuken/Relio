@@ -212,7 +212,7 @@ public sealed class PersonMergeService(
     /// <item><description>[x] Notes (#32): move the duplicate's notes to the primary, preserving text, pin state and creation dates; the normal save stamping advances <c>UpdatedAtUtc</c>.</description></item>
     /// <item><description>[x] Reminders (#37, #38): <c>PersonId = primary.Id</c>. Birthday reminders are derived from the birthday columns and need nothing.</description></item>
     /// <item><description>[x] Difficult moments (#43): <c>PersonId = primary.Id</c>.</description></item>
-    /// <item><description>[ ] Any person-to-person link (two foreign keys to <c>People</c>): drop a link between primary and duplicate, and dedupe the links both had.</description></item>
+    /// <item><description>[x] Person links (#129, two foreign keys to <c>People</c>): a link between primary and duplicate is removed (it would be a self link); a link to someone the primary is already linked to is removed (the primary's kind wins, nothing repeated); every other link is re-pointed with <c>PersonLink.SetEnds(primary, other, roleFromDuplicate)</c>, which re-normalizes the ends and flips the kind when it swaps them.</description></item>
     /// </list>
     /// </para>
     /// </remarks>
@@ -316,6 +316,36 @@ public sealed class PersonMergeService(
         {
             moment.PersonId = primary.Id;
             moment.Person = primary;
+        }
+
+        // Links have the duplicate at either end. Every rewritten pair is one the primary does not
+        // have yet and the duplicate cannot have two links to the same person, so the unique pair
+        // index never trips mid-save. The link between the two profiles also shows up in the
+        // primary's list below; it is removed by the first branch, so that is harmless.
+        var duplicateLinks = await dbContext.PersonLinks
+            .Where(l => l.OwnerId == ownerId && (l.PersonId == duplicate.Id || l.RelatedPersonId == duplicate.Id))
+            .ToListAsync(cancellationToken);
+        if (duplicateLinks.Count > 0)
+        {
+            var primaryOthers = (await dbContext.PersonLinks
+                    .AsNoTracking()
+                    .Where(l => l.OwnerId == ownerId && (l.PersonId == primary.Id || l.RelatedPersonId == primary.Id))
+                    .Select(l => l.PersonId == primary.Id ? l.RelatedPersonId : l.PersonId)
+                    .ToListAsync(cancellationToken))
+                .ToHashSet();
+
+            foreach (var link in duplicateLinks)
+            {
+                var otherId = link.OtherPersonId(duplicate.Id);
+                if (otherId == primary.Id || primaryOthers.Contains(otherId))
+                {
+                    dbContext.PersonLinks.Remove(link);
+                    continue;
+                }
+
+                link.SetEnds(primary.Id, otherId, link.RoleOfOther(duplicate.Id));
+                primaryOthers.Add(otherId);
+            }
         }
     }
 }

@@ -188,6 +188,37 @@ public static class PeopleTestHelpers
         return moment.Id;
     }
 
+    /// <summary>
+    /// Links two people through the real <c>PersonLinkService</c> acting as <paramref name="ownerId"/>:
+    /// <paramref name="relatedPersonId"/> is <paramref name="kind"/> to <paramref name="personId"/>.
+    /// </summary>
+    public static async Task<Guid> CreatePersonLinkAsync(
+        RelioWebAppFactory app,
+        string ownerId,
+        Guid personId,
+        Guid relatedPersonId,
+        PersonLinkKind kind)
+    {
+        using var scope = app.CreateRealScope();
+        var service = new PersonLinkService(
+            scope.ServiceProvider.GetRequiredService<RelioDbContext>(),
+            new OwnerCurrentUser(ownerId));
+        return await service.CreateAsync(new CreatePersonLinkRequest
+        {
+            PersonId = personId,
+            RelatedPersonId = relatedPersonId,
+            Kind = kind,
+        });
+    }
+
+    /// <summary>Every link the owner has, read straight from the database.</summary>
+    public static async Task<IReadOnlyList<PersonLink>> ListPersonLinksAsync(RelioWebAppFactory app, string ownerId)
+    {
+        using var scope = app.CreateRealScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<RelioDbContext>();
+        return await dbContext.PersonLinks.AsNoTracking().Where(link => link.OwnerId == ownerId).ToListAsync();
+    }
+
     /// <summary>Seeds a reminder for <paramref name="personId"/> owned by <paramref name="ownerId"/>.</summary>
     public static async Task<Guid> CreateReminderAsync(
         RelioWebAppFactory app,

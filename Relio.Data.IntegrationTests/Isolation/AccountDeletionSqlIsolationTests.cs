@@ -165,6 +165,8 @@ public sealed class AccountDeletionSqlIsolationTests : IAsyncLifetime
         (await verify.InteractionParticipants.AsNoTracking().AnyAsync(item => item.OwnerId == harness.OwnerA.Id)).Should().BeFalse();
         (await verify.Notes.AsNoTracking().AnyAsync(item => item.OwnerId == harness.OwnerA.Id)).Should().BeFalse();
         (await verify.Reminders.AsNoTracking().AnyAsync(item => item.OwnerId == harness.OwnerA.Id)).Should().BeFalse();
+        (await verify.PersonLinks.AsNoTracking().AnyAsync(item => item.OwnerId == harness.OwnerA.Id)).Should().BeFalse();
+        (await verify.PersonLinks.AsNoTracking().AnyAsync(item => item.Id == graph.OwnerBPersonLinkId)).Should().BeTrue();
         (await verify.UserProfiles.AsNoTracking().AnyAsync(item => item.OwnerId == harness.OwnerA.Id)).Should().BeFalse();
         (await verify.RelationshipTypes.AsNoTracking().AnyAsync(item => item.OwnerId == harness.OwnerB.Id)).Should().BeTrue();
         (await verify.Set<ProductActivity>().AsNoTracking()
@@ -339,6 +341,15 @@ public sealed class AccountDeletionSqlIsolationTests : IAsyncLifetime
         personA.Tags.Add(tagA);
         personB.Tags.Add(tagB);
 
+        // Each owner has a second person and a link between the two (#129): RelatedPersonId is NO ACTION,
+        // so erasure must delete the links explicitly before the people.
+        var secondPersonA = new Person { OwnerId = ownerA.Id, FirstName = "Synthetic A2" };
+        var secondPersonB = new Person { OwnerId = ownerB.Id, FirstName = "Synthetic B2" };
+        var personLinkA = new PersonLink { OwnerId = ownerA.Id };
+        personLinkA.SetEnds(personA.Id, secondPersonA.Id, PersonLinkKind.Parent);
+        var personLinkB = new PersonLink { OwnerId = ownerB.Id };
+        personLinkB.SetEnds(personB.Id, secondPersonB.Id, PersonLinkKind.Parent);
+
         var interactionA = new Interaction
         {
             OwnerId = ownerA.Id,
@@ -403,7 +414,8 @@ public sealed class AccountDeletionSqlIsolationTests : IAsyncLifetime
         };
 
         dbContext.Tags.AddRange(tagA, tagB);
-        dbContext.People.AddRange(personA, personB);
+        dbContext.People.AddRange(personA, personB, secondPersonA, secondPersonB);
+        dbContext.PersonLinks.AddRange(personLinkA, personLinkB);
         dbContext.ContactMethods.AddRange(
             CreateContact(ownerA.Id, personA.Id, "owner-a@example.com"),
             CreateContact(ownerB.Id, personB.Id, "owner-b@example.com"));
@@ -448,7 +460,8 @@ public sealed class AccountDeletionSqlIsolationTests : IAsyncLifetime
             dbContext.Reminders.Local.Single(reminder => reminder.OwnerId == ownerB.Id).Id,
             invitationForOwnerA.Id,
             invitationForOwnerAEmail.Id,
-            unrelatedInvitation.Id);
+            unrelatedInvitation.Id,
+            personLinkB.Id);
     }
 
     private static ContactMethod CreateContact(string ownerId, Guid personId, string email) => new()
@@ -495,7 +508,8 @@ public sealed class AccountDeletionSqlIsolationTests : IAsyncLifetime
         Guid OwnerBReminderId,
         Guid OwnerAInvitationId,
         Guid InvitationForOwnerAEmailId,
-        Guid UnrelatedOwnerBInvitationId);
+        Guid UnrelatedOwnerBInvitationId,
+        Guid OwnerBPersonLinkId);
 
     private sealed class LateOwnerPersonInsertInterceptor(
         SqlServerDatabaseFixture fixture,

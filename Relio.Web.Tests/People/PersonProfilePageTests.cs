@@ -30,7 +30,8 @@ public class PersonProfilePageTests
         out ProfileProviders providers,
         string timeZoneId = "Europe/Rome",
         FakeNoteService? notes = null,
-        FakePersonTimelineService? timeline = null)
+        FakePersonTimelineService? timeline = null,
+        FakePersonLinkService? links = null)
     {
         var context = new BunitContext();
         context.UseMudBlazor();
@@ -41,6 +42,7 @@ public class PersonProfilePageTests
         context.Services.AddSingleton<IUserTimeZoneService>(new FakeUserTimeZoneService(timeZoneId, Today));
         context.Services.AddSingleton<Relio.Application.Reminders.IReminderService>(new FakeReminderService());
         context.Services.AddSingleton<Relio.Application.DifficultMoments.IDifficultMomentService>(new FakeDifficultMomentService());
+        context.Services.AddSingleton<IPersonLinkService>(links ?? new FakePersonLinkService());
         providers = new ProfileProviders(
             context.Render<MudPopoverProvider>(),
             context.Render<MudDialogProvider>(),
@@ -219,6 +221,7 @@ public class PersonProfilePageTests
         context.Services.AddSingleton<IUserTimeZoneService>(new FakeUserTimeZoneService("Europe/Rome", Today));
         context.Services.AddSingleton<Relio.Application.Reminders.IReminderService>(reminders);
         context.Services.AddSingleton<Relio.Application.DifficultMoments.IDifficultMomentService>(new FakeDifficultMomentService());
+        context.Services.AddSingleton<IPersonLinkService>(new FakePersonLinkService());
         context.Render<MudPopoverProvider>();
         context.Render<MudDialogProvider>();
         context.Render<MudSnackbarProvider>();
@@ -690,6 +693,43 @@ public class PersonProfilePageTests
 
         cut.WaitForAssertion(() => cut.Find("[data-testid='note-editor']").Should().NotBeNull());
         cut.Find("[data-testid='note-editor-text-field']").OuterHtml.Should().Contain(note.Text);
+    }
+
+    [Fact]
+    public async Task Profile_shows_connections_with_links_to_the_other_profile()
+    {
+        var person = ActivePerson();
+        var other = Guid.NewGuid();
+        var links = new FakePersonLinkService();
+        links.Connections.Add(new PersonConnection(Guid.NewGuid(), other, "Marco Rossi", false, PersonLinkKind.Parent));
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people, out _, links: links);
+
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+
+        cut.Find("[data-testid='person-connection-role']").TextContent.Should().Be("Parent");
+        cut.Find("[data-testid='person-connection-link']").GetAttribute("href").Should().Be($"/people/{other}");
+        cut.Find("[data-testid='person-connection-link']").TextContent.Should().Be("Marco Rossi");
+        cut.FindAll("h1").Should().ContainSingle();
+        links.Listed.Should().Contain(person.Id);
+    }
+
+    [Fact]
+    public async Task Archiving_a_person_reloads_the_connections_so_the_add_button_goes()
+    {
+        var person = ActivePerson();
+        var links = new FakePersonLinkService();
+        var people = new FakePeopleService();
+        people.Known.Add(person);
+        await using var context = CreateContext(people, out var providers, links: links);
+        var cut = context.Render<PersonProfile>(parameters => parameters.Add(p => p.PersonId, person.Id));
+        cut.Find("[data-testid='person-add-connection']").Should().NotBeNull();
+
+        MenuItem(cut, providers, "person-archive").Click();
+
+        cut.WaitForAssertion(() => cut.FindAll("[data-testid='person-add-connection']").Should().BeEmpty());
+        links.Listed.Count.Should().BeGreaterThanOrEqualTo(2);
     }
 
     [Fact]

@@ -120,6 +120,18 @@ public sealed class UserDataPortabilityService(
                 .ThenBy(item => item.Id)
                 .ToListAsync(cancellationToken);
 
+        var personLinks = personIds.Length == 0
+            ? new List<PersonLink>()
+            : await dbContext.PersonLinks
+                .AsNoTracking()
+                .Where(item => item.OwnerId == ownerId
+                    && personIds.Contains(item.PersonId)
+                    && personIds.Contains(item.RelatedPersonId))
+                .OrderBy(item => item.PersonId)
+                .ThenBy(item => item.RelatedPersonId)
+                .ThenBy(item => item.Id)
+                .ToListAsync(cancellationToken);
+
         var productActivity = await dbContext.Set<ProductActivity>()
             .AsNoTracking()
             .SingleOrDefaultAsync(item => item.OwnerId == ownerId, cancellationToken);
@@ -241,6 +253,15 @@ public sealed class UserDataPortabilityService(
                 Status = item.Status,
                 ResolvedOn = item.ResolvedOn,
                 RecurrenceOfId = item.RecurrenceOfId,
+                CreatedAtUtc = AsUtc(item.CreatedAtUtc),
+                UpdatedAtUtc = AsUtc(item.UpdatedAtUtc),
+            }).ToArray(),
+            PersonLinks = personLinks.Select(item => new PersonLinkSnapshot
+            {
+                Id = item.Id,
+                PersonId = item.PersonId,
+                RelatedPersonId = item.RelatedPersonId,
+                Kind = item.Kind,
                 CreatedAtUtc = AsUtc(item.CreatedAtUtc),
                 UpdatedAtUtc = AsUtc(item.UpdatedAtUtc),
             }).ToArray(),
@@ -386,6 +407,12 @@ public sealed class UserDataPortabilityService(
             if (!profileExists)
             {
                 profileExists = await dbContext.DifficultMoments.AsNoTracking()
+                    .AnyAsync(item => item.OwnerId == ownerId, cancellationToken);
+            }
+
+            if (!profileExists)
+            {
+                profileExists = await dbContext.PersonLinks.AsNoTracking()
                     .AnyAsync(item => item.OwnerId == ownerId, cancellationToken);
             }
 
@@ -548,6 +575,18 @@ public sealed class UserDataPortabilityService(
                     dbContext.InteractionParticipants.Add(participant);
                     PreserveAudit(participant, sourceParticipant.CreatedAtUtc, sourceParticipant.UpdatedAtUtc);
                 }
+            }
+
+            foreach (var sourceLink in document.PersonLinks)
+            {
+                // The ids are new, so the ends are re-normalized (and the kind flipped when they swap).
+                var link = new PersonLink { OwnerId = ownerId };
+                link.SetEnds(
+                    peopleBySourceId[sourceLink.PersonId].Id,
+                    peopleBySourceId[sourceLink.RelatedPersonId].Id,
+                    sourceLink.Kind);
+                dbContext.PersonLinks.Add(link);
+                PreserveAudit(link, sourceLink.CreatedAtUtc, sourceLink.UpdatedAtUtc);
             }
 
             foreach (var sourceNote in document.Notes)

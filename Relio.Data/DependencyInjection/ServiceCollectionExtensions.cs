@@ -123,6 +123,7 @@ public static class ServiceCollectionExtensions
         AddDataService<IOnboardingService, OnboardingService>(services);
         AddDataService<IInteractionService, InteractionService>(services);
         AddDataService<INoteService, NoteService>(services);
+        AddDataService<IPersonLinkService, PersonLinkService>(services);
         AddDataService<IPersonTimelineService, PersonTimelineService>(services);
         AddDataService<IPeopleImportService, PeopleImportService>(services);
         AddDataService<IPersonMergeService, PersonMergeService>(services);

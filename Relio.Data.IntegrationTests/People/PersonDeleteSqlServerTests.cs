@@ -50,6 +50,31 @@ public sealed class PersonDeleteSqlServerTests(SqlServerDatabaseFixture fixture)
     }
 
     [SqlServerFact]
+    public async Task DeleteAsync_removes_links_where_the_person_is_either_end_on_SQL_Server()
+    {
+        await using var dbContext = fixture.CreateDbContext();
+        var owner = await TestDataFactory.CreateOwnerAsync(fixture);
+        // The ids are ordered on purpose (Guid.CompareTo): the subject is above "below" - so it is the
+        // related end of that row, the one the database does not cascade from - and below "above".
+        var subject = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Ada", id: TestDataFactory.GuidStartingWith(0x80000000));
+        var below = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Grace", id: TestDataFactory.GuidStartingWith(0x10000000));
+        var above = await TestDataFactory.CreatePersonAsync(dbContext, owner, "Alan", id: TestDataFactory.GuidStartingWith(0xF0000000));
+        var kept = await TestDataFactory.CreatePersonLinkAsync(dbContext, owner, below, above, PersonLinkKind.Friend);
+        var asRelatedEnd = await TestDataFactory.CreatePersonLinkAsync(dbContext, owner, subject, below, PersonLinkKind.Parent);
+        var asFirstEnd = await TestDataFactory.CreatePersonLinkAsync(dbContext, owner, subject, above, PersonLinkKind.Child);
+        var stored = await dbContext.PersonLinks.AsNoTracking().Where(l => l.OwnerId == owner).ToListAsync();
+        stored.Single(l => l.Id == asRelatedEnd).RelatedPersonId.Should().Be(subject);
+        stored.Single(l => l.Id == asFirstEnd).PersonId.Should().Be(subject);
+
+        (await TestDataFactory.CreateService(dbContext, owner).DeleteAsync(subject)).Should().BeTrue();
+
+        await using var verify = fixture.CreateDbContext();
+        (await verify.PersonLinks.Where(l => l.OwnerId == owner).Select(l => l.Id).ToListAsync()).Should().Equal(kept);
+        (await verify.People.Where(p => p.OwnerId == owner).Select(p => p.Id).ToListAsync())
+            .Should().BeEquivalentTo([below, above], "the other people stay");
+    }
+
+    [SqlServerFact]
     public async Task DeleteAsync_deletes_an_archived_person_and_a_second_delete_finds_nobody()
     {
         await using var dbContext = fixture.CreateDbContext();
@@ -141,9 +166,14 @@ public sealed class PersonDeleteSqlServerTests(SqlServerDatabaseFixture fixture)
             """).ToListAsync();
 
         foreignKeys.Should().NotBeEmpty();
-        foreignKeys.Should().OnlyContain(
+        // A table with two foreign keys to People cannot cascade both (multiple cascade paths), so the
+        // second one of PersonLinks is NO ACTION and PeopleService.RemoveDependentsAsync deletes it.
+        const string RelatedPersonForeignKey = "FK_PersonLinks_People_RelatedPersonId:NO_ACTION";
+        foreignKeys.Should().Contain(RelatedPersonForeignKey);
+        foreignKeys.Where(foreignKey => foreignKey != RelatedPersonForeignKey).Should().OnlyContain(
             foreignKey => foreignKey.EndsWith(":CASCADE"),
             "a child that does not cascade would block deleting its person on SQL Server (or be orphaned)");
+        foreignKeys.Should().Contain("FK_PersonLinks_People_PersonId:CASCADE");
         foreignKeys.Should().Contain("FK_PersonTags_People_PeopleId:CASCADE");
         foreignKeys.Should().Contain("FK_ContactMethods_People_PersonId:CASCADE");
         foreignKeys.Should().Contain("FK_InteractionParticipants_People_PersonId:CASCADE");

@@ -32,6 +32,9 @@ All notable changes to this project are documented in this file.
   action group (`alertEmailAddress`); self-hosted Compose gains log rotation and `RELIO_LOG_FORMAT=json`.
   See `docs/operations/monitoring.md`.
 
+- Links between people (#129): connect two profiles as partner, parent and child, siblings, colleagues and
+  more; shown on both profiles with the reciprocal, moved by merge, removed with a person, exported and
+  restored. Migration `AddPersonLinks`.
 - Hosted billing with Stripe, following the LearnStack implementation. Off by default
   (`Billing:Provider=None`): a self-hosted instance has no plans and no limits. With
   `Billing:Provider=Stripe`, accounts are on a Free plan for up to 25 active people (archived people

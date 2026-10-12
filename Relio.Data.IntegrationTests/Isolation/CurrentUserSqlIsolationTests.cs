@@ -94,6 +94,21 @@ public sealed class CurrentUserSqlIsolationTests(SqlServerDatabaseFixture fixtur
         await RequiresUserAsync(() => notes.DeleteAsync(id));
         await RequiresUserAsync(() => notes.SetPinnedAsync(id, true));
 
+        var links = new PersonLinkService(db, user);
+        await RequiresUserAsync(() => links.ListForPersonAsync(id));
+        await RequiresUserAsync(() => links.CreateAsync(new CreatePersonLinkRequest
+        {
+            PersonId = id,
+            RelatedPersonId = Guid.NewGuid(),
+            Kind = PersonLinkKind.Friend,
+        }));
+        await RequiresUserAsync(() => links.UpdateAsync(id, new UpdatePersonLinkRequest
+        {
+            PersonId = id,
+            Kind = PersonLinkKind.Friend,
+        }));
+        await RequiresUserAsync(() => links.DeleteAsync(id));
+
         var timeline = new PersonTimelineService(db, user);
         await RequiresUserAsync(() => timeline.GetPageAsync(id));
 

@@ -1,0 +1,259 @@
+@using System.Threading
+@using Relio.Application.People
+@using Relio.Domain
+@inject IPersonLinkService PersonLinkService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+@* The "Connections" section of a profile (issue #129): the people this person is linked to, each with
+   what they are to this person (already the right way round, from IPersonLinkService) and a link to
+   their profile. Self-loading like PinnedNotes: the parent reloads it after a change elsewhere. Names
+   stay in the markup: never in a log, a URL, a title or a snackbar. *@
+@if (!_loading && _loadFailed)
+{
+    <div role="alert" data-testid="person-connections-error">
+        <MudText Typo="Typo.body2">@PersonLinkText.LoadFailed</MudText>
+        <MudButton Variant="Variant.Text" OnClick="ReloadAsync" data-testid="person-connections-reload">
+            Try again
+        </MudButton>
+    </div>
+}
+else if (!_loading && (_connections.Count > 0 || !PersonIsArchived))
+{
+    <section aria-labelledby="person-connections-title" class="rl-connections" data-testid="person-connections">
+        <div class="d-flex justify-space-between align-center flex-wrap gap-2 mb-3">
+            <MudText Typo="Typo.h6" HtmlTag="h2" id="person-connections-title">@PersonLinkText.SectionTitle</MudText>
+            @if (!PersonIsArchived)
+            {
+                <MudButton Variant="Variant.Outlined"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Outlined.Link"
+                           OnClick="AddAsync"
+                           Disabled="@(Busy || _busy)"
+                           data-testid="person-add-connection">
+                    @PersonLinkText.AddLabel
+                </MudButton>
+            }
+        </div>
+
+        @if (_connections.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="rl-meta" data-testid="person-connections-empty">@PersonLinkText.Empty(PersonFirstName)</MudText>
+        }
+        else
+        {
+            <dl class="rl-facts">
+                @foreach (var connection in _connections)
+                {
+                    <div @key="connection.LinkId" data-testid="person-connection">
+                        <dt data-testid="person-connection-role">@PersonLinkText.Role(connection.Role)</dt>
+                        <dd class="rl-connection-row">
+                            <MudLink Href="@($"/people/{connection.OtherPersonId}")"
+                                     Class="rl-entry-text"
+                                     data-testid="person-connection-link">@connection.OtherDisplayName</MudLink>
+                            @if (connection.OtherIsArchived)
+                            {
+                                <MudChip T="string"
+                                         Size="Size.Small"
+                                         Variant="Variant.Outlined"
+                                         Icon="@Icons.Material.Outlined.Inventory2"
+                                         data-testid="person-connection-archived">Archived</MudChip>
+                            }
+                            <span class="rl-connection-actions">
+                                <MudIconButton Icon="@Icons.Material.Outlined.Edit"
+                                               Size="Size.Small"
+                                               aria-label="@PersonLinkText.EditLabel(connection.OtherDisplayName)"
+                                               Disabled="@(Busy || _busy)"
+                                               OnClick="@(() => EditAsync(connection))"
+                                               data-testid="person-connection-edit" />
+                                <MudIconButton Icon="@Icons.Material.Outlined.LinkOff"
+                                               Size="Size.Small"
+                                               aria-label="@PersonLinkText.RemoveLabel(connection.OtherDisplayName)"
+                                               Disabled="@(Busy || _busy)"
+                                               OnClick="@(() => RemoveAsync(connection))"
+                                               data-testid="person-connection-remove" />
+                            </span>
+                        </dd>
+                    </div>
+                }
+            </dl>
+        }
+    </section>
+}
+
+@code {
+    private readonly SemaphoreSlim _reloadGate = new(1, 1);
+    private IReadOnlyList<PersonConnection> _connections = [];
+    private long _reloadVersion;
+    private bool _loading = true;
+    private bool _loadFailed;
+    private bool _busy;
+
+    /// <summary>The person whose connections are shown.</summary>
+    [Parameter, EditorRequired]
+    public Guid PersonId { get; set; }
+
+    /// <summary>The first name of the person, for the empty text and the dialog's question.</summary>
+    [Parameter, EditorRequired]
+    public string PersonFirstName { get; set; } = string.Empty;
+
+    /// <summary>Whether the person is archived: no new connections can be added to an archived profile.</summary>
+    [Parameter]
+    public bool PersonIsArchived { get; set; }
+
+    /// <summary>Whether the page is busy with another action; the buttons are disabled while it is.</summary>
+    [Parameter]
+    public bool Busy { get; set; }
+
+    /// <inheritdoc />
+    protected override Task OnParametersSetAsync() => ReloadAsync();
+
+    /// <summary>Reloads the connections of the current person.</summary>
+    public async Task ReloadAsync()
+    {
+        var personId = PersonId;
+        var version = Interlocked.Increment(ref _reloadVersion);
+        await _reloadGate.WaitAsync();
+
+        try
+        {
+            if (version != _reloadVersion || personId != PersonId)
+            {
+                return;
+            }
+
+            _loading = true;
+            _loadFailed = false;
+            var connections = await PersonLinkService.ListForPersonAsync(personId);
+            if (version == _reloadVersion && personId == PersonId)
+            {
+                _connections = connections;
+            }
+        }
+        catch (Exception)
+        {
+            if (version == _reloadVersion)
+            {
+                _connections = [];
+                _loadFailed = true;
+            }
+        }
+        finally
+        {
+            if (version == _reloadVersion)
+            {
+                _loading = false;
+            }
+
+            _reloadGate.Release();
+        }
+
+        if (version == _reloadVersion)
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        var parameters = new DialogParameters<PersonLinkDialog>
+        {
+            { x => x.PersonId, PersonId },
+            { x => x.PersonFirstName, PersonFirstName },
+            { x => x.ExcludedPersonIds, _connections.Select(connection => connection.OtherPersonId).ToArray() },
+        };
+        await ShowDialogAsync(PersonLinkText.AddTitle, parameters, PersonLinkText.Added);
+    }
+
+    private async Task EditAsync(PersonConnection connection)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        var parameters = new DialogParameters<PersonLinkDialog>
+        {
+            { x => x.PersonId, PersonId },
+            { x => x.PersonFirstName, PersonFirstName },
+            { x => x.LinkId, connection.LinkId },
+            { x => x.OtherDisplayName, connection.OtherDisplayName },
+            { x => x.InitialKind, connection.Role },
+        };
+        await ShowDialogAsync(PersonLinkText.EditTitle, parameters, PersonLinkText.Updated);
+    }
+
+    private async Task ShowDialogAsync(string title, DialogParameters<PersonLinkDialog> parameters, string successMessage)
+    {
+        _busy = true;
+        try
+        {
+            var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+            var dialog = await DialogService.ShowAsync<PersonLinkDialog>(title, parameters, options);
+            var result = await dialog.Result;
+            if (result is { Canceled: false })
+            {
+                // Data is true after a save; false when the connection was gone (the dialog said so).
+                if (result.Data is true)
+                {
+                    Snackbar.Saved(successMessage);
+                }
+
+                await ReloadAsync();
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RemoveAsync(PersonConnection connection)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var confirmed = await DialogService.ShowConfirmAsync(
+                PersonLinkText.RemoveTitle,
+                PersonLinkText.RemoveMessage,
+                confirmLabel: PersonLinkText.RemoveConfirm,
+                cancelLabel: "Cancel",
+                destructive: true);
+            if (!confirmed)
+            {
+                return;
+            }
+
+            var removed = await PersonLinkService.DeleteAsync(connection.LinkId);
+            if (removed)
+            {
+                Snackbar.Info(PersonLinkText.Removed);
+            }
+            else
+            {
+                Snackbar.Info(PersonLinkText.Gone);
+            }
+        }
+        catch (Exception)
+        {
+            // Never logged here: whatever failed could carry a name.
+            Snackbar.Problem("The connection couldn't be removed. Try again.");
+        }
+        finally
+        {
+            _busy = false;
+        }
+
+        await ReloadAsync();
+    }
+}

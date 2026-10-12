@@ -919,7 +919,9 @@ Established by issue #22 under epic #21. The routes are pages, not dialogs: `/pe
   missing line would otherwise leave orphans that look fine). `PersonDeleteSqlServerTests` proves every
   foreign key to `People` is `ON DELETE CASCADE` on a real database. A table with two foreign keys to `People`
   cannot cascade both (SQL Server's multiple cascade paths): make one `NoAction` and delete those rows in
-  `RemoveDependentsAsync`. Account deletion (#59) deletes every owned table itself. Backups sit outside the
+  `RemoveDependentsAsync`. `PersonLink` (#129) is the worked example: `PersonId` cascades, `RelatedPersonId` is
+  `NoAction`, and both checklist tests carry an explicit allow-list for that one foreign key.
+  Account deletion (#59) deletes every owned table itself. Backups sit outside the
   app (#65). After a write changes or removes interactions, recalculate `Person.LastContactedOn` from the
   surviving interactions for every affected owner/person pair in the same tracked save; do not trust the
   denormalized value on a profile being merged or deleted. Two deletes racing from two tabs: the second
@@ -1112,6 +1114,55 @@ Established by issue #22 under epic #21. The routes are pages, not dialogs: `/pe
   in that shared interaction. A shared interaction stays one entry, never a copy. E2E and SQL Server
   tests prove both cases. Future person children (for example reminders and difficult moments) extend
   `MoveDependentsAsync`, both checklists, both SQL Server foreign-key tests and the E2E merge test.
+
+### Links between people (issue #129)
+
+- **What it is.** A `PersonLink` connects two of the owner's people with a `PersonLinkKind`. It is not the
+  per-person `RelationshipType` (#22, #25), which says what someone is *to the user*; a link says what two
+  people are *to each other*. The kinds are a fixed enum, stored by name with `CK_PersonLinks_Kind`:
+  symmetric Partner, FormerPartner, Sibling, Relative, Friend, Colleague, Neighbour, Other, and the
+  directional pairs Parent/Child, Grandparent/Grandchild, Manager/DirectReport
+  (`PersonLinkKinds.Reciprocal`). Not the user's relationship types because they have no reciprocal names,
+  and reusing them would add a third foreign key that removing a type (#25), usage counts and restore would
+  all have to handle. Custom kinds are a follow-up. A kind is readable metadata (ADR-0002), not encrypted;
+  there is no free text on a link.
+- **One row per pair.** `PersonId`, `RelatedPersonId`, `Kind` mean "RelatedPerson is Person's Kind".
+  `PersonLink.SetEnds(viewed, other, roleOfOther)` is the only way ends are written: it stores the lower
+  `Guid` (by .NET `Guid.CompareTo`) as `PersonId` and flips the kind to its reciprocal when it swaps, so the
+  same pair from either profile is the same row and the unique `(OwnerId, PersonId, RelatedPersonId)` index
+  (`PersonLinkConfiguration.PairIndexName`) forbids linking a pair twice. Never compare ids in SQL for this
+  (SQL Server orders uniqueidentifier differently). `RoleOfOther(viewed)` reads a row from either end.
+  `CK_PersonLinks_DistinctPeople` forbids a self link. The entity has no navigations.
+- **Two foreign keys to `People`.** `PersonId` cascades; `RelatedPersonId` is `NoAction` (multiple cascade
+  paths). So `PeopleService.RemoveDependentsAsync` deletes links with the person at **either** end, and
+  `AccountDeletionService` deletes `PersonLinks` before `People`. A link created at the other end in the
+  instant between a delete's or merge's load and save makes that save fail and roll back; nothing changes.
+- **Service.** `IPersonLinkService` (`PersonLinkService`, `AddDataService`): `ListForPersonAsync` (from the
+  viewed person's side, archived others included, names projected - never the encrypted fields),
+  `CreateAsync`, `UpdateAsync` (kind only, seen from `request.PersonId`, which must be an end) and
+  `DeleteAsync`. Input codes come from `PersonLinkRules` (`PersonLinkValidationException`); a missing or
+  foreign person on create is `ForeignEntityNotOwnedException(ForeignEntityNames.People)`, same message
+  either way; a missing or foreign link is `false`. New links need both people active
+  (`ArchivedPersonNotAllowed`); existing links to archived people stay listed and editable. A pair already
+  linked is `AlreadyLinked`, checked in code (InMemory has no unique index) with the index as the race
+  backstop (`SqlServerErrors.IsUniqueIndexViolation`; never log or attach that exception).
+- **Merge.** `MoveDependentsAsync` drops a link between primary and duplicate (it would be a self link), drops
+  the duplicate's link to someone the primary is already linked to (the primary's kind wins), and re-points
+  the rest with `SetEnds(primary, other, roleFromDuplicate)`.
+- **Portability.** `UserDataExportDocument.PersonLinks` (optional, so older version-1 files still read;
+  explicit `null` is invalid); restore re-normalizes ends after remapping ids; the freshness checks (service
+  and `HasOwnedContentSql`) include `PersonLinks`. vCard excludes links.
+- **UI.** The profile's `PersonConnections` section ("Connections", an `h2`) lists each link as role and a
+  `/people/{id}` link, with an Archived chip; `PersonLinkDialog` adds (a `MudAutocomplete` over
+  `IInteractionService.ListParticipantCandidatesAsync(Guid.Empty)` - active people only - minus the profile
+  and people already linked, filtered with `QuickLogPersonSearch`) or edits the kind ("What are they to
+  Anna?"). Remove asks (`ShowConfirmAsync`). Words in `PersonLinkText`/`PersonLinkFormMessages`. Archived
+  profiles show no Add button. Snackbars, titles and logs never carry a name.
+- **Tests.** `PersonLinkTests`/`PersonLinkRulesTests` (pure), `PersonLinkServiceTests` and
+  `PersonLinkServiceOwnershipTests` (InMemory), `PersonLinkSqlServerTests` (isolation, constraints, index,
+  race, `NoAction`), the delete/merge checklist and SQL foreign-key tests, the portability and erasure
+  coverage tests, the profile lane test, `PersonConnectionsTests`/`PersonLinkDialogTests` (bUnit), and E2E
+  `PersonLinksTests`, `PersonMergeTests` and `SqlServerPageLoadTests`.
 
 ### Importing people (issue #29)
 
@@ -1352,7 +1403,8 @@ billing UI, webhooks refused, no provider request. Every feature must keep worki
   `UserDataPortabilityService`. **Every new code path that makes a person active** (adds, restores,
   imports, un-archives) calls `EnsureRoomForActivePeopleAsync` before mutating and lets
   `PlanLimitReachedException` reach the page, which shows `PlanText.LimitRefused` / `PlanLimitNotice`.
-  A downgrade never deletes or hides anything.
+  A downgrade never deletes or hides anything. Links between people (#129) never make a person active, so
+  `PersonLinkService` does not take `PlanLimits`.
 - **Erasure** cancels the customer's Relio subscriptions at the provider before deleting anything
   (`AccountDeletionStatus.BillingCancellationFailed` deletes nothing) and removes the subscription row
   in the same save.

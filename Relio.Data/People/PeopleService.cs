@@ -540,7 +540,8 @@ public sealed class PeopleService(
     /// <item><description>[x] Interactions (#31) and their participants (#35): remove this person's participant rows; delete an interaction only when no other participant remains.</description></item>
     /// <item><description>[x] Notes (#32): remove notes filtered by <c>OwnerId</c> and <c>PersonId</c>.</description></item>
     /// <item><description>[x] Reminders (#37, #38): removed below. The cadence (#41) is a column on <c>Person</c>.</description></item>
-    /// <item><description>[ ] Difficult moments (#43). Their status (#44) is a column.</description></item>
+    /// <item><description>[x] Difficult moments (#43): removed below. Their status (#44) is a column.</description></item>
+    /// <item><description>[x] Person links (#129): both directions. The <c>RelatedPersonId</c> foreign key is <c>NoAction</c>, so this line is the only delete for a link where the person is the related end.</description></item>
     /// </list>
     /// A table with two foreign keys to <c>People</c> cannot cascade both on SQL Server (multiple cascade
     /// paths): make one <c>NoAction</c> and delete those rows here. Account deletion (#59) deletes every
@@ -605,6 +606,12 @@ public sealed class PeopleService(
             moment.RecurrenceOfId = null;
         }
         dbContext.DifficultMoments.RemoveRange(moments);
+
+        // A link is shared by its two people: it goes from both profiles, the other person stays.
+        var links = await dbContext.PersonLinks
+            .Where(l => l.OwnerId == ownerId && (l.PersonId == person.Id || l.RelatedPersonId == person.Id))
+            .ToListAsync(cancellationToken);
+        dbContext.PersonLinks.RemoveRange(links);
     }
 
     /// <summary>

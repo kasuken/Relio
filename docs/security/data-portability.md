@@ -17,7 +17,7 @@ file on the server.
 
 ## Restore boundaries
 
-Restore accepts an export only when the destination account has no people,
+Restore accepts an export only when the destination account has no people, links between people,
 tags, interactions, notes, reminders, or non-default relationship types.
 Registration-created profile and default relationship-type rows are allowed.
 The import is validated as a whole and saved in one database operation; an
@@ -61,5 +61,5 @@ people. It does not include notes, interactions, reminders, relationship types,
 tags, profile settings, or analytics. In particular, narrative content is never
 silently added to a person's vCard.
 
-The current product has no difficult-moment entity; this export does not claim
+Links between people are not part of the vCard export either. The current product has no difficult-moment entity; this export does not claim
 to include difficult moments.

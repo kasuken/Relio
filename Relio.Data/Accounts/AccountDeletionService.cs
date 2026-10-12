@@ -116,6 +116,13 @@ public sealed class AccountDeletionService(
                 dbContext.InteractionParticipants.Where(item => item.OwnerId == ownerId),
                 id => new InteractionParticipant { Id = id, OwnerId = ownerId },
                 cancellationToken);
+            // Before People: RelatedPersonId is NO ACTION, so only an explicit delete ordered ahead
+            // of the people (the stubs carry both foreign keys) can remove these rows.
+            await RemoveOwnedRowsAsync(
+                dbContext,
+                dbContext.PersonLinks.Where(item => item.OwnerId == ownerId),
+                id => new PersonLink { Id = id, OwnerId = ownerId },
+                cancellationToken);
             await RemoveOwnedRowsAsync(
                 dbContext,
                 dbContext.ContactMethods.Where(item => item.OwnerId == ownerId),

@@ -119,12 +119,17 @@ public class SqlServerPageLoadTests(RelioAppFixture fixture)
                     Interaction = interaction,
                     PersonId = demoPeople[0],
                 });
+                var connection = new PersonLink { OwnerId = demoUserId };
+                connection.SetEnds(demoPeople[0], demoPeople[1], PersonLinkKind.Friend);
+                dbContext.PersonLinks.Add(connection);
                 await dbContext.SaveChangesAsync();
             }
 
-            // /people/{id}: PinnedNotes and the mixed timeline both load alongside the profile on
-            // the same circuit DbContext, including the real SQL Server query paths.
+            // /people/{id}: PinnedNotes, the connections and the mixed timeline all load alongside the
+            // profile on the same circuit DbContext, including the real SQL Server query paths.
             await RelioAppFixture.GotoAndWaitForInteractiveAsync(page, $"/people/{demoPeople[0]}");
+            await Expect(page.GetByTestId("person-connection")).ToHaveCountAsync(1);
+            await Expect(page.GetByTestId("person-connection-role")).ToHaveTextAsync("Friend");
             await Expect(page.GetByTestId("pinned-note-text")).ToHaveTextAsync("A note for the SQL Server page-load test.");
             await Expect(page.GetByTestId("timeline-entries")
                 .GetByText("A note for the SQL Server page-load test.", new() { Exact = true }))

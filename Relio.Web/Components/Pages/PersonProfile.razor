@@ -208,6 +208,12 @@
             </div>
         </dl>
 
+        <PersonConnections @ref="_connections"
+                           PersonId="PersonId"
+                           PersonFirstName="@_person.FirstName"
+                           PersonIsArchived="_person.IsArchived"
+                           Busy="@(_busy || _showInteractionEditor || _showNoteEditor || _showDifficultMomentEditor)" />
+
         <PersonTimeline @ref="_timeline"
                     PersonId="PersonId"
                     Busy="@(_busy || _showInteractionEditor || _showNoteEditor || _showDifficultMomentEditor)"
@@ -339,6 +345,7 @@
     private DateOnly _today;
     private PersonTimeline? _timeline;
     private PinnedNotes? _pinnedNotes;
+    private PersonConnections? _connections;
     private bool _showInteractionEditor;
     private Guid? _interactionIdToEdit;
     private bool _showNoteEditor;
@@ -828,6 +835,13 @@
             if (_pinnedNotes is not null)
             {
                 await _pinnedNotes.ReloadAsync();
+            }
+
+            if (_connections is not null)
+            {
+                // An archive, restore or merge changes what the section may show (the Add button, the
+                // Archived chips), so it reloads with the rest of the profile.
+                await _connections.ReloadAsync();
             }
         }
     }

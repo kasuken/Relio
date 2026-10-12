@@ -26,6 +26,8 @@ internal sealed class FakeInteractionService : IInteractionService
 
     public Exception? ThrowOnNextCreate { get; set; }
 
+    public Exception? ThrowOnNextCandidateQuery { get; set; }
+
     public Exception? ThrowOnNextUpdate { get; set; }
 
     public Task<InteractionDetails?> GetAsync(Guid interactionId, CancellationToken cancellationToken = default) =>
@@ -37,6 +39,12 @@ internal sealed class FakeInteractionService : IInteractionService
         CancellationToken cancellationToken = default)
     {
         CandidateQueries.Add((profilePersonId, includedParticipantIds));
+        if (ThrowOnNextCandidateQuery is { } exception)
+        {
+            ThrowOnNextCandidateQuery = null;
+            throw exception;
+        }
+
         return Task.FromResult(CandidateOptions);
     }
 
