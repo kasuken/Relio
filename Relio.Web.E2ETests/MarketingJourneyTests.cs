@@ -111,10 +111,10 @@ public sealed class MarketingJourneyTests(RelioAppFixture fixture)
             new Uri(page.Url).AbsolutePath.Should().Be("/dashboard");
             var publicResponse = await page.GotoAsync("/");
             (await publicResponse!.AllHeadersAsync())["cache-control"].Should().Contain("no-store");
-            await Expect(page.Locator("header a[href='/dashboard']")).ToHaveTextAsync("Open Relio");
-            await Expect(page.Locator("main")).Not.ToContainTextAsync(DemoDataSeeder.DemoEmail);
-            await page.Locator("header a[href='/dashboard']").ClickAsync();
+            new Uri(page.Url).AbsolutePath.Should().Be("/dashboard");
             await page.Locator("html[data-app-ready='true']").WaitForAsync();
+            await Expect(page.GetByTestId("signed-in-as")).ToHaveTextAsync(DemoDataSeeder.DemoEmail);
+            await Expect(page.Locator("#main-content")).Not.ToContainTextAsync(DemoDataSeeder.DemoEmail);
             await page.GetByTestId("sign-out").ClickAsync();
             await Expect(page.GetByTestId("login-submit")).ToBeVisibleAsync();
             await page.GoBackAsync();
