@@ -1,0 +1,106 @@
+# Restore drill (REL-005, issue #119): proves Relio can be rebuilt from its encrypted backups alone,
+# in a separate environment. The run page, its job summary and the `restore-drill-evidence`
+# artifact are the recorded evidence; add the run to the evidence log in
+# docs/operations/backup-restore.md after a run on main.
+#
+# Everything is generated per run (passwords, a throwaway age identity, a random canary) and masked.
+# No repository secret is used and no real data is touched. A failing scheduled run notifies the
+# people who watch this repository's Actions, which is the drill's own failure signal. GitHub
+# disables scheduled workflows after 60 days without repository activity; re-enable it then.
+name: Restore drill
+
+on:
+  schedule:
+    - cron: '17 4 * * 1' # weekly, Monday 04:17 UTC
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'deploy/backup/**'
+      - 'deploy/restore-drill/**'
+      - 'docker-compose.yml'
+      - 'Dockerfile'
+      - 'Relio.Data/Encryption/**'
+      - 'Relio.Data/Migrations/**'
+      - 'Relio.Web/Encryption/**'
+      - 'Relio.Data.IntegrationTests/RestoreDrill/**'
+      - '.github/workflows/restore-drill.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: restore-drill-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  restore-drill:
+    name: Restore into a separate environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      RELIO_DRILL_DIR: ${{ runner.temp }}/relio-drill
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          global-json-file: global.json
+
+      - name: Build the drill tests
+        run: deploy/restore-drill/drill.sh build-tests
+
+      - name: Prepare synthetic secrets and the backup identity
+        run: deploy/restore-drill/drill.sh prepare
+
+      - name: Start the source instance
+        run: deploy/restore-drill/drill.sh source-up
+
+      - name: Seed synthetic protected data
+        run: deploy/restore-drill/drill.sh seed
+
+      - name: Prove the backup failure signal
+        run: deploy/restore-drill/drill.sh backup-failure-signal
+
+      - name: Take the encrypted backup
+        run: deploy/restore-drill/drill.sh backup
+
+      - name: Destroy the source instance
+        run: deploy/restore-drill/drill.sh source-down
+
+      - name: Restore into a fresh environment
+        run: deploy/restore-drill/drill.sh restore
+
+      - name: Start the restored application
+        run: deploy/restore-drill/drill.sh restore-up
+
+      - name: Verify the restored data
+        run: deploy/restore-drill/drill.sh verify
+
+      - name: Prove a backup without its key material cannot serve the data
+        run: deploy/restore-drill/drill.sh negative-control
+
+      - name: Record the evidence
+        if: always()
+        run: deploy/restore-drill/drill.sh evidence
+
+      # Only the evidence directory is uploaded. It holds manifests (public recipients, sizes,
+      # checksums), row counts, step timings and test results; never the identity, the backups, an
+      # environment file or a password, which live next to it and are removed by the cleanup step.
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: restore-drill-evidence
+          path: ${{ env.RELIO_DRILL_DIR }}/evidence/
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Clean up
+        if: always()
+        run: deploy/restore-drill/drill.sh cleanup

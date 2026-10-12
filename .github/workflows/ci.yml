@@ -112,6 +112,17 @@ jobs:
       - name: Build Docker image
         run: docker build -t relio:ci-test .
 
+      - name: Validate Docker Compose backup and restore profiles
+        run: MSSQL_SA_PASSWORD=TestPass123! RELIO_DP_PASSWORD=TestCertPass123! docker compose --profile backup --profile restore config --quiet
+
+      # Backup, restore and restore-drill scripts (REL-005). shellcheck is preinstalled on
+      # ubuntu-latest runners.
+      - name: Lint backup and restore scripts
+        run: shellcheck -x deploy/backup/entrypoint.sh deploy/backup/lib.sh deploy/backup/relio-backup deploy/backup/relio-restore deploy/restore-drill/drill.sh
+
+      - name: Build backup image
+        run: docker build -t relio-backup:ci-test deploy/backup
+
   # Compiles the infrastructure templates and the staging deployment script so a broken change
   # fails here rather than on the first staging run. No Azure login, no deployment.
   infra:
