@@ -3,6 +3,7 @@
 @layout MarketingLayout
 @using Relio.Application.Billing
 @inject IBillingProvider BillingProvider
+@inject NavigationManager Navigation
 
 <SeoHeadContent Title="A private notebook for your relationships"
                 Description="Remember conversations, keep personal notes and follow up with the people in your life. Explore Relio and hosted or self-hosted use."
@@ -23,6 +24,19 @@
         <figcaption>A fictional relationship thread. An illustration, not a real account.</figcaption>
     </figure>
 </section>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if ((await AuthenticationState).User.Identity?.IsAuthenticated == true)
+        {
+            Navigation.NavigateTo("/dashboard", forceLoad: true, replace: true);
+        }
+    }
+}
 
 <section class="rl-marketing-section" aria-labelledby="workflow-heading">
     <h2 id="workflow-heading">A few words now, a helpful memory later</h2>
