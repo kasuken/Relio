@@ -140,6 +140,8 @@ module appService './modules/app-service.bicep' = {
     billingProvider: billingProvider
     stripeProMonthlyPriceId: stripeProMonthlyPriceId
     stripeProYearlyPriceId: stripeProYearlyPriceId
+    // release.yml deploys `dotnet publish` output, not source.
+    buildDuringDeployment: false
   }
 }
 

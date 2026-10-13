@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "14618415858566772696"
+      "templateHash": "291758815183795544"
     }
   },
   "parameters": {
@@ -674,6 +674,9 @@
           },
           "stripeProYearlyPriceId": {
             "value": "[parameters('stripeProYearlyPriceId')]"
+          },
+          "buildDuringDeployment": {
+            "value": false
           }
         },
         "template": {
