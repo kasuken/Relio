@@ -38,6 +38,18 @@ env:
   BASE_URL: https://app-relio-stg-edff.azurewebsites.net
 
 jobs:
+  auto-deploy-off:
+    name: Staging auto-deploy is off
+    # Say so in the run instead of only showing every push as skipped (issue #161).
+    if: github.repository == 'kasuken/Relio' && github.event_name == 'push' && vars.STAGING_AUTO_DEPLOY != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report that nothing was deployed
+        run: |
+          echo "::notice title=Staging not deployed::Push deployments are off. Set the repository variable STAGING_AUTO_DEPLOY=true to deploy every green main commit, or run the Staging workflow manually. See docs/operations/staging.md."
+          echo "Staging was not deployed for this push (STAGING_AUTO_DEPLOY is not true)." >> "$GITHUB_STEP_SUMMARY"
+
   build:
     name: Build
     # Push runs stay off until the owner sets the repository variable STAGING_AUTO_DEPLOY=true.

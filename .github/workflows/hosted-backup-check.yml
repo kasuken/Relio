@@ -1,7 +1,7 @@
 # Read-only daily check that the hosted instance's backups are configured and fresh (REL-005).
 # A failed run is the failure signal (GitHub notifies the watchers of this repository).
 #
-# Inactive until configured: the job is skipped unless the repository variable
+# Inactive until configured: the check job is skipped (and a warning job says so) unless the repository variable
 # AZURE_BACKUP_MONITOR_CLIENT_ID is set (plus AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID). Create the
 # read-only identity with infra/github-backup-monitor-identity.bicep. No secrets are used.
 name: Hosted backup check
@@ -16,6 +16,18 @@ permissions:
   id-token: write
 
 jobs:
+  not-configured:
+    name: Backup check is not configured
+    # Without this the whole workflow shows as skipped and nobody notices (issue #161).
+    if: ${{ vars.AZURE_BACKUP_MONITOR_CLIENT_ID == '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Warn that backups are not being monitored
+        run: |
+          echo "::warning title=Hosted backups are not monitored::Set the repository variables AZURE_BACKUP_MONITOR_CLIENT_ID, AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID to enable the daily check. See docs/operations/backup-restore.md."
+          echo "The hosted backup check did not run: AZURE_BACKUP_MONITOR_CLIENT_ID is not set." >> "$GITHUB_STEP_SUMMARY"
+
   check:
     name: Check Azure SQL and App Service backups
     if: ${{ vars.AZURE_BACKUP_MONITOR_CLIENT_ID != '' }}
