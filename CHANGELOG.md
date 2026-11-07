@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-07
+
+### Added
+
+- Trusted forwarded headers for per-client rate limiting behind a reverse proxy (issue #160). Opt in with
+  `Security:ForwardedHeaders:Enabled` (optionally `KnownProxies`, `KnownNetworks`, `ForwardLimit`); the hosted
+  App Service deployment enables it in Bicep. `X-Forwarded-Host` is never used. Without it every visitor
+  behind a proxy shares one registration, login and password-reset budget. See `docs/self-hosting.md`.
+- The Staging and Hosted backup check workflows now say so in the run (a notice or warning annotation) when
+  they are not configured, instead of only showing as skipped (issue #161).
+
+### Changed
+
+- Landing and features pages now describe difficult moments and people search and filtering as available
+  (issue #159), and the marketing claim checklist matches.
+
+### Fixed
+
+- Pinned `System.Security.Cryptography.Pkcs` to 10.0.13 to clear the known vulnerabilities that the
+  transitive 9.0.11 from `Microsoft.Data.SqlClient` raised in NuGet audit, which failed the build.
+
+## [0.1.0] - 2026-10-13
+
 ### Added
 
 - Backups and a restore drill (issue #119). Self-hosted instances get an opt-in `backup` compose
