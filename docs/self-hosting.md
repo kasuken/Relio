@@ -177,6 +177,25 @@ Relio listens on plain HTTP port `8080` inside the container.
 1. Pass forwarded headers: `X-Forwarded-For`, `X-Forwarded-Proto`, and `Host`.
 2. Support WebSockets for the Blazor Server circuit endpoint (`/_blazor`).
 
+### Client addresses and rate limits
+
+Login, registration and password-reset attempts are rate limited per client address. Behind a
+reverse proxy the address Relio sees is the proxy's, so every visitor shares one budget (five
+registrations per ten minutes for the whole site) until you tell Relio to trust the proxy:
+
+| Setting | Environment Variable | Default | Description |
+|---|---|---|---|
+| `Security:ForwardedHeaders:Enabled` | `Security__ForwardedHeaders__Enabled` | `false` | Read the client address and scheme from `X-Forwarded-For` and `X-Forwarded-Proto`. `X-Forwarded-Host` is never used. |
+| `Security:ForwardedHeaders:KnownProxies` | `Security__ForwardedHeaders__KnownProxies__0` | empty | Proxy IP addresses allowed to set those headers (indexed list). |
+| `Security:ForwardedHeaders:KnownNetworks` | `Security__ForwardedHeaders__KnownNetworks__0` | empty | Proxy networks in CIDR form, for example `172.16.0.0/12`. |
+| `Security:ForwardedHeaders:ForwardLimit` | `Security__ForwardedHeaders__ForwardLimit` | `1` | How many proxies in the chain to unwrap. |
+
+Enable it only when every request really arrives through your proxy, and list the proxy in
+`KnownProxies` or `KnownNetworks` whenever you can. With both lists empty any direct peer is
+trusted, so a client that could reach port `8080` directly could forge its own address. This is
+acceptable on Azure App Service, which is only reachable through its own front ends and has no
+stable front-end addresses (the hosted deployment sets it in Bicep).
+
 ### Caddy Example (`Caddyfile`)
 
 ```caddyfile

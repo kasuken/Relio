@@ -19,8 +19,9 @@ public static class RateLimitingServiceCollectionExtensions
     /// <summary>
     /// Registers validated fixed-window limits for login, second-factor, account-deletion
     /// reauthentication, registration, and password-recovery <c>POST</c> requests. Partitions are
-    /// process-salted hashes of the connection peer address; request bodies, account identifiers,
-    /// and forwarded headers are never read.
+    /// process-salted hashes of the connection address (the real client address when trusted
+    /// forwarded headers are enabled); request bodies, account identifiers and raw forwarded
+    /// headers are never read.
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <param name="configuration">Application configuration.</param>

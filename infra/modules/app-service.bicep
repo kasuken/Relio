@@ -186,6 +186,12 @@ resource appService 'Microsoft.Web/sites@2026-08-01' = {
           value: 'json'
         }
         {
+          // Behind the App Service front ends the peer address is theirs; trust X-Forwarded-For so
+          // the per-client rate limits do not collapse into one site-wide bucket (issue #160).
+          name: 'Security__ForwardedHeaders__Enabled'
+          value: 'true'
+        }
+        {
           name: 'ASPNETCORE_ENVIRONMENT'
           value: aspnetcoreEnvironment
         }
