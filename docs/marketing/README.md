@@ -15,9 +15,9 @@ corresponding behavior before changing a claim; an open roadmap is not delivered
 | #21 | Shipped | Profiles, imports, duplicates, merge, archive and delete: `Components/Pages/People.razor`, `PersonProfile.razor`, `ImportPeople.razor`, `MergePeople.razor`; `Relio.Data/People/` |
 | #30 | Shipped | Shared interactions, notes and paged timeline: `Components/Interactions/`, `Components/Notes/`, `Relio.Data/Interactions/`, `Relio.Data/Timeline/` |
 | #36 | Shipped | Follow-ups, birthday reminders and cadence: `Components/Reminders/`, `Relio.Data/Reminders/`; email needs configured SMTP and notification preferences |
-| #42 | Planned | Difficult moments/reflection are explicitly unavailable; the current page is an empty-state placeholder, not a recording workflow |
+| #42 | Shipped | Record, edit and delete difficult moments on a person, with status (open, resolved, recurring) and a cross-person overview: `Components/Pages/DifficultMoments.razor`, `Relio.Data/DifficultMoments/` |
 | #46 | Shipped | Dashboard, optional onboarding and quick log: `Home.razor`, `Onboarding.razor`, `QuickLogInteraction.razor`, `Relio.Data/Dashboard/` |
-| #51 | Planned | Name search and tag/type filtering are explicitly planned; existing list sorting/paging/archive visibility are shipped |
+| #51 | Shipped | Name/nickname search and tag/relationship-type filtering, plus sorting, paging and archive visibility: `Components/Pages/People.razor` |
 | #54 | Shipped | Account-scoped storage, partial field encryption, export/restore and account erasure: `docs/security/`; policies require operator configuration and human review |
 
 ## Local visuals

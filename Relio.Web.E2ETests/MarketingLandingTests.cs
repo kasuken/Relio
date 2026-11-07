@@ -21,8 +21,8 @@ public sealed class MarketingLandingTests(RelioAppFixture fixture)
             var response = await page.GotoAsync("/");
             response!.Status.Should().Be((int)HttpStatusCode.OK);
             await Expect(page.Locator("main h1")).ToHaveCountAsync(1);
-            await Expect(page.Locator("main")).ToContainTextAsync("difficult moments and reflection");
-            await Expect(page.Locator("main")).ToContainTextAsync("It is not available yet");
+            await Expect(page.Locator("main")).ToContainTextAsync("record a difficult moment");
+            await Expect(page.Locator("main")).Not.ToContainTextAsync("not available yet");
             await Expect(page.Locator("main figure")).ToContainTextAsync("fictional");
             (await page.Locator("main img").EvaluateAsync<bool>("img => img.complete && img.naturalWidth === 960"))
                 .Should().BeTrue();

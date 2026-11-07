@@ -17,12 +17,13 @@ public sealed class MarketingFeaturesTests(RelioAppFixture fixture)
             var response = await page.GotoAsync("/features");
             response!.Status.Should().Be((int)HttpStatusCode.OK);
             var initialHtml = await response.TextAsync();
-            initialHtml.Should().Contain("Interactions and notes").And.Contain("not available yet")
+            initialHtml.Should().Contain("Interactions and notes").And.NotContain("not available yet")
                 .And.NotContain("demo@relio.local").And.NotContain("\"type\":\"server\"");
             await Expect(page.Locator("h1")).ToHaveCountAsync(1);
             await Expect(page.Locator("link[rel='canonical']")).ToHaveAttributeAsync("href", "https://localhost/features");
-            await Expect(page.Locator("#reflection-heading + p")).ToContainTextAsync("Planned, not available yet");
-            await Expect(page.Locator("main")).ToContainTextAsync("searching people by name");
+            await Expect(page.Locator("#reflection-heading + p")).ToContainTextAsync("mark a moment as open, resolved or recurring");
+            await Expect(page.Locator("main")).Not.ToContainTextAsync("Planned");
+            await Expect(page.Locator("main")).ToContainTextAsync("searching by name or nickname");
             await Expect(page.Locator("main")).ToContainTextAsync("Names, contact methods and indexed metadata remain readable");
             await Expect(page.Locator("main a[href='/Account/Register']").First)
                 .ToHaveAttributeAsync("data-enhance-nav", "false");
