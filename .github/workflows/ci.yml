@@ -15,7 +15,8 @@ concurrency:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: it now resolves to Ubuntu 26.04, which Playwright 1.56 cannot install Chromium on.
+    runs-on: ubuntu-24.04
 
     services:
       sqlserver:
