@@ -2,9 +2,10 @@ namespace Relio.Web.Security;
 
 /// <summary>Configures per-peer throttling for sensitive account form posts.</summary>
 /// <remarks>
-/// The current TCP peer address is used, not an untrusted forwarded-header value. Shared NAT and
-/// reverse-proxy addresses therefore share a bucket unless a separately trusted proxy configuration
-/// is introduced. Buckets are process-local, so multiple app instances have independent budgets.
+/// <c>HttpContext.Connection.RemoteIpAddress</c> is used, never a raw forwarded-header value. Behind a
+/// reverse proxy it is the proxy's address (one shared bucket for the whole site) unless
+/// <c>Security:ForwardedHeaders:Enabled</c> is set, which makes the forwarded-headers middleware
+/// replace it with the real client address (see <see cref="ForwardedHeadersSettings"/>). Buckets are process-local, so multiple app instances have independent budgets.
 /// </remarks>
 public sealed class RateLimitingOptions
 {

@@ -38,6 +38,7 @@ builder.Logging.AddRelioCircuitFailureSignal();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+builder.Services.AddRelioForwardedHeaders(builder.Configuration);
 builder.Services.AddRelioAuthenticationRateLimiting(builder.Configuration);
 builder.Services.AddHsts(options =>
 {
@@ -116,6 +117,9 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// Issue #160: first, so the rate limiter and HTTPS redirection see the real client address and scheme
+// behind a reverse proxy. A no-op unless Security:ForwardedHeaders:Enabled is true.
+app.UseRelioForwardedHeaders();
 app.UseRelioSecurityHeaders();
 
 if (!app.Environment.IsDevelopment())
